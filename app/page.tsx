@@ -2,7 +2,6 @@
 
 import {
   type Card,
-  type ChecklistItem,
   type Filters,
   type Priority,
   STORAGE_KEY,
@@ -24,41 +23,20 @@ import {
   updateWipLimit,
 } from "./board-model";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, FormEvent, KeyboardEvent, RefObject } from "react";
-
-type StyleWithVars = CSSProperties & Partial<Record<"--label" | "--progress", string>>;
-
-type CardDraft = {
-  title: string;
-  description: string;
-  priority: Priority;
-  labelIds: string[];
-  dueDate: string;
-  members: string;
-  checklist: ChecklistItem[];
-};
-
-type DetailState =
-  | { mode: "add"; columnId: string; draft: CardDraft }
-  | { mode: "edit"; cardId: string; draft: CardDraft };
-
-type ConfirmState =
-  | { type: "delete"; cardId: string; title: string }
-  | { type: "reset" }
-  | null;
-
-const emptyFilters: Filters = {
-  query: "",
-  labelId: "",
-  priority: "all",
-  due: "all",
-};
-
-const priorityText: Record<Priority, string> = {
-  high: "高",
-  medium: "中",
-  low: "低",
-};
+import type { FormEvent, KeyboardEvent, RefObject } from "react";
+import {
+  type CardDraft,
+  type ConfirmState,
+  type DetailState,
+  type StyleWithVars,
+  createDraft,
+  draftFromCard,
+  draftToCardInput,
+  emptyFilters,
+  findNearestFocus,
+  locateCard,
+  priorityText,
+} from "./components/board/shared";
 
 export default function Home() {
   const [board, setBoard] = useState(() => createDemoBoard());
@@ -853,63 +831,4 @@ function IconButton({
       {text}
     </button>
   );
-}
-
-function createDraft(): CardDraft {
-  return {
-    title: "",
-    description: "",
-    priority: "medium",
-    labelIds: [],
-    dueDate: "",
-    members: "",
-    checklist: [],
-  };
-}
-
-function draftFromCard(card: Card): CardDraft {
-  return {
-    title: card.title,
-    description: card.description,
-    priority: card.priority,
-    labelIds: [...card.labelIds],
-    dueDate: card.dueDate,
-    members: card.members.join(", "),
-    checklist: card.checklist.map((item) => ({ ...item })),
-  };
-}
-
-function draftToCardInput(draft: CardDraft) {
-  return {
-    title: draft.title,
-    description: draft.description,
-    priority: draft.priority,
-    labelIds: draft.labelIds,
-    dueDate: draft.dueDate,
-    members: draft.members
-      .split(",")
-      .map((member) => member.trim())
-      .filter(Boolean),
-    checklist: draft.checklist,
-  };
-}
-
-function locateCard(board: ReturnType<typeof createDemoBoard>, cardId: string) {
-  for (let columnIndex = 0; columnIndex < board.columns.length; columnIndex += 1) {
-    const cardIndex = board.columns[columnIndex].cardIds.indexOf(cardId);
-    if (cardIndex >= 0) {
-      return { columnIndex, cardIndex };
-    }
-  }
-  return null;
-}
-
-function findNearestFocus(columns: ReturnType<typeof createDemoBoard>["columns"], cardId: string) {
-  for (const column of columns) {
-    const index = column.cardIds.indexOf(cardId);
-    if (index >= 0) {
-      return column.cardIds[index + 1] ?? column.cardIds[index - 1] ?? null;
-    }
-  }
-  return null;
 }
