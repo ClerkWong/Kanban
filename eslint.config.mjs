@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated native project (Capacitor) and its build artifacts.
+    "ios/**",
   ]),
 ]);
 

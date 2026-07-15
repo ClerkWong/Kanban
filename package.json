@@ -13,15 +13,20 @@
     "test": "tsx --test tests/*.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "mobile:build": "vite build --config vite.mobile.config.ts"
+    "mobile:build": "vite build --config vite.mobile.config.ts",
+    "mobile:sync": "pnpm mobile:build && cap sync",
+    "mobile:ios": "cap open ios"
   },
   "dependencies": {
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.1",
     "@cloudflare/vite-plugin": "1.37.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
