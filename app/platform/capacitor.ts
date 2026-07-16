@@ -12,6 +12,12 @@ import {
 
 const ATTACHMENT_DIR = "attachments";
 
+let speechSession: {
+  listener: { remove: () => Promise<void> };
+  lastText: string;
+  settle: (text: string) => void;
+} | null = null;
+
 function isUserCancelled(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /cancel/i.test(message);
@@ -91,6 +97,9 @@ export const capacitorCapabilities: PlatformCapabilities = {
     },
 
     async start(onPartial) {
+      if (speechSession) {
+        throw new CapabilityError("failed", "語音辨識已在進行中。");
+      }
       const permission = await SpeechRecognition.requestPermissions();
       if (permission.speechRecognition !== "granted") {
         throw new CapabilityError(
@@ -100,28 +109,38 @@ export const capacitorCapabilities: PlatformCapabilities = {
       }
       const listener = await SpeechRecognition.addListener("partialResults", (event) => {
         const text = event.matches?.[0];
-        if (text) {
+        if (text && speechSession) {
+          speechSession.lastText = text;
           onPartial(text);
         }
       });
-      try {
-        const result = await SpeechRecognition.start({
+      return new Promise<string>((resolve, reject) => {
+        speechSession = { listener, lastText: "", settle: resolve };
+        void SpeechRecognition.start({
           language: "zh-TW",
           partialResults: true,
           popup: false,
+        }).catch(async () => {
+          speechSession = null;
+          await listener.remove().catch(() => {});
+          reject(new CapabilityError("failed", "語音辨識啟動失敗，請再試一次。"));
         });
-        return result?.matches?.[0] ?? "";
-      } finally {
-        await listener.remove();
-      }
+      });
     },
 
     async stop() {
+      const session = speechSession;
+      if (!session) {
+        return;
+      }
+      speechSession = null;
       try {
         await SpeechRecognition.stop();
       } catch {
-        // 未在聆聽時呼叫 stop 可安全忽略
+        // 未在聆聽時可安全忽略
       }
+      await session.listener.remove().catch(() => {});
+      session.settle(session.lastText);
     },
   },
 
