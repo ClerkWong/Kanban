@@ -39,6 +39,10 @@ async function withStore<T>(
       db.close();
       reject(new CapabilityError("failed", "附件寫入失敗，請再試一次。"));
     };
+    tx.onabort = () => {
+      db.close();
+      reject(new CapabilityError("failed", "附件寫入失敗：儲存空間可能已滿。"));
+    };
   });
 }
 
