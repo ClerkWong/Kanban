@@ -1,0 +1,57 @@
+PODS:
+  - Capacitor (8.4.1):
+    - CapacitorCordova
+  - CapacitorCamera (8.2.1):
+    - Capacitor
+    - IONCameraLib (~> 1.0.4)
+  - CapacitorCommunitySpeechRecognition (7.0.1):
+    - Capacitor
+  - CapacitorCordova (8.4.1)
+  - CapacitorFilesystem (8.1.2):
+    - Capacitor
+    - IONFilesystemLib (~> 1.1.1)
+  - CapacitorVoiceRecorder (7.0.6):
+    - Capacitor
+  - IONCameraLib (1.0.4)
+  - IONFilesystemLib (1.1.2)
+
+DEPENDENCIES:
+  - "Capacitor (from `../../node_modules/.pnpm/@capacitor+ios@8.4.1_@capacitor+core@8.4.1/node_modules/@capacitor/ios`)"
+  - "CapacitorCamera (from `../../node_modules/.pnpm/@capacitor+camera@8.2.1_@capacitor+core@8.4.1/node_modules/@capacitor/camera`)"
+  - "CapacitorCommunitySpeechRecognition (from `../../node_modules/.pnpm/@capacitor-community+speech-recognition@7.0.1_@capacitor+core@8.4.1/node_modules/@capacitor-community/speech-recognition`)"
+  - "CapacitorCordova (from `../../node_modules/.pnpm/@capacitor+ios@8.4.1_@capacitor+core@8.4.1/node_modules/@capacitor/ios`)"
+  - "CapacitorFilesystem (from `../../node_modules/.pnpm/@capacitor+filesystem@8.1.2_@capacitor+core@8.4.1/node_modules/@capacitor/filesystem`)"
+  - "CapacitorVoiceRecorder (from `../../node_modules/.pnpm/capacitor-voice-recorder@7.0.6_@capacitor+core@8.4.1_@capacitor+filesystem@8.1.2_@capacitor+core@8.4.1_/node_modules/capacitor-voice-recorder`)"
+
+SPEC REPOS:
+  trunk:
+    - IONCameraLib
+    - IONFilesystemLib
+
+EXTERNAL SOURCES:
+  Capacitor:
+    :path: "../../node_modules/.pnpm/@capacitor+ios@8.4.1_@capacitor+core@8.4.1/node_modules/@capacitor/ios"
+  CapacitorCamera:
+    :path: "../../node_modules/.pnpm/@capacitor+camera@8.2.1_@capacitor+core@8.4.1/node_modules/@capacitor/camera"
+  CapacitorCommunitySpeechRecognition:
+    :path: "../../node_modules/.pnpm/@capacitor-community+speech-recognition@7.0.1_@capacitor+core@8.4.1/node_modules/@capacitor-community/speech-recognition"
+  CapacitorCordova:
+    :path: "../../node_modules/.pnpm/@capacitor+ios@8.4.1_@capacitor+core@8.4.1/node_modules/@capacitor/ios"
+  CapacitorFilesystem:
+    :path: "../../node_modules/.pnpm/@capacitor+filesystem@8.1.2_@capacitor+core@8.4.1/node_modules/@capacitor/filesystem"
+  CapacitorVoiceRecorder:
+    :path: "../../node_modules/.pnpm/capacitor-voice-recorder@7.0.6_@capacitor+core@8.4.1_@capacitor+filesystem@8.1.2_@capacitor+core@8.4.1_/node_modules/capacitor-voice-recorder"
+
+SPEC CHECKSUMS:
+  Capacitor: 35242afe195b1e53c58ca1b827d1b444c5e6602b
+  CapacitorCamera: 1b9dde3aaffbd1f051486f4cee2b4cdd962662ae
+  CapacitorCommunitySpeechRecognition: 3e03566c44c2bb3b52391a33d4518b1adbdeb38f
+  CapacitorCordova: eebe6bcf807b1b06f3f48237650f96bbcd0eef09
+  CapacitorFilesystem: 2db285a1ac6e475cc27cae2e1bea999000f9e2be
+  CapacitorVoiceRecorder: 9158861be982f32d411769723a4d813d6ce46135
+  IONCameraLib: f2349804460bd9e3f892e42109b8d996ab3fa19d
+  IONFilesystemLib: 21a63377696b2d8fab5632ecfb7d2ac67bddb68a
+
+PODFILE CHECKSUM: 1be3df41dc718a5e36e75c9f085ce4b70cd46390
+
+COCOAPODS: 1.16.2
