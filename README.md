@@ -85,6 +85,16 @@ or enforce explicit server-side membership or allowlist checks.
 Use SIWC for account pages, user-specific dashboards, saved records, and write
 actions tied to the current ChatGPT user. Leave public content anonymous.
 
+## Mobile（Capacitor）
+
+行動版把 `app/components/board/` 的同一套看板元件，經 `mobile/` 入口以純 Vite 打包成靜態 bundle，交給 Capacitor 原生殼載入（不註冊 service worker）。
+
+- `pnpm mobile:build`：打包 `dist/mobile`
+- `pnpm mobile:sync`：打包並同步到原生專案
+- `pnpm mobile:ios`：開啟 Xcode（實機側載用個人簽章）
+- 改了 web 元件後，重跑 `pnpm mobile:sync` 即可更新 app 內容
+- Fresh clone 後請先跑 `pnpm install && pnpm mobile:sync`，原生專案引用的同步產物（iOS `App/public`、Android sync 檔）不入版控，未同步前無法建置
+
 ## Useful Commands
 
 - `npm run dev`: start local development
