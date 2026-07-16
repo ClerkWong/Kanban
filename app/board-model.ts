@@ -1,4 +1,4 @@
-export const BOARD_SCHEMA_VERSION = 1;
+export const BOARD_SCHEMA_VERSION = 2;
 
 export type Priority = "low" | "medium" | "high";
 export type DueFilter = "all" | "overdue" | "today" | "upcoming" | "none";
@@ -7,6 +7,17 @@ export type ChecklistItem = {
   id: string;
   text: string;
   done: boolean;
+};
+
+export type AttachmentType = "photo" | "audio";
+
+export type AttachmentRef = {
+  id: string;
+  type: AttachmentType;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
 };
 
 export type Card = {
@@ -18,6 +29,7 @@ export type Card = {
   dueDate: string;
   checklist: ChecklistItem[];
   members: string[];
+  attachments: AttachmentRef[];
   createdAt: string;
   updatedAt: string;
 };
@@ -314,6 +326,7 @@ export function addCard(
     dueDate: normalizeDateOnly(input.dueDate ?? ""),
     checklist: normalizeChecklist(input.checklist ?? []),
     members: uniqueStrings(input.members ?? []),
+    attachments: normalizeAttachments(input.attachments ?? []),
     createdAt: input.createdAt ?? now,
     updatedAt: now,
   };
@@ -356,6 +369,7 @@ export function updateCard(
     dueDate: normalizeDateOnly(patch.dueDate ?? existing.dueDate),
     checklist: normalizeChecklist(patch.checklist ?? existing.checklist),
     members: uniqueStrings(patch.members ?? existing.members),
+    attachments: normalizeAttachments(patch.attachments ?? existing.attachments),
     updatedAt: new Date().toISOString(),
   };
 
@@ -488,7 +502,8 @@ export function parsePersistedBoard(raw: string | null): {
 
   try {
     const parsed = JSON.parse(raw);
-    if (!isBoardLike(parsed) || parsed.version !== BOARD_SCHEMA_VERSION) {
+    const version = (parsed as { version?: unknown }).version;
+    if (!isBoardLike(parsed) || (version !== 1 && version !== BOARD_SCHEMA_VERSION)) {
       return {
         board: createDemoBoard(),
         recovered: true,
@@ -551,6 +566,18 @@ export function assertBoardInvariants(board: BoardState): void {
   }
 }
 
+export function diffAttachmentRefs(
+  before: AttachmentRef[],
+  after: AttachmentRef[],
+): { added: AttachmentRef[]; removed: AttachmentRef[] } {
+  const beforeIds = new Set(before.map((ref) => ref.id));
+  const afterIds = new Set(after.map((ref) => ref.id));
+  return {
+    added: after.filter((ref) => !beforeIds.has(ref.id)),
+    removed: before.filter((ref) => !afterIds.has(ref.id)),
+  };
+}
+
 function createSeedCard(input: {
   id: string;
   title: string;
@@ -569,6 +596,7 @@ function createSeedCard(input: {
     labelIds: input.labelIds,
     dueDate: input.dueDate,
     members: input.members,
+    attachments: [],
     checklist: input.checklist.map(([text, done], index) => ({
       id: `${input.id}-check-${index + 1}`,
       text,
@@ -661,6 +689,7 @@ function normalizeCards(cards: Record<string, Card>): Record<string, Card> {
       dueDate: normalizeDateOnly(raw.dueDate),
       checklist: normalizeChecklist(Array.isArray(raw.checklist) ? raw.checklist : []),
       members: uniqueStrings(Array.isArray(raw.members) ? raw.members : []),
+      attachments: normalizeAttachments((raw as { attachments?: unknown }).attachments),
       createdAt:
         typeof raw.createdAt === "string" ? raw.createdAt : new Date().toISOString(),
       updatedAt:
@@ -680,6 +709,41 @@ function normalizeChecklist(items: ChecklistItem[]): ChecklistItem[] {
       done: Boolean(item.done),
     }))
     .filter((item) => item.text);
+}
+
+function normalizeAttachments(value: unknown): AttachmentRef[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const result: AttachmentRef[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") {
+      continue;
+    }
+    const item = raw as Partial<AttachmentRef>;
+    if (
+      typeof item.id !== "string" ||
+      !item.id ||
+      seen.has(item.id) ||
+      (item.type !== "photo" && item.type !== "audio") ||
+      typeof item.fileName !== "string" ||
+      !item.fileName
+    ) {
+      continue;
+    }
+    seen.add(item.id);
+    result.push({
+      id: item.id,
+      type: item.type,
+      fileName: item.fileName,
+      mimeType: typeof item.mimeType === "string" ? item.mimeType : "application/octet-stream",
+      size: Number.isFinite(Number(item.size)) ? Math.max(0, Math.round(Number(item.size))) : 0,
+      createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
+    });
+  }
+  return result;
 }
 
 function normalizeDateOnly(value: unknown): string {
@@ -733,6 +797,7 @@ function cloneBoard(board: BoardState): BoardState {
           labelIds: [...card.labelIds],
           members: [...card.members],
           checklist: card.checklist.map((item) => ({ ...item })),
+          attachments: card.attachments.map((ref) => ({ ...ref })),
         },
       ]),
     ),
