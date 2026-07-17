@@ -1,7 +1,7 @@
 "use client";
 
 import { usePlatform } from "../../platform/context";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
 export function VoiceCaptureButton({
@@ -18,6 +18,14 @@ export function VoiceCaptureButton({
   const [partial, setPartial] = useState("");
   const partialRef = useRef("");
   const listeningRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (listeningRef.current) {
+        void platform.speech.stop().catch(() => {});
+      }
+    };
+  }, [platform]);
 
   async function begin() {
     if (listeningRef.current) {
@@ -79,6 +87,7 @@ export function VoiceCaptureButton({
         onPointerLeave={end}
         onKeyDown={onKeyDown}
         onKeyUp={onKeyUp}
+        onBlur={end}
         onContextMenu={(event) => event.preventDefault()}
       >
         {listening ? "聆聽中…" : "🎤"}
