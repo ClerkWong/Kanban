@@ -194,6 +194,11 @@ export function BoardApp({
     }
 
     const input = draftToCardInput(detail.draft);
+    if (!input.title.trim()) {
+      setLiveMessage("標題不可為空白，請輸入標題後再儲存。");
+      return;
+    }
+
     const { removed } = diffAttachmentRefs(detailOriginalAttachments(detail), detail.draft.attachments);
     removeAttachmentFiles(removed);
     if (detail.mode === "add") {
@@ -490,7 +495,7 @@ export function BoardApp({
           onClose={closeOverlays}
           onDelete={detail.mode === "edit" ? () => requestDelete(detail.cardId) : undefined}
           onSubmit={saveDetail}
-          onDraftChange={(draft) => setDetail({ ...detail, draft } as DetailState)}
+          onDraftChange={(draft) => setDetail((current) => (current ? { ...current, draft } : current))}
           onCapabilityError={reportCapabilityError}
         />
       )}

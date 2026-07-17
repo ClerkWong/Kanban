@@ -188,6 +188,7 @@ function AttachmentItem({
     <li className="attachmentItem">
       {attachment.type === "photo" ? (
         url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- blob/data URL 縮圖無法用 next/image
           <img className="attachmentThumb" src={url} alt={`照片附件 ${attachment.fileName}`} />
         ) : (
           <span className="attachmentThumb attachmentPending" aria-hidden="true" />
