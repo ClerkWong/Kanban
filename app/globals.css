@@ -806,3 +806,55 @@ textarea {
   color: var(--rose);
   font-size: 0.85rem;
 }
+
+.addCardRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.addCardRow .addCardButton {
+  flex: 1;
+}
+
+.voiceCapture {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.voiceButton {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  font-size: 1rem;
+  touch-action: none;
+}
+
+.voiceButton.listening {
+  border-color: var(--teal-strong);
+  color: var(--teal-strong);
+  animation: voicePulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voiceButton.listening {
+    animation: none;
+  }
+}
+
+@keyframes voicePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.35); }
+  50% { box-shadow: 0 0 0 8px rgba(15, 118, 110, 0); }
+}
+
+.voicePartial {
+  color: var(--muted);
+  font-size: 0.85rem;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

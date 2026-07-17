@@ -27,6 +27,7 @@ import type { FormEvent } from "react";
 import { CardItem } from "./CardItem";
 import { ConfirmModal } from "./ConfirmModal";
 import { DetailModal } from "./DetailModal";
+import { VoiceCaptureButton } from "./VoiceCaptureButton";
 import { usePlatform } from "../../platform/context";
 import { CapabilityError } from "../../platform/types";
 import {
@@ -60,6 +61,22 @@ export function BoardApp({
 
   const platform = usePlatform();
   const [capabilityMessage, setCapabilityMessage] = useState("");
+  const [speechAvailable, setSpeechAvailable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    platform.speech
+      .available()
+      .then((available) => {
+        if (!cancelled) {
+          setSpeechAvailable(available);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [platform]);
 
   function reportCapabilityError(error: unknown) {
     setCapabilityMessage(
@@ -144,6 +161,12 @@ export function BoardApp({
   function openAdd(columnId: string) {
     setRestoreFocusId(null);
     setDetail({ mode: "add", columnId, draft: createDraft() });
+  }
+
+  function openAddWithTitle(columnId: string, title: string) {
+    setRestoreFocusId(null);
+    setDetail({ mode: "add", columnId, draft: { ...createDraft(), title } });
+    setLiveMessage(`已辨識語音，請確認卡片內容後儲存。`);
   }
 
   function openEdit(cardId: string) {
@@ -438,9 +461,18 @@ export function BoardApp({
                 )}
               </div>
 
-              <button type="button" className="addCardButton" onClick={() => openAdd(column.id)}>
-                ＋ 新增卡片
-              </button>
+              <div className="addCardRow">
+                <button type="button" className="addCardButton" onClick={() => openAdd(column.id)}>
+                  ＋ 新增卡片
+                </button>
+                {speechAvailable && (
+                  <VoiceCaptureButton
+                    columnTitle={column.title}
+                    onResult={(text) => openAddWithTitle(column.id, text)}
+                    onError={reportCapabilityError}
+                  />
+                )}
+              </div>
             </article>
           );
         })}
