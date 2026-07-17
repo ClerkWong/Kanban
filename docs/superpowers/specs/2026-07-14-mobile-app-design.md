@@ -81,6 +81,8 @@ interface PlatformCapabilities {
 - `Card` 新增 `attachments: AttachmentRef[]`：`{ id, type: "photo" | "audio", fileName, size, createdAt }`
 - `BOARD_SCHEMA_VERSION` 升至 2，`parsePersistedBoard` 寫 v1→v2 遷移；malformed 資料維持安全 fallback
 
+> **修訂（2026-07-17）**：實機驗收後採「擷取即寫入」— 編輯模式下附件擷取立即持久化到卡片、移除立即生效（兩段式確認）並刪檔；新增模式維持草稿語意。取消不再回復編輯模式下的附件變更。
+
 ### 語音快速建卡
 
 - 每欄「新增卡片」旁加麥克風按鈕：按住說話 → 即時顯示辨識中間結果 → 放開後文字帶入卡片標題，可編輯後儲存

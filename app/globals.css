@@ -807,6 +807,17 @@ textarea {
   font-size: 0.85rem;
 }
 
+.attachmentRemoveArmed {
+  width: auto;
+  padding: 0 12px;
+  border-color: #e0a7b1;
+  background: #fff6f7;
+  color: var(--rose);
+  font-size: 0.85rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .addCardRow {
   display: flex;
   align-items: center;

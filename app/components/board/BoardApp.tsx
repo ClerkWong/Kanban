@@ -94,6 +94,20 @@ export function BoardApp({
     return current.mode === "edit" ? (board.cards[current.cardId]?.attachments ?? []) : [];
   }
 
+  function applyAttachmentsChange(current: DetailState, next: AttachmentRef[]) {
+    setDetail((existing) =>
+      existing ? { ...existing, draft: { ...existing.draft, attachments: next } } : existing,
+    );
+    if (current.mode === "edit") {
+      const card = board.cards[current.cardId];
+      if (card) {
+        const { removed } = diffAttachmentRefs(card.attachments, next);
+        removeAttachmentFiles(removed);
+        setBoard((currentBoard) => updateCard(currentBoard, current.cardId, { attachments: next }));
+      }
+    }
+  }
+
   const today = useMemo(() => getLocalDateString(), []);
   const filtersActive = isFilterActive(filters);
   const visibleCards = useMemo(
@@ -496,6 +510,7 @@ export function BoardApp({
           onDelete={detail.mode === "edit" ? () => requestDelete(detail.cardId) : undefined}
           onSubmit={saveDetail}
           onDraftChange={(draft) => setDetail((current) => (current ? { ...current, draft } : current))}
+          onAttachmentsChange={(next) => applyAttachmentsChange(detail, next)}
           onCapabilityError={reportCapabilityError}
         />
       )}

@@ -19,6 +19,7 @@ export function AttachmentSection({
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
   const recordingRef = useRef(false);
   const sessionCreatedIds = useRef(new Set<string>());
 
@@ -35,7 +36,25 @@ export function AttachmentSection({
     };
   }, [platform]);
 
+  function performRemove(attachment: AttachmentRef) {
+    onChange(attachments.filter((ref) => ref.id !== attachment.id));
+    if (sessionCreatedIds.current.has(attachment.id)) {
+      sessionCreatedIds.current.delete(attachment.id);
+      void platform.attachments.remove(attachment.fileName).catch(() => {});
+    }
+    setConfirmingRemoveId(null);
+  }
+
+  function handleRemoveClick(attachment: AttachmentRef) {
+    if (confirmingRemoveId === attachment.id) {
+      performRemove(attachment);
+    } else {
+      setConfirmingRemoveId(attachment.id);
+    }
+  }
+
   async function addPhoto() {
+    setConfirmingRemoveId(null);
     setBusy(true);
     setErrorMessage("");
     try {
@@ -68,6 +87,7 @@ export function AttachmentSection({
   }
 
   async function toggleRecording() {
+    setConfirmingRemoveId(null);
     setErrorMessage("");
     if (!recording) {
       try {
@@ -148,13 +168,11 @@ export function AttachmentSection({
             <AttachmentItem
               key={attachment.id}
               attachment={attachment}
-              onRemove={() => {
-                onChange(attachments.filter((ref) => ref.id !== attachment.id));
-                if (sessionCreatedIds.current.has(attachment.id)) {
-                  sessionCreatedIds.current.delete(attachment.id);
-                  void platform.attachments.remove(attachment.fileName).catch(() => {});
-                }
-              }}
+              armed={confirmingRemoveId === attachment.id}
+              onRemoveClick={() => handleRemoveClick(attachment)}
+              onResetArmed={() =>
+                setConfirmingRemoveId((current) => (current === attachment.id ? null : current))
+              }
             />
           ))}
         </ul>
@@ -165,10 +183,14 @@ export function AttachmentSection({
 
 function AttachmentItem({
   attachment,
-  onRemove,
+  armed,
+  onRemoveClick,
+  onResetArmed,
 }: {
   attachment: AttachmentRef;
-  onRemove: () => void;
+  armed: boolean;
+  onRemoveClick: () => void;
+  onResetArmed: () => void;
 }) {
   const platform = usePlatform();
   const [url, setUrl] = useState<string | null>(null);
@@ -219,11 +241,12 @@ function AttachmentItem({
       {failed && <span className="attachmentError">附件載入失敗</span>}
       <button
         type="button"
-        className="iconOnly"
-        aria-label={`移除附件 ${attachment.fileName}`}
-        onClick={onRemove}
+        className={armed ? "iconOnly attachmentRemoveArmed" : "iconOnly"}
+        aria-label={armed ? "確認移除" : `移除附件 ${attachment.fileName}`}
+        onClick={onRemoveClick}
+        onBlur={onResetArmed}
       >
-        −
+        {armed ? "確認移除" : "−"}
       </button>
     </li>
   );
