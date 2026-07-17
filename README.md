@@ -95,6 +95,8 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 - 改了 web 元件後，重跑 `pnpm mobile:sync` 即可更新 app 內容
 - Fresh clone 後請先跑 `pnpm install && pnpm mobile:sync`，原生專案引用的同步產物（iOS `App/public`、Android sync 檔）不入版控，未同步前無法建置
 
+原生能力（階段 2）：卡片附件（拍照/相簿、錄音）與按住說話的語音建卡（繁中，裝置內建辨識）。附件檔案存於裝置本地（原生 Filesystem / 瀏覽器 IndexedDB），看板資料只存參照；行動 app 與瀏覽器的資料各自獨立，雲端同步屬後續階段。
+
 ## Useful Commands
 
 - `npm run dev`: start local development
