@@ -6,6 +6,7 @@ import {
   addCard,
   createDemoBoard,
   deleteCard,
+  diffAttachmentRefs,
   filterCards,
   getBoardStats,
   getColumnWip,
@@ -19,12 +20,15 @@ import {
   toggleChecklistItem,
   updateCard,
   updateWipLimit,
+  type AttachmentRef,
 } from "../../board-model";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { CardItem } from "./CardItem";
 import { ConfirmModal } from "./ConfirmModal";
 import { DetailModal } from "./DetailModal";
+import { usePlatform } from "../../platform/context";
+import { CapabilityError } from "../../platform/types";
 import {
   type ConfirmState,
   type DetailState,
@@ -53,6 +57,25 @@ export function BoardApp({
   const [loaded, setLoaded] = useState(false);
   const cardRefs = useRef(new Map<string, HTMLButtonElement>());
   const modalRef = useRef<HTMLDivElement>(null);
+
+  const platform = usePlatform();
+  const [capabilityMessage, setCapabilityMessage] = useState("");
+
+  function reportCapabilityError(error: unknown) {
+    setCapabilityMessage(
+      error instanceof CapabilityError ? error.message : "操作失敗，請再試一次。",
+    );
+  }
+
+  function removeAttachmentFiles(refs: AttachmentRef[]) {
+    for (const ref of refs) {
+      void platform.attachments.remove(ref.fileName).catch(() => {});
+    }
+  }
+
+  function detailOriginalAttachments(current: DetailState): AttachmentRef[] {
+    return current.mode === "edit" ? (board.cards[current.cardId]?.attachments ?? []) : [];
+  }
 
   const today = useMemo(() => getLocalDateString(), []);
   const filtersActive = isFilterActive(filters);
@@ -133,6 +156,10 @@ export function BoardApp({
   }
 
   function closeOverlays() {
+    if (detail) {
+      const { added } = diffAttachmentRefs(detailOriginalAttachments(detail), detail.draft.attachments);
+      removeAttachmentFiles(added);
+    }
     setDetail(null);
     setConfirmAction(null);
   }
@@ -144,6 +171,8 @@ export function BoardApp({
     }
 
     const input = draftToCardInput(detail.draft);
+    const { removed } = diffAttachmentRefs(detailOriginalAttachments(detail), detail.draft.attachments);
+    removeAttachmentFiles(removed);
     if (detail.mode === "add") {
       const nextId = makeId("card");
       setBoard((current) =>
@@ -165,6 +194,10 @@ export function BoardApp({
 
   function requestDelete(cardId: string) {
     const title = board.cards[cardId]?.title ?? "這張卡片";
+    if (detail) {
+      const { added } = diffAttachmentRefs(detailOriginalAttachments(detail), detail.draft.attachments);
+      removeAttachmentFiles(added);
+    }
     setDetail(null);
     setConfirmAction({ type: "delete", cardId, title });
   }
@@ -172,6 +205,7 @@ export function BoardApp({
   function confirmDelete(cardId: string) {
     const title = board.cards[cardId]?.title ?? "卡片";
     const position = findNearestFocus(board.columns, cardId);
+    removeAttachmentFiles(board.cards[cardId]?.attachments ?? []);
     setBoard((current) => deleteCard(current, cardId));
     setPendingFocusId(position);
     setLiveMessage(`已永久刪除「${title}」。`);
@@ -179,6 +213,7 @@ export function BoardApp({
   }
 
   function confirmReset() {
+    removeAttachmentFiles(Object.values(board.cards).flatMap((card) => card.attachments));
     setBoard(createDemoBoard());
     setFilters(emptyFilters);
     setDetail(null);
@@ -296,7 +331,7 @@ export function BoardApp({
         </button>
       </section>
 
-      {(filtersActive || storageMessage) && (
+      {(filtersActive || storageMessage || capabilityMessage) && (
         <section className="noticeStack" aria-live="polite">
           {filtersActive && (
             <p className="notice">
@@ -304,6 +339,19 @@ export function BoardApp({
             </p>
           )}
           {storageMessage && <p className="notice warning">{storageMessage}</p>}
+          {capabilityMessage && (
+            <p className="notice warning">
+              {capabilityMessage}
+              <button
+                type="button"
+                className="iconOnly"
+                aria-label="關閉訊息"
+                onClick={() => setCapabilityMessage("")}
+              >
+                ×
+              </button>
+            </p>
+          )}
         </section>
       )}
 
@@ -411,6 +459,7 @@ export function BoardApp({
           onDelete={detail.mode === "edit" ? () => requestDelete(detail.cardId) : undefined}
           onSubmit={saveDetail}
           onDraftChange={(draft) => setDetail({ ...detail, draft } as DetailState)}
+          onCapabilityError={reportCapabilityError}
         />
       )}
 

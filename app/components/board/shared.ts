@@ -1,4 +1,5 @@
 import type {
+  AttachmentRef,
   BoardState,
   Card,
   ChecklistItem,
@@ -19,6 +20,7 @@ export type CardDraft = {
   dueDate: string;
   members: string;
   checklist: ChecklistItem[];
+  attachments: AttachmentRef[];
 };
 
 export type DetailState =
@@ -52,6 +54,7 @@ export function createDraft(): CardDraft {
     dueDate: "",
     members: "",
     checklist: [],
+    attachments: [],
   };
 }
 
@@ -64,6 +67,7 @@ export function draftFromCard(card: Card): CardDraft {
     dueDate: card.dueDate,
     members: card.members.join(", "),
     checklist: card.checklist.map((item) => ({ ...item })),
+    attachments: card.attachments.map((ref) => ({ ...ref })),
   };
 }
 
@@ -79,6 +83,7 @@ export function draftToCardInput(draft: CardDraft) {
       .map((member) => member.trim())
       .filter(Boolean),
     checklist: draft.checklist,
+    attachments: draft.attachments,
   };
 }
 

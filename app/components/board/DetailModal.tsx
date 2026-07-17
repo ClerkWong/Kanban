@@ -2,6 +2,7 @@
 
 import { type Label, type Priority, makeId } from "../../board-model";
 import { type CardDraft, type DetailState, type StyleWithVars } from "./shared";
+import { AttachmentSection } from "./AttachmentSection";
 import type { FormEvent, KeyboardEvent, RefObject } from "react";
 
 export function DetailModal({
@@ -12,6 +13,7 @@ export function DetailModal({
   onDelete,
   onSubmit,
   onDraftChange,
+  onCapabilityError,
 }: {
   detail: DetailState;
   labels: Label[];
@@ -20,6 +22,7 @@ export function DetailModal({
   onDelete?: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onDraftChange: (draft: CardDraft) => void;
+  onCapabilityError: (error: unknown) => void;
 }) {
   const draft = detail.draft;
 
@@ -123,6 +126,12 @@ export function DetailModal({
               placeholder="雅婷, Kai"
             />
           </label>
+
+          <AttachmentSection
+            attachments={draft.attachments}
+            onChange={(attachments) => setDraft({ attachments })}
+            onError={onCapabilityError}
+          />
 
           <fieldset className="fieldGroup">
             <legend>清單</legend>

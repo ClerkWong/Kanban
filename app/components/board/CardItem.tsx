@@ -102,6 +102,7 @@ export function CardItem({
           <span className={isOverdue ? "overdueText" : ""}>到期：{card.dueDate}</span>
         )}
         {card.members.length > 0 && <span>成員：{card.members.join("、")}</span>}
+        {card.attachments.length > 0 && <span>附件：{card.attachments.length}</span>}
       </div>
 
       {card.checklist.length > 0 && (

@@ -7,7 +7,7 @@ import {
   findNearestFocus,
   locateCard,
 } from "../app/components/board/shared";
-import { createDemoBoard } from "../app/board-model";
+import { createDemoBoard, updateCard } from "../app/board-model";
 
 test("createDraft 以空白欄位與中優先級起始", () => {
   const draft = createDraft();
@@ -15,6 +15,7 @@ test("createDraft 以空白欄位與中優先級起始", () => {
   assert.equal(draft.priority, "medium");
   assert.deepEqual(draft.labelIds, []);
   assert.deepEqual(draft.checklist, []);
+  assert.deepEqual(draft.attachments, []);
 });
 
 test("draftFromCard 複製欄位並以逗號串接成員、深拷貝清單", () => {
@@ -25,12 +26,34 @@ test("draftFromCard 複製欄位並以逗號串接成員、深拷貝清單", () 
   assert.equal(draft.members, card.members.join(", "));
   assert.notEqual(draft.checklist, card.checklist);
   assert.notEqual(draft.checklist[0], card.checklist[0]);
+
+  const boardWithRef = updateCard(board, card.id, {
+    attachments: [{
+      id: "att-1", type: "photo", fileName: "att-1.jpeg",
+      mimeType: "image/jpeg", size: 10, createdAt: "2026-07-16T09:00:00.000Z",
+    }],
+  });
+  const draftWithRef = draftFromCard(boardWithRef.cards[card.id]);
+  assert.equal(draftWithRef.attachments.length, 1);
+  assert.notEqual(draftWithRef.attachments, boardWithRef.cards[card.id].attachments);
 });
 
 test("draftToCardInput 修剪成員字串並剔除空項", () => {
   const draft = { ...createDraft(), members: " 雅婷 , , Kai " };
   const input = draftToCardInput(draft);
   assert.deepEqual(input.members, ["雅婷", "Kai"]);
+});
+
+test("draftToCardInput 帶出附件參照", () => {
+  const draft = {
+    ...createDraft(),
+    title: "帶附件",
+    attachments: [{
+      id: "att-9", type: "audio" as const, fileName: "att-9.m4a",
+      mimeType: "audio/mp4", size: 99, createdAt: "2026-07-16T09:00:00.000Z",
+    }],
+  };
+  assert.deepEqual(draftToCardInput(draft).attachments.map((ref) => ref.id), ["att-9"]);
 });
 
 test("locateCard 回傳欄與卡索引，找不到回傳 null", () => {
