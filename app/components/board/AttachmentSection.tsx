@@ -3,7 +3,7 @@
 import type { AttachmentRef } from "../../board-model";
 import { usePlatform } from "../../platform/context";
 import { makeId } from "../../board-model";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function AttachmentSection({
   attachments,
@@ -17,6 +17,21 @@ export function AttachmentSection({
   const platform = usePlatform();
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
+  const recordingRef = useRef(false);
+  const sessionCreatedIds = useRef(new Set<string>());
+
+  function updateRecording(next: boolean) {
+    recordingRef.current = next;
+    setRecording(next);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (recordingRef.current) {
+        void platform.audio.stopRecording().catch(() => {});
+      }
+    };
+  }, [platform]);
 
   async function addPhoto() {
     setBusy(true);
@@ -27,6 +42,7 @@ export function AttachmentSection({
       }
       const id = makeId("att");
       const saved = await platform.attachments.save(id, capture);
+      sessionCreatedIds.current.add(id);
       onChange([
         ...attachments,
         {
@@ -49,14 +65,14 @@ export function AttachmentSection({
     if (!recording) {
       try {
         await platform.audio.startRecording();
-        setRecording(true);
+        updateRecording(true);
       } catch (error) {
         onError(error);
       }
       return;
     }
 
-    setRecording(false);
+    updateRecording(false);
     setBusy(true);
     try {
       const capture = await platform.audio.stopRecording();
@@ -65,6 +81,7 @@ export function AttachmentSection({
       }
       const id = makeId("att");
       const saved = await platform.attachments.save(id, capture);
+      sessionCreatedIds.current.add(id);
       onChange([
         ...attachments,
         {
@@ -113,7 +130,13 @@ export function AttachmentSection({
             <AttachmentItem
               key={attachment.id}
               attachment={attachment}
-              onRemove={() => onChange(attachments.filter((ref) => ref.id !== attachment.id))}
+              onRemove={() => {
+                onChange(attachments.filter((ref) => ref.id !== attachment.id));
+                if (sessionCreatedIds.current.has(attachment.id)) {
+                  sessionCreatedIds.current.delete(attachment.id);
+                  void platform.attachments.remove(attachment.fileName).catch(() => {});
+                }
+              }}
             />
           ))}
         </ul>
