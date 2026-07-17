@@ -3,6 +3,7 @@
 import type { AttachmentRef } from "../../board-model";
 import { usePlatform } from "../../platform/context";
 import { makeId } from "../../board-model";
+import { CapabilityError } from "../../platform/types";
 import { useEffect, useRef, useState } from "react";
 
 export function AttachmentSection({
@@ -17,6 +18,7 @@ export function AttachmentSection({
   const platform = usePlatform();
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   const recordingRef = useRef(false);
   const sessionCreatedIds = useRef(new Set<string>());
 
@@ -35,6 +37,7 @@ export function AttachmentSection({
 
   async function addPhoto() {
     setBusy(true);
+    setErrorMessage("");
     try {
       const capture = await platform.takePhoto();
       if (!capture) {
@@ -55,6 +58,9 @@ export function AttachmentSection({
         },
       ]);
     } catch (error) {
+      setErrorMessage(
+        error instanceof CapabilityError ? error.message : "操作失敗，請再試一次。",
+      );
       onError(error);
     } finally {
       setBusy(false);
@@ -62,11 +68,15 @@ export function AttachmentSection({
   }
 
   async function toggleRecording() {
+    setErrorMessage("");
     if (!recording) {
       try {
         await platform.audio.startRecording();
         updateRecording(true);
       } catch (error) {
+        setErrorMessage(
+          error instanceof CapabilityError ? error.message : "操作失敗，請再試一次。",
+        );
         onError(error);
       }
       return;
@@ -94,6 +104,9 @@ export function AttachmentSection({
         },
       ]);
     } catch (error) {
+      setErrorMessage(
+        error instanceof CapabilityError ? error.message : "操作失敗，請再試一次。",
+      );
       onError(error);
     } finally {
       setBusy(false);
@@ -122,6 +135,11 @@ export function AttachmentSection({
           </span>
         )}
       </div>
+      {errorMessage && (
+        <p className="attachmentError" role="alert">
+          {errorMessage}
+        </p>
+      )}
       {attachments.length === 0 ? (
         <p className="attachmentEmpty">尚無附件</p>
       ) : (

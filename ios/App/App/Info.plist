@@ -24,6 +24,8 @@
 	<string>拍照後附加到看板卡片。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>從相簿選擇照片附加到卡片。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>儲存照片到相簿時需要此權限。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>錄音附加到卡片，以及語音輸入建立卡片。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
