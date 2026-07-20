@@ -1,4 +1,4 @@
-export const BOARD_SCHEMA_VERSION = 2;
+export const BOARD_SCHEMA_VERSION = 3;
 
 export type Priority = "low" | "medium" | "high";
 export type DueFilter = "all" | "overdue" | "today" | "upcoming" | "none";
@@ -52,6 +52,7 @@ export type BoardState = {
   columns: Column[];
   cards: Record<string, Card>;
   labels: Label[];
+  deletedCards: Record<string, string>;
   lastSavedAt: string;
 };
 
@@ -71,6 +72,7 @@ export type BoardStats = {
 
 export const STORAGE_KEY = "kanban-pwa-board-v1";
 export const DONE_COLUMN_ID = "done";
+export const TOMBSTONE_TTL_DAYS = 30;
 
 const STARTER_LABELS: Label[] = [
   { id: "strategy", name: "策略", color: "#5b7cfa" },
@@ -181,6 +183,7 @@ export function createDemoBoard(now = new Date()): BoardState {
     version: BOARD_SCHEMA_VERSION,
     labels: STARTER_LABELS,
     cards,
+    deletedCards: {},
     columns: [
       {
         id: "todo",
@@ -337,6 +340,11 @@ export function addCard(
 
   const next = cloneBoard(board);
   next.cards[id] = card;
+  if (next.deletedCards[id]) {
+    const cleaned = { ...next.deletedCards };
+    delete cleaned[id];
+    next.deletedCards = cleaned;
+  }
   next.columns = next.columns.map((column) =>
     column.id === columnId
       ? { ...column, cardIds: [...column.cardIds, id] }
@@ -383,6 +391,7 @@ export function deleteCard(board: BoardState, cardId: string): BoardState {
 
   const next = cloneBoard(board);
   delete next.cards[cardId];
+  next.deletedCards = { ...next.deletedCards, [cardId]: new Date().toISOString() };
   next.columns = next.columns.map((column) => ({
     ...column,
     cardIds: column.cardIds.filter((id) => id !== cardId),
@@ -503,7 +512,7 @@ export function parsePersistedBoard(raw: string | null): {
   try {
     const parsed = JSON.parse(raw);
     const version = (parsed as { version?: unknown }).version;
-    if (!isBoardLike(parsed) || (version !== 1 && version !== BOARD_SCHEMA_VERSION)) {
+    if (!isBoardLike(parsed) || (version !== 1 && version !== 2 && version !== BOARD_SCHEMA_VERSION)) {
       return {
         board: createDemoBoard(),
         recovered: true,
@@ -543,6 +552,7 @@ export function normalizeBoard(board: BoardState): BoardState {
     version: BOARD_SCHEMA_VERSION,
     labels,
     cards,
+    deletedCards: normalizeDeletedCards(board.deletedCards, cards),
     columns,
     lastSavedAt: board.lastSavedAt || new Date().toISOString(),
   };
@@ -746,6 +756,24 @@ function normalizeAttachments(value: unknown): AttachmentRef[] {
   return result;
 }
 
+function normalizeDeletedCards(
+  value: unknown,
+  cards: Record<string, Card>,
+): Record<string, string> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  const cutoff = new Date(Date.now() - TOMBSTONE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const result: Record<string, string> = {};
+  for (const [cardId, deletedAt] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof deletedAt !== "string" || !deletedAt || cards[cardId] || deletedAt < cutoff) {
+      continue;
+    }
+    result[cardId] = deletedAt;
+  }
+  return result;
+}
+
 function normalizeDateOnly(value: unknown): string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
     ? value
@@ -785,6 +813,7 @@ function cloneBoard(board: BoardState): BoardState {
   return {
     ...board,
     labels: board.labels.map((label) => ({ ...label })),
+    deletedCards: { ...board.deletedCards },
     columns: board.columns.map((column) => ({
       ...column,
       cardIds: [...column.cardIds],
