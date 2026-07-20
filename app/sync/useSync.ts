@@ -54,8 +54,7 @@ export function useSync(
   }, [board]);
 
   const runSync = useCallback(async () => {
-    const active = configRef.current;
-    if (!active) {
+    if (!configRef.current) {
       return;
     }
     if (busyRef.current) {
@@ -68,6 +67,14 @@ export function useSync(
     // 於本輪結束後在同一次呼叫內原地重跑，避免函式在自身尚未完成賦值前就參照自己。
     let keepGoing = true;
     while (keepGoing) {
+      // 每輪重新讀取設定：若使用者在同步期間 disable()（或改連新伺服器），
+      // 排入佇列的重跑不得沿用舊設定，也不得覆寫 disable() 已設定的 "disabled" 狀態。
+      const active = configRef.current;
+      if (!active) {
+        busyRef.current = false;
+        queuedRef.current = false;
+        return;
+      }
       queuedRef.current = false;
       setStatus("syncing");
       setErrorMessage("");
@@ -86,6 +93,7 @@ export function useSync(
             const remoteBoard = toBoardState(remote.board);
             const merged = mergeBoards(boardRef.current, remoteBoard);
             setBoard(merged);
+            boardRef.current = merged; // 非 render 階段寫 ref 合法；讓後續回合立即以最新板為基準
             if (serializeBoard(merged) === serializeBoard(remoteBoard)) {
               saveSyncRevision(remote.revision);
               lastPushedRef.current = serializeBoard(merged);
@@ -115,6 +123,7 @@ export function useSync(
             const remoteBoard = toBoardState(result.board);
             const merged = mergeBoards(boardRef.current, remoteBoard);
             setBoard(merged);
+            boardRef.current = merged;
             if (serializeBoard(merged) === serializeBoard(remoteBoard)) {
               // 合併結果與遠端相同 → 直接採納，不需推送
               saveSyncRevision(result.revision);
@@ -167,6 +176,7 @@ export function useSync(
           const merged = mergeBoards(boardRef.current, toBoardState(remote.board));
           saveSyncRevision(remote.revision);
           setBoard(merged);
+          boardRef.current = merged;
         }
         await runSync();
       } catch {
@@ -229,6 +239,9 @@ export function useSync(
               : mergeBoards(boardRef.current, toBoardState(remote.board));
           saveSyncRevision(remote.revision);
           setBoard(base);
+          // 立即同步 ref：download 模式下若不同步，緊接的 runSync 會把剛被捨棄的舊本地板
+          // 推成新 revision，造成短暫的遠端回退視窗（其他裝置可能合併進而復活舊資料）。
+          boardRef.current = base;
         } else {
           saveSyncRevision(0);
         }
