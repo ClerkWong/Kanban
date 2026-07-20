@@ -869,3 +869,57 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.syncPill {
+  align-self: flex-start;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--paper);
+  padding: 8px 14px;
+  min-height: 44px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.syncPill.synced {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.syncPill.error {
+  color: var(--rose);
+  border-color: var(--rose);
+}
+
+.syncPill.pending,
+.syncPill.syncing {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+
+.syncStatusLine {
+  margin: 0 0 12px;
+}
+
+.syncErrorText {
+  color: var(--rose);
+}
+
+.syncActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.syncForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.syncModeChoice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}

@@ -27,9 +27,11 @@ import type { FormEvent } from "react";
 import { CardItem } from "./CardItem";
 import { ConfirmModal } from "./ConfirmModal";
 import { DetailModal } from "./DetailModal";
+import { SyncSettingsModal } from "./SyncSettingsModal";
 import { VoiceCaptureButton } from "./VoiceCaptureButton";
 import { usePlatform } from "../../platform/context";
 import { CapabilityError } from "../../platform/types";
+import { useSync } from "../../sync/useSync";
 import {
   type ConfirmState,
   type DetailState,
@@ -56,6 +58,8 @@ export function BoardApp({
   const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
   const [restoreFocusId, setRestoreFocusId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const sync = useSync(board, setBoard, loaded);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
   const cardRefs = useRef(new Map<string, HTMLButtonElement>());
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -312,6 +316,19 @@ export function BoardApp({
           <Stat label="完成" value={stats.completed} />
           <Stat label="逾期" value={stats.overdue} tone={stats.overdue ? "danger" : "ok"} />
         </div>
+
+        <button
+          type="button"
+          className={`syncPill ${sync.status}`}
+          onClick={() => setSyncModalOpen(true)}
+          aria-label="開啟雲端同步設定"
+        >
+          {sync.status === "disabled" && "同步：未啟用"}
+          {sync.status === "pending" && "同步：待同步"}
+          {sync.status === "syncing" && "同步中…"}
+          {sync.status === "synced" && "同步：已同步"}
+          {sync.status === "error" && "同步：失敗"}
+        </button>
       </section>
 
       <section className="toolBand" aria-label="搜尋與篩選">
@@ -373,7 +390,7 @@ export function BoardApp({
         </button>
       </section>
 
-      {(filtersActive || storageMessage || capabilityMessage) && (
+      {(filtersActive || storageMessage || capabilityMessage || sync.status === "error") && (
         <section className="noticeStack" aria-live="polite">
           {filtersActive && (
             <p className="notice">
@@ -391,6 +408,14 @@ export function BoardApp({
                 onClick={() => setCapabilityMessage("")}
               >
                 ×
+              </button>
+            </p>
+          )}
+          {sync.status === "error" && sync.errorMessage && (
+            <p className="notice warning">
+              {sync.errorMessage}
+              <button type="button" className="secondaryButton" onClick={sync.syncNow}>
+                重試
               </button>
             </p>
           )}
@@ -513,6 +538,10 @@ export function BoardApp({
           onAttachmentsChange={(next) => applyAttachmentsChange(detail, next)}
           onCapabilityError={reportCapabilityError}
         />
+      )}
+
+      {syncModalOpen && (
+        <SyncSettingsModal sync={sync} modalRef={modalRef} onClose={() => setSyncModalOpen(false)} />
       )}
 
       {confirmAction && (

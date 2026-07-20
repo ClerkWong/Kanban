@@ -34,7 +34,7 @@ export function ConfirmModal({
         <h2 id="confirmTitle">{isReset ? "重設示範資料？" : "永久刪除卡片？"}</h2>
         <p>
           {isReset
-            ? "這會以內建示範資料取代目前本機看板。取消時不會變更任何資料。"
+            ? "這會以內建示範資料取代目前本機看板。取消時不會變更任何資料。若已啟用雲端同步，重設結果也會同步給所有成員。"
             : `「${confirmAction.title}」會從本裝置永久刪除，這個 MVP 不使用封存或復原語意。`}
         </p>
         <div className="modalActions">
