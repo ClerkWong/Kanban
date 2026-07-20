@@ -40,5 +40,6 @@ next-env.d.ts
 tsconfig.tsbuildinfo
 /dist/
 /.wrangler/
+worker-sync/.wrangler/
 /outputs/
 /work/

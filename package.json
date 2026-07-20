@@ -16,7 +16,10 @@
     "db:generate": "drizzle-kit generate",
     "mobile:build": "vite build --config vite.mobile.config.ts",
     "mobile:sync": "pnpm mobile:build && cap sync",
-    "mobile:ios": "cap open ios"
+    "mobile:ios": "cap open ios",
+    "sync:dev": "wrangler dev -c worker-sync/wrangler.jsonc",
+    "sync:migrate": "wrangler d1 migrations apply kanban-sync --remote -c worker-sync/wrangler.jsonc",
+    "sync:deploy": "wrangler deploy -c worker-sync/wrangler.jsonc"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "7.0.1",
