@@ -166,7 +166,7 @@ export function BoardApp({
   }, [board, pendingFocusId]);
 
   useEffect(() => {
-    if (detail || confirmAction) {
+    if (detail || confirmAction || syncModalOpen) {
       modalRef.current?.focus();
     } else if (restoreFocusId) {
       window.requestAnimationFrame(() => {
@@ -174,7 +174,7 @@ export function BoardApp({
         setRestoreFocusId(null);
       });
     }
-  }, [detail, confirmAction, restoreFocusId]);
+  }, [detail, confirmAction, syncModalOpen, restoreFocusId]);
 
   function openAdd(columnId: string) {
     setRestoreFocusId(null);
