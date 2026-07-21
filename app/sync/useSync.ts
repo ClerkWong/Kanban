@@ -29,7 +29,14 @@ const MAX_CONFLICT_ROUNDS = 3;
 
 function toBoardState(value: unknown): BoardState {
   // 遠端資料視同不可信持久化資料，走同一套防呆解析
-  return parsePersistedBoard(JSON.stringify(value)).board;
+  const parsed = parsePersistedBoard(JSON.stringify(value));
+  if (parsed.recovered) {
+    // 遠端資料格式異常或版本未知：絕不可靜默替換為示範資料再合併回推，
+    // 否則會把示範看板推上共用伺服器，污染其他裝置。改丟錯誤讓 runSync 的
+    // catch 區塊統一處理為同步失敗狀態。
+    throw new SyncApiError(422, "遠端看板資料格式異常，暫停同步以保護本機資料。");
+  }
+  return parsed.board;
 }
 
 export function useSync(

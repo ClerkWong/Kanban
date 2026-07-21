@@ -94,6 +94,7 @@ export function SyncSettingsModal({
               <span>Token</span>
               <input
                 type="password"
+                autoComplete="off"
                 value={token}
                 onChange={(event) => setToken(event.target.value)}
               />

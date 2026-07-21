@@ -60,7 +60,8 @@ const worker = {
 
     if (url.pathname === "/board" && request.method === "PUT") {
       const text = await request.text();
-      if (text.length > MAX_BOARD_BYTES) {
+      const byteLength = new TextEncoder().encode(text).length;
+      if (byteLength > MAX_BOARD_BYTES) {
         return json(413, { error: "board too large" });
       }
       let payload: { baseRevision?: unknown; board?: unknown };

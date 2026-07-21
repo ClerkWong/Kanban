@@ -105,6 +105,7 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 - 部署：`pnpm sync:migrate && pnpm sync:deploy`（需 `wrangler login`；database_id 在 `worker-sync/wrangler.jsonc`）
 - 發 token：產生隨機字串，SHA-256 後 INSERT 進 D1 `users` 表（明文交給成員）
 - 附件檔案的雲端同步屬階段 3b，目前附件僅存於擷取它的裝置
+- 已刪卡片的墓碑保留 30 天；若某裝置離線超過 30 天後才重新連線，其上仍存在的、已被他人刪除的卡片可能重新出現（與附件僅存本機同屬已知限制）
 
 ## Useful Commands
 

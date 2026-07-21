@@ -31,7 +31,7 @@ test("schema 版本為 3 且示範卡片帶空附件陣列", () => {
   }
 });
 
-test("v1 資料無錯遷移為 v2，每張卡片補上 attachments: []", () => {
+test("v1 資料無錯遷移為目前版本，每張卡片補上 attachments: []", () => {
   const v1 = JSON.parse(serializeBoard(createDemoBoard(new Date(2026, 6, 16))));
   v1.version = 1;
   for (const card of Object.values(v1.cards) as Array<Record<string, unknown>>) {
