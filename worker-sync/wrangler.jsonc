@@ -7,7 +7,7 @@
     {
       "binding": "DB",
       "database_name": "kanban-sync",
-      "database_id": "TO-BE-SET-BY-DEPLOY-TASK"
+      "database_id": "5089c3b6-d0f5-45ed-bafe-88f568e8da55"
     }
   ]
 }

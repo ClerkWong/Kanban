@@ -97,6 +97,15 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 原生能力（階段 2）：卡片附件（拍照/相簿、錄音）與按住說話的語音建卡（繁中，裝置內建辨識）。附件檔案存於裝置本地（原生 Filesystem / 瀏覽器 IndexedDB），看板資料只存參照；行動 app 與瀏覽器的資料各自獨立，雲端同步屬後續階段。
 
+## 雲端同步（階段 3a）
+
+看板經 `worker-sync/`（Cloudflare Worker + D1）跨裝置同步：單一共用看板、Bearer token 認證、revision 樂觀鎖，衝突以卡片級 updatedAt LWW 合併（刪除有墓碑保護）。離線優先 — 本機永遠可用，恢復連線後自動補推。
+
+- 啟用：看板右上「同步」pill → 輸入 Worker 網址與 token
+- 部署：`pnpm sync:migrate && pnpm sync:deploy`（需 `wrangler login`；database_id 在 `worker-sync/wrangler.jsonc`）
+- 發 token：產生隨機字串，SHA-256 後 INSERT 進 D1 `users` 表（明文交給成員）
+- 附件檔案的雲端同步屬階段 3b，目前附件僅存於擷取它的裝置
+
 ## Useful Commands
 
 - `npm run dev`: start local development
