@@ -6,6 +6,7 @@ import { defineConfig } from "vite";
 // 與 vite.config.ts 的 vinext/Cloudflare web 建置完全分離。
 export default defineConfig({
   root: "mobile",
+  publicDir: fileURLToPath(new URL("./public", import.meta.url)),
   plugins: [react()],
   build: {
     outDir: fileURLToPath(new URL("./dist/mobile", import.meta.url)),

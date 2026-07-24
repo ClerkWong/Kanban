@@ -44,12 +44,16 @@ import {
   findNearestFocus,
   locateCard,
 } from "./shared";
+import { bundledAppConfig, loadAppConfig } from "../../app-config";
 
 export function BoardApp({
   enableServiceWorker = false,
+  appConfigUrl = "/app-config.json",
 }: {
   enableServiceWorker?: boolean;
+  appConfigUrl?: string;
 }) {
+  const [appTitle, setAppTitle] = useState(bundledAppConfig.title);
   const [board, setBoard] = useState(() => createDemoBoard());
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [detail, setDetail] = useState<DetailState | null>(null);
@@ -69,6 +73,21 @@ export function BoardApp({
   const platform = usePlatform();
   const [capabilityMessage, setCapabilityMessage] = useState("");
   const [speechAvailable, setSpeechAvailable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadAppConfig(appConfigUrl).then((config) => {
+      if (!cancelled) {
+        setAppTitle(config.title);
+        document.title = config.title;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appConfigUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -320,7 +339,7 @@ export function BoardApp({
       <section className="topBar" aria-label="看板摘要">
         <div className="brandBlock">
           <p className="eyebrow">本機優先 Kanban PWA</p>
-          <h1>本機 Kanban 看板</h1>
+          <h1>{appTitle}</h1>
           <p className="storageNote">資料先保存在本裝置；啟用同步後可跨裝置共用，離線仍可使用核心流程。</p>
         </div>
 

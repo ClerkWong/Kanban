@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
+import { bundledAppConfig } from "./app-config";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -18,12 +19,12 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     metadataBase,
-    title: "本機 Kanban 看板",
+    title: bundledAppConfig.title,
     description: "離線可用、本機優先，並可選擇跨裝置同步的繁體中文 Kanban PWA。",
     manifest: "/manifest.webmanifest",
-    applicationName: "本機 Kanban",
+    applicationName: bundledAppConfig.title,
     openGraph: {
-      title: "本機 Kanban 看板",
+      title: bundledAppConfig.title,
       description: "離線可用、本機優先，並可選擇跨裝置同步的繁體中文 Kanban PWA。",
       type: "website",
       locale: "zh_TW",
@@ -38,13 +39,13 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: {
       card: "summary_large_image",
-      title: "本機 Kanban 看板",
+      title: bundledAppConfig.title,
       description: "離線可用、本機優先，並可選擇跨裝置同步的繁體中文 Kanban PWA。",
       images: ["/og.png"],
     },
     appleWebApp: {
       capable: true,
-      title: "本機 Kanban",
+      title: bundledAppConfig.title,
       statusBarStyle: "default",
     },
     icons: {

@@ -4,9 +4,9 @@
 React 看板介面；資料先寫入裝置，使用者可選擇連接 Cloudflare Worker，將看板存入
 D1、附件存入 R2，供多裝置共用。
 
-目前正式環境只上線既有的看板同步（3a）。新版月報與附件同步（3b）已進入本機整合，
-仍須先完成獨立 staging、雙裝置與實機驗收，才可切換正式資源。完整差距、順序與停止
-條件見 [NextSteps.md](./NextSteps.md)。
+目前正式環境只上線既有的看板同步（3a）。新版月報、附件同步（3b）與 Web/PWA 已完成
+本機整合，Web private beta 也已發布；仍須先完成獨立 staging 後端、雙裝置與實機驗收，
+才可切換正式資源。完整狀態、順序與停止條件見 [NextTasks.md](./NextTasks.md)。
 
 ## 功能
 
@@ -45,8 +45,25 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Web 分享 metadata 會讀取 `NEXT_PUBLIC_SITE_URL`。本機可省略；staging 與 production
-必須設為各自的 HTTPS 網站 origin，避免分享圖連到錯誤環境。
+Web 分享 metadata 預設使用目前 request 的 HTTPS origin；也可用
+`NEXT_PUBLIC_SITE_URL` 明確覆寫。若設定此值，staging 與 production 必須使用各自的
+網站 origin，避免分享圖連到錯誤環境。
+
+## 客製標題
+
+畫面主標題與瀏覽器／App WebView 的分頁標題由
+[`public/app-config.json`](./public/app-config.json) 提供：
+
+```json
+{
+  "title": "團隊工作看板"
+}
+```
+
+啟動時會以 `no-store` 重新讀取設定；空白、非字串或超過 80 個字元時會退回預設標題。
+本機 Web 修改後重新整理即可看到結果。已部署的 Web 需要重新發布 JSON；iOS/Android
+會將 JSON 包入 App，因此修改後必須重跑 `pnpm mobile:sync` 並安裝新 build。手機桌面
+圖示下方的 App 名稱屬於原生系統 metadata，不能由 JSON 在執行期間變更。
 
 ## 品質檢查
 
@@ -101,7 +118,7 @@ pnpm sync:dev
 ```
 
 所有遠端 migration、資源建立與部署都屬外部變更。先依
-[NextSteps.md](./NextSteps.md) 建立 staging 並通過驗收；不要直接用 production
+[NextTasks.md](./NextTasks.md) 建立 staging 並通過驗收；不要直接用 production
 測試附件流程。部署後可用只讀 smoke test：
 
 ```bash
@@ -125,7 +142,6 @@ pnpm sync:smoke
 
 ## 相關文件
 
-- [NextSteps.md](./NextSteps.md)：部署差距、實作階段、驗收與 rollback 停止條件。
-- [NextTasks.md](./NextTasks.md)：目前交接狀態與仍需人工完成的操作。
+- [NextTasks.md](./NextTasks.md)：目前狀態、後續任務、驗收與 rollback runbook。
 - [設計規格](./docs/superpowers/specs/2026-07-14-mobile-app-design.md)
 - [3a 同步計畫](./docs/superpowers/plans/2026-07-20-cloud-sync-phase3a.md)

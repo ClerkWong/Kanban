@@ -1,5 +1,5 @@
-const CACHE_NAME = "kanban-pwa-shell-v2";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/favicon.svg"];
+const CACHE_NAME = "kanban-pwa-shell-v3";
+const APP_SHELL = ["/", "/app-config.json", "/manifest.webmanifest", "/favicon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -29,6 +29,11 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  if (url.pathname === "/app-config.json") {
+    event.respondWith(networkFirst(request, "/app-config.json"));
     return;
   }
 
