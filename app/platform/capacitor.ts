@@ -49,6 +49,18 @@ function isNoActiveRecordingError(error: unknown): boolean {
   return message.includes(RECORDING_HAS_NOT_STARTED);
 }
 
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      resolve(dataUrl.slice(dataUrl.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(new CapabilityError("failed", "附件檔案讀取失敗。"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export const capacitorCapabilities: PlatformCapabilities = {
   isNative: true,
 
@@ -207,6 +219,28 @@ export const capacitorCapabilities: PlatformCapabilities = {
         recursive: true,
       });
       return { fileName, size: base64ByteSize(capture.base64Data) };
+    },
+
+    async exists(fileName): Promise<boolean> {
+      try {
+        await Filesystem.stat({
+          path: `${ATTACHMENT_DIR}/${fileName}`,
+          directory: Directory.Data,
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+
+    async write(fileName, data, mimeType): Promise<void> {
+      const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType });
+      await Filesystem.writeFile({
+        path: `${ATTACHMENT_DIR}/${fileName}`,
+        data: await blobToBase64(blob),
+        directory: Directory.Data,
+        recursive: true,
+      });
     },
 
     async loadAsUrl(fileName, mimeType): Promise<string> {

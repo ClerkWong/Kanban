@@ -1,57 +1,97 @@
 # 待執行任務
 
-最後更新：2026-07-21　目前分支：`main`（已推送至 origin，commit `671f635`）
+最後更新：2026-07-23　目前分支：`main`
 
-Kanban mobile 擴展分三階段，皆已合入 main：階段 1（Capacitor 殼）、階段 2（附件 + 語音建卡）、階段 3a（看板雲端同步）。以下為尚未完成或待決的事項。
+部署差距與完整實作計畫以 [NextSteps.md](./NextSteps.md) 為準。本檔只保留下一位接手者
+需要立即執行的操作與目前真實狀態。
 
-## 1. 待你操作：階段 3a 雲端同步實機驗收
+## 目前狀態
 
-程式已部署、bundle 已同步進 iOS 專案。連線資訊：
+- 月報已改以 `completedAt` 計算最近六個日曆月，schema 已升至 v4。
+- 3b 用戶端已具備持久化附件 queue、先上傳後推 board、按需下載快取與刪除排序。
+- Worker 已加入受限 R2 API、10 MiB 限制、runtime integration tests、generated types 與
+  staging 設定。
+- Web/PWA 已補 metadata、分享圖、隱私/支援頁與 service worker 修正。
+- GitHub Actions 已涵蓋 Web、Worker、Android debug 與 iOS simulator build。
+- production 仍只有既有 3a 看板同步；尚未建立 production R2，也未部署本次變更。
+- staging Worker/D1/R2 與 staging token 尚未建立。
+- `.openai/hosting.json` 尚無 Sites `project_id`，所以沒有可驗證的正式 Web/PWA 關聯。
 
-- Worker 網址：`https://kanban-sync.clerk-wong.workers.dev`
-- Token：見本機 `.env.sync-tokens`（member-1 / member-2，**機密、未入版控**）
+## 下一步 1：審查並提交本機候選版
 
-驗收清單：
+先確認工作樹只包含預期變更，再跑：
 
-1. app 右上「同步」pill → 貼網址 + token → 首次選「合併本機與遠端」→ 應變「已同步」
-2. 第二台裝置（或 Mac `pnpm dev` 開瀏覽器）以另一組 token 設定 → 應看到同一看板
-3. 一端改卡 → 另一端切前景或點 pill「立即同步」→ 變更出現
-4. 一端刪卡 → 另一端同步 → 卡片消失且不復活
-5. 關 Wi-Fi 改卡（仍可操作）→ pill「待同步/失敗」→ 開 Wi-Fi → 自動或手動重試 → 「已同步」
-6. 故意貼錯 token → 出現「憑證無效，請重新設定」而非崩潰，本機資料不受影響
+```bash
+pnpm install --frozen-lockfile
+pnpm test
+pnpm worker:test
+pnpm lint
+pnpm typecheck
+pnpm build
+pnpm mobile:build
+pnpm worker:types:check
+pnpm sync:dry-run
+pnpm sync:dry-run:staging
+git diff --check
+```
 
-有任何一步不符預期（尤其收斂或 pill 狀態），記下現象，下次用系統化除錯定位根因。
+不要把 `.env*`、token、D1 export、原生簽章或測試附件加入版控。
 
-## 2. 待你操作：發放同步 token 給團隊成員
+## 下一步 2：建立完全隔離的 staging
 
-`.env.sync-tokens` 內兩組明文 token 需私下交給成員（連同 Worker 網址）。要新增成員：產生隨機字串 → SHA-256 → `INSERT` 進 D1 `users` 表（作法見 README 同步章節）。
+需要 Cloudflare 帳號權限，且這些命令會建立遠端資源：
 
-## 3. 待決：語音辨識品質問題
+1. 建立 `kanban-sync-staging` D1。
+2. 建立 `kanban-attachments-staging` R2。
+3. 確認 `worker-sync/wrangler.jsonc` 的 staging bindings 指向以上資源。
+4. 執行 `pnpm sync:migrate:staging`。
+5. 產生只供 staging 的隨機 token，D1 只寫 SHA-256 hash；明文不得進 shell history、
+   repo、CI log 或測試快照。
+6. 執行 `pnpm sync:deploy:staging`。
+7. 以環境變數執行 `pnpm sync:smoke`。
 
-放開建卡的流程正常，但辨識品質你表示「稍後再議」。下次談這題時，先描述症狀（辨識不準／慢／中斷），再決定方向（辨識語言與參數、partial 取用策略、或改接雲端轉寫 — 後者超出目前「僅裝置內建辨識」的範圍設定）。
+production R2 必須等 staging 驗收通過後才建立。
 
-## 4. 下一階段：3b 附件雲端同步（尚未開始）
+## 下一步 3：staging 驗收
 
-目前**附件（照片/錄音）只存在拍攝它的裝置**，其他裝置看到占位/載入失敗 —— 這是已知限制，非 bug。階段 3b 補齊：R2 物件儲存 + 背景上傳佇列（跨重啟持久化、失敗重試）+ 其他裝置按需下載快取 + 刪除時清 R2。啟動時先寫計畫（比照前幾階段：brainstorm → spec → plan → subagent 執行）。
+至少以兩個獨立瀏覽器 profile 或兩台裝置驗證：
 
-## 5. 已知限制（設計取捨，非缺陷）
+- 看板新增、移動、完成、重開、編輯、刪除與 409 合併最終收斂。
+- 完成後再編輯不改變月報月份；UTC 月界線在 Asia/Taipei 顯示正確。
+- 照片與錄音可跨裝置下載、顯示、播放。
+- 離線新增後重啟，恢復連線或回前景會自動補傳。
+- 單附件刪除、刪卡與重設看板最終清除 R2。
+- 10 MiB 邊界、錯 token、權限拒絕、切換 URL/token 與下載重試均有可理解結果。
+- queue、log、bundle、CI artifact 都不含 token 或附件內容。
 
-- 裝置離線逾 30 天，其上已被他人刪除的卡片可能復活（墓碑 30 天修剪；已載於 README）。
-- 同步為單一全團隊共用看板，衝突以卡片級 last-write-wins 合併。
+## 下一步 4：Web/PWA 與原生候選版
 
-## 6. 遞延的小項（品質債，可批次處理）
+- 建立或連結 Sites project，設定 `NEXT_PUBLIC_SITE_URL`，先發布 private version。
+- 驗證 HTTPS 安裝、離線冷啟動、service worker 更新與分享預覽。
+- 在候選 commit 上執行 final `pnpm mobile:sync`。
+- iOS/Android 實機驗證相機、相簿、錄音、播放、語音建卡、背景/前景與低儲存空間。
+- 內部分發前決定版本號、簽章、安裝升級與 rollback。
 
-散落在各階段審查、判定可延後。完整清單見 `.superpowers/sdd/progress.md`。較值得處理的：
+## 下一步 5：production cutover
 
-- 建議補一個 `useSync` 層級整合測試（stub fetch）覆蓋 409→合併→重推與 adopt-remote 分支 —— 目前收斂迴圈只有手動推演，無自動化覆蓋（最高價值）。
-- Worker create-race：兩個並發 baseRevision-0 PUT，第二個撞主鍵 → 500（客戶端重試轉 409 自癒）；可改 `INSERT ... ON CONFLICT DO NOTHING` 收斂為 409。
-- `worker-sync` 的 `compatibility_date` 現為 `2026-05-22`（本機 wrangler 4.92.0 workerd 上限）；日後升級 wrangler 後可調新。
-- `board-model` 幾處小事：陳舊測試標題已修部分、`normalizeDeletedCards`/`merge` 用 `cards[id]` truthiness 可改 `Object.hasOwn`、`deleteCard` 用牆鐘時間不可注入測試。
-- 附件 UI：busy 期間移除鈕的 stale-closure 競態、`capabilityMessage` 單槽不自動消失。
+嚴格依序：
 
-## 7. 環境備忘
+1. 記錄目前 Worker version，取得 D1 Time Travel bookmark 並另存完整 D1 export。
+2. 建立 `kanban-attachments` production R2。
+3. 再次確認 production migration 狀態沒有意外差異。
+4. 部署 Worker，先驗證既有 3a `/board` GET/PUT/409 行為。
+5. 驗證 3b PUT/GET/DELETE、尺寸限制與錯誤 envelope。
+6. 發布 private Sites version，完成 Web/PWA smoke test。
+7. final mobile sync、簽章、實機驗收後才逐步發放。
 
-- iOS 用 CocoaPods（`ios/App/App.xcworkspace`，非 `.xcodeproj`）；`DEVELOPMENT_TEAM = Z247G8X22D` 已入版控（`cap sync` 若重寫 pbxproj 可能需重設）。
-- 改了 web 元件後：`pnpm mobile:sync` 再於 Xcode ▶ Run 更新 app。
-- 五道驗證關卡：`pnpm test && pnpm lint && pnpm typecheck && pnpm build && pnpm mobile:build`。
-- 部署同步 Worker：`pnpm sync:migrate && pnpm sync:deploy`（需 `wrangler login`）。
+任何 D1 migration 不一致、3a 回歸、R2 不收斂、雙裝置不收斂、敏感資料進 log，或
+PWA 離線啟動失敗，都必須立即停止後續發布。
+
+## 已知限制
+
+- 墓碑只保留 30 天；離線更久的裝置可能讓舊卡片復活。
+- 共用 token 模式不是個人帳號權限模型；成員離開或裝置遺失需人工撤銷換發。
+- 附件背景工作目前保證在 app 啟動、上線、回前景、變更與手動同步時重試，不是作業
+  系統提供的永久背景程序。
+- staging、production、Sites 與實機驗收均是尚未執行的外部工作；本機測試通過不能
+  取代這些發布閘門。

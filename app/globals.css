@@ -897,6 +897,12 @@ textarea {
   border-color: var(--amber);
 }
 
+.topBarActions {
+  display: flex;
+  gap: 8px;
+  align-self: flex-start;
+}
+
 .syncStatusLine {
   margin: 0 0 12px;
 }
@@ -922,4 +928,227 @@ textarea {
   align-items: center;
   gap: 8px;
   min-height: 44px;
+}
+
+/* Monthly Report Modal */
+.reportModal {
+  width: min(900px, 100%);
+}
+
+.legalPage {
+  width: min(760px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 56px 0 80px;
+  color: var(--ink);
+}
+
+.legalPage h1 {
+  margin: 8px 0;
+  font-size: clamp(2rem, 6vw, 3.5rem);
+  line-height: 1;
+}
+
+.legalPage section {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.legalPage h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+.legalPage p,
+.legalPage li {
+  line-height: 1.75;
+}
+
+.legalPage a {
+  color: var(--teal-strong);
+  font-weight: 800;
+}
+
+.legalUpdated {
+  color: var(--muted);
+}
+
+.appFooter {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 16px 28px;
+  font-size: 0.85rem;
+}
+
+.appFooter a {
+  color: var(--muted);
+}
+
+.reportContent {
+  display: grid;
+  gap: 20px;
+  padding: 18px;
+}
+
+.reportHeader {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.reportHeader h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.reportChart {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.reportChartRow {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr) 40px;
+  gap: 12px;
+  align-items: center;
+}
+
+.reportMonthLabel {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.reportBar {
+  height: 24px;
+  background: rgba(15, 118, 110, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.reportBarFill {
+  height: 100%;
+  width: var(--bar-width, 0%);
+  background: linear-gradient(90deg, var(--teal-strong), var(--teal));
+  border-radius: 4px;
+  animation: reportBarGrow 0.8s ease-out forwards;
+}
+
+.reportCount {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.reportList {
+  display: grid;
+  gap: 16px;
+}
+
+.reportSection {
+  display: grid;
+  gap: 8px;
+}
+
+.reportSectionTitle {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--teal-strong);
+}
+
+.reportCardRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.reportCardTitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reportPriority {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: white;
+}
+
+.reportPriority.high {
+  background: var(--rose);
+}
+
+.reportPriority.medium {
+  background: var(--amber);
+}
+
+.reportPriority.low {
+  background: var(--muted);
+}
+
+.reportLabels {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.reportLabel {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 900;
+  background: color-mix(in srgb, var(--label) 14%, white);
+  border: 1px solid color-mix(in srgb, var(--label) 48%, white);
+  color: color-mix(in srgb, var(--label) 72%, black);
+}
+
+.reportDate {
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.reportEmpty {
+  text-align: center;
+  padding: 24px;
+  color: var(--muted);
+}
+
+@keyframes reportBarGrow {
+  from { width: 0; }
+  to { width: var(--bar-width); }
+}
+
+@media (max-width: 720px) {
+  .reportChartRow {
+    grid-template-columns: 80px minmax(0, 1fr) 30px;
+    gap: 8px;
+  }
+
+  .reportCardRow {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reportBarFill {
+    animation: none;
+  }
 }

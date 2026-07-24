@@ -1,0 +1,3 @@
+allowBuilds:
+  # @cloudflare/vitest-pool-workers starts the locally installed workerd binary.
+  workerd: true

@@ -1,120 +1,131 @@
-# vinext-starter
+# 本機 Kanban
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+離線優先的繁體中文 Kanban。Web/PWA 與 Capacitor iOS、Android 共用同一套
+React 看板介面；資料先寫入裝置，使用者可選擇連接 Cloudflare Worker，將看板存入
+D1、附件存入 R2，供多裝置共用。
 
-## Prerequisites
+目前正式環境只上線既有的看板同步（3a）。新版月報與附件同步（3b）已進入本機整合，
+仍須先完成獨立 staging、雙裝置與實機驗收，才可切換正式資源。完整差距、順序與停止
+條件見 [NextSteps.md](./NextSteps.md)。
+
+## 功能
+
+- 看板新增、編輯、拖放、鍵盤移動、搜尋、篩選、WIP 與逾期統計。
+- 本機儲存與離線啟動；同步失敗不影響本機編輯。
+- 最近六個日曆月的完成報表，以卡片 `completedAt` 計算。
+- Web 附件使用 IndexedDB；iOS/Android 使用 Capacitor Filesystem。
+- 照片、錄音與原生繁中語音建卡。
+- 選用的 D1 看板同步與 R2 附件同步；Bearer token 只由使用者在裝置端輸入。
+- PWA manifest、service worker、隱私與支援頁。
+
+## 架構
+
+```text
+app/
+  components/board/   共用看板 UI
+  platform/           Web / Capacitor 裝置能力
+  sync/               看板與附件同步用戶端
+mobile/               純 Vite 的 Capacitor Web bundle 入口
+ios/ android/         原生殼
+worker-sync/          Cloudflare Worker、D1 migration、R2 API 與 runtime tests
+```
+
+Web 入口由 vinext 建置；行動版以 Vite 將同一套元件輸出至 `dist/mobile`，再由
+Capacitor 同步到原生專案。同步 Worker 是獨立服務，不依賴網站登入 cookie。
+
+## 開發環境
 
 - Node.js `>=22.13.0`
-
-## Quick Start
+- pnpm `11.11.0`（以 `packageManager` 欄位為準）
+- 建置原生 app 時另需 Xcode/CocoaPods 或 Android Studio/JDK 21
 
 ```bash
-npm install
-npm run dev
-npm run build
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-This starter does not use `wrangler.jsonc`.
+Web 分享 metadata 會讀取 `NEXT_PUBLIC_SITE_URL`。本機可省略；staging 與 production
+必須設為各自的 HTTPS 網站 origin，避免分享圖連到錯誤環境。
 
-## Included Shape
+## 品質檢查
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+pnpm test
+pnpm worker:test
+pnpm lint
+pnpm typecheck
+pnpm build
+pnpm mobile:build
+pnpm worker:types:check
+pnpm sync:dry-run
+git diff --check
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+GitHub Actions 另會建置 Android debug app 與未簽章的 iOS simulator app。Worker runtime
+tests 使用 Cloudflare Vitest integration，在本機 D1/R2 模擬環境驗證認證、衝突、
+附件限制與錯誤回應。
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+## 行動版
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+```bash
+pnpm mobile:sync
+pnpm mobile:ios
+```
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+CI 或只建單一平台時使用 `pnpm mobile:sync:android` / `pnpm mobile:sync:ios`，避免在
+不具備另一平台工具鏈的 runner 上執行不必要的同步。
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+Android 可在同步後由 Android Studio 開啟，或執行：
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+```bash
+cd android
+./gradlew :app:assembleDebug
+```
 
-## Mobile（Capacitor）
+`mobile:sync` 會先重建 `dist/mobile`，再更新 iOS/Android 原生資產。發布候選版必須在
+同一 commit 上重跑此命令，不能沿用舊 bundle。
 
-行動版把 `app/components/board/` 的同一套看板元件，經 `mobile/` 入口以純 Vite 打包成靜態 bundle，交給 Capacitor 原生殼載入（不註冊 service worker）。
+## 同步 Worker
 
-- `pnpm mobile:build`：打包 `dist/mobile`
-- `pnpm mobile:sync`：打包並同步到原生專案
-- `pnpm mobile:ios`：開啟 Xcode（實機側載用個人簽章）
-- 改了 web 元件後，重跑 `pnpm mobile:sync` 即可更新 app 內容
-- Fresh clone 後請先跑 `pnpm install && pnpm mobile:sync`，原生專案引用的同步產物（iOS `App/public`、Android sync 檔）不入版控，未同步前無法建置
+Wrangler 設定在 `worker-sync/wrangler.jsonc`：
 
-原生能力（階段 2）：卡片附件（拍照/相簿、錄音）與按住說話的語音建卡（繁中，裝置內建辨識）。附件檔案存於裝置本地（原生 Filesystem / 瀏覽器 IndexedDB），看板資料只存參照；行動 app 與瀏覽器的資料各自獨立，雲端同步屬後續階段。
+- 預設環境是現有 production Worker/D1 與尚未建立的 production R2 binding。
+- `env.staging` 使用獨立 Worker、D1 與 R2 名稱。
+- named environment 的 bindings 已完整重述，不依賴 production 繼承。
 
-## 雲端同步（階段 3a）
+本機啟動：
 
-看板經 `worker-sync/`（Cloudflare Worker + D1）跨裝置同步：單一共用看板、Bearer token 認證、revision 樂觀鎖，衝突以卡片級 updatedAt LWW 合併（刪除有墓碑保護）。離線優先 — 本機永遠可用，恢復連線後自動補推。
+```bash
+pnpm sync:dev
+```
 
-- 啟用：看板右上「同步」pill → 輸入 Worker 網址與 token
-- 部署：`pnpm sync:migrate && pnpm sync:deploy`（需 `wrangler login`；database_id 在 `worker-sync/wrangler.jsonc`）
-- 發 token：產生隨機字串，SHA-256 後 INSERT 進 D1 `users` 表（明文交給成員）
-- 附件檔案的雲端同步屬階段 3b，目前附件僅存於擷取它的裝置
-- 已刪卡片的墓碑保留 30 天；若某裝置離線超過 30 天後才重新連線，其上仍存在的、已被他人刪除的卡片可能重新出現（與附件僅存本機同屬已知限制）
+所有遠端 migration、資源建立與部署都屬外部變更。先依
+[NextSteps.md](./NextSteps.md) 建立 staging 並通過驗收；不要直接用 production
+測試附件流程。部署後可用只讀 smoke test：
 
-## Useful Commands
+```bash
+KANBAN_SYNC_URL="https://staging-worker.example.workers.dev" \
+KANBAN_SYNC_TOKEN="<staging-token>" \
+pnpm sync:smoke
+```
 
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+腳本不接受命令列 token，也不會修改遠端看板。CI、repo、bundle 與 log 都不得包含
+明文 token。
 
-## Learn More
+## 同步行為與限制
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+- 單一共用看板，以 revision 樂觀鎖與卡片級 `updatedAt` LWW 合併。
+- 刪除墓碑保留 30 天；離線超過 30 天的舊裝置仍可能讓已刪卡片重新出現。
+- 附件上限為 10 MiB。上傳必須先成功，board 才可發布附件參照；刪除則在 board
+  不再引用後送出冪等 DELETE。
+- 附件 queue 會跨重啟保留，並依同步服務 origin 隔離；不持久化 token。
+- 同步服務網址必須使用 HTTPS，只有 localhost/loopback 開發環境可使用 HTTP。
+- token 儲存在裝置本機，仍屬敏感憑證；裝置遺失、成員離開或疑似外洩時必須撤銷換發。
+
+## 相關文件
+
+- [NextSteps.md](./NextSteps.md)：部署差距、實作階段、驗收與 rollback 停止條件。
+- [NextTasks.md](./NextTasks.md)：目前交接狀態與仍需人工完成的操作。
+- [設計規格](./docs/superpowers/specs/2026-07-14-mobile-app-design.md)
+- [3a 同步計畫](./docs/superpowers/plans/2026-07-20-cloud-sync-phase3a.md)

@@ -3,17 +3,21 @@
 import type { AttachmentRef } from "../../board-model";
 import { usePlatform } from "../../platform/context";
 import { makeId } from "../../board-model";
-import { CapabilityError } from "../../platform/types";
-import { useEffect, useRef, useState } from "react";
+import { CapabilityError, MAX_ATTACHMENT_BYTES, base64ByteSize } from "../../platform/types";
+import { cacheDownloadedAttachment } from "../../sync/attachment-api";
+import { loadSyncConfig } from "../../sync/config";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function AttachmentSection({
   attachments,
   onChange,
   onError,
+  onDownload,
 }: {
   attachments: AttachmentRef[];
   onChange: (next: AttachmentRef[]) => void;
   onError: (error: unknown) => void;
+  onDownload?: (attachment: AttachmentRef) => Promise<boolean>;
 }) {
   const platform = usePlatform();
   const [recording, setRecording] = useState(false);
@@ -22,6 +26,32 @@ export function AttachmentSection({
   const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
   const recordingRef = useRef(false);
   const sessionCreatedIds = useRef(new Set<string>());
+
+  const downloadFromCurrentSync = useCallback(
+    async (attachment: AttachmentRef): Promise<boolean> => {
+      const config = loadSyncConfig();
+      if (!config) {
+        return false;
+      }
+      try {
+        return cacheDownloadedAttachment(
+          config,
+          platform,
+          attachment.fileName,
+          attachment.mimeType,
+          () => {
+            const current = loadSyncConfig();
+            return Boolean(
+              current && current.baseUrl === config.baseUrl && current.token === config.token,
+            );
+          },
+        );
+      } catch {
+        return false;
+      }
+    },
+    [platform],
+  );
 
   function updateRecording(next: boolean) {
     recordingRef.current = next;
@@ -53,6 +83,14 @@ export function AttachmentSection({
     }
   }
 
+  function ensureWithinLimit(base64Data: string): boolean {
+    if (base64ByteSize(base64Data) <= MAX_ATTACHMENT_BYTES) {
+      return true;
+    }
+    setErrorMessage("附件超過 10 MB 限制，請選擇較小的檔案或縮短錄音後再試。");
+    return false;
+  }
+
   async function addPhoto() {
     setConfirmingRemoveId(null);
     setBusy(true);
@@ -60,6 +98,9 @@ export function AttachmentSection({
     try {
       const capture = await platform.takePhoto();
       if (!capture) {
+        return;
+      }
+      if (!ensureWithinLimit(capture.base64Data)) {
         return;
       }
       const id = makeId("att");
@@ -107,6 +148,9 @@ export function AttachmentSection({
     try {
       const capture = await platform.audio.stopRecording();
       if (!capture) {
+        return;
+      }
+      if (!ensureWithinLimit(capture.base64Data)) {
         return;
       }
       const id = makeId("att");
@@ -173,6 +217,7 @@ export function AttachmentSection({
               onResetArmed={() =>
                 setConfirmingRemoveId((current) => (current === attachment.id ? null : current))
               }
+              onDownload={onDownload ?? downloadFromCurrentSync}
             />
           ))}
         </ul>
@@ -186,15 +231,23 @@ function AttachmentItem({
   armed,
   onRemoveClick,
   onResetArmed,
+  onDownload,
 }: {
   attachment: AttachmentRef;
   armed: boolean;
   onRemoveClick: () => void;
   onResetArmed: () => void;
+  onDownload?: (attachment: AttachmentRef) => Promise<boolean>;
 }) {
   const platform = usePlatform();
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const downloadAttempted = useRef(false);
+
+  useEffect(() => {
+    downloadAttempted.current = false;
+  }, [attachment.fileName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -210,10 +263,19 @@ function AttachmentItem({
         }
         objectUrl = value;
         setUrl(value);
+        setFailed(false);
       })
       .catch(() => {
         if (!cancelled) {
           setFailed(true);
+          if (onDownload && !downloadAttempted.current) {
+            downloadAttempted.current = true;
+            void onDownload(attachment).then((downloaded) => {
+              if (!cancelled && downloaded) {
+                setReloadKey((value) => value + 1);
+              }
+            });
+          }
         }
       });
     return () => {
@@ -222,7 +284,13 @@ function AttachmentItem({
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [platform, attachment.fileName, attachment.mimeType]);
+  }, [platform, attachment, attachment.fileName, attachment.mimeType, onDownload, reloadKey]);
+
+  async function retryDownload() {
+    if (onDownload && (await onDownload(attachment))) {
+      setReloadKey((value) => value + 1);
+    }
+  }
 
   return (
     <li className="attachmentItem">
@@ -238,7 +306,16 @@ function AttachmentItem({
       ) : (
         <span className="attachmentPending">載入中…</span>
       )}
-      {failed && <span className="attachmentError">附件載入失敗</span>}
+      {failed && (
+        <span className="attachmentError">
+          附件載入失敗：未啟用同步、離線或遠端檔案不存在。
+          {onDownload && (
+            <button type="button" className="secondaryButton" onClick={() => void retryDownload()}>
+              重新下載
+            </button>
+          )}
+        </span>
+      )}
       <button
         type="button"
         className={armed ? "iconOnly attachmentRemoveArmed" : "iconOnly"}

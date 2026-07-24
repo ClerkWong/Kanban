@@ -1,4 +1,4 @@
-const CACHE_NAME = "kanban-pwa-shell-v1";
+const CACHE_NAME = "kanban-pwa-shell-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/favicon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -37,30 +37,50 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(cacheFirstWithRefresh(request));
+  event.respondWith(cacheFirstWithRefresh(request, event));
 });
 
 async function networkFirst(request, fallbackUrl) {
   const cache = await caches.open(CACHE_NAME);
   try {
     const response = await fetch(request);
-    cache.put(request, response.clone());
-    cache.put(fallbackUrl, response.clone());
+    if (isCacheable(response)) {
+      await Promise.all([
+        cache.put(request, response.clone()),
+        cache.put(fallbackUrl, response.clone()),
+      ]);
+    }
     return response;
   } catch {
-    return (await cache.match(request)) || (await cache.match(fallbackUrl));
+    return (
+      (await cache.match(request)) ||
+      (await cache.match(fallbackUrl)) ||
+      new Response("目前離線，且尚未快取這個頁面。", {
+        status: 503,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      })
+    );
   }
 }
 
-async function cacheFirstWithRefresh(request) {
+async function cacheFirstWithRefresh(request, event) {
   const cache = await caches.open(CACHE_NAME);
   const cached = await cache.match(request);
-  const network = fetch(request)
-    .then((response) => {
-      cache.put(request, response.clone());
-      return response;
-    })
-    .catch(() => cached);
+  const network = fetch(request).then(async (response) => {
+    if (isCacheable(response)) {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  });
 
-  return cached || network;
+  if (cached) {
+    event.waitUntil(network.catch(() => undefined));
+    return cached;
+  }
+
+  return network;
+}
+
+function isCacheable(response) {
+  return response.ok && response.type !== "opaque";
 }

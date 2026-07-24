@@ -1,4 +1,4 @@
-export const BOARD_SCHEMA_VERSION = 3;
+export const BOARD_SCHEMA_VERSION = 4;
 
 export type Priority = "low" | "medium" | "high";
 export type DueFilter = "all" | "overdue" | "today" | "upcoming" | "none";
@@ -32,6 +32,7 @@ export type Card = {
   attachments: AttachmentRef[];
   createdAt: string;
   updatedAt: string;
+  completedAt: string | null;
 };
 
 export type Column = {
@@ -332,6 +333,10 @@ export function addCard(
     attachments: normalizeAttachments(input.attachments ?? []),
     createdAt: input.createdAt ?? now,
     updatedAt: now,
+    completedAt:
+      columnId === DONE_COLUMN_ID
+        ? normalizeTimestamp(input.completedAt) ?? now
+        : null,
   };
 
   if (!card.title) {
@@ -404,12 +409,17 @@ export function moveCard(
   cardId: string,
   targetColumnId: string,
   targetIndex: number,
+  now = new Date(),
 ): BoardState {
   if (!board.cards[cardId] || !board.columns.some((c) => c.id === targetColumnId)) {
     return board;
   }
 
   const next = cloneBoard(board);
+  const sourceColumnId = findCardPosition(board, cardId)?.columnIndex;
+  const sourceIsDone =
+    sourceColumnId !== undefined && board.columns[sourceColumnId]?.id === DONE_COLUMN_ID;
+  const targetIsDone = targetColumnId === DONE_COLUMN_ID;
   next.columns = next.columns.map((column) => ({
     ...column,
     cardIds: column.cardIds.filter((id) => id !== cardId),
@@ -426,7 +436,16 @@ export function moveCard(
     return { ...column, cardIds };
   });
 
-  return normalizeBoard(touch(next));
+  if (sourceIsDone !== targetIsDone) {
+    const timestamp = normalizeTimestamp(now) ?? new Date().toISOString();
+    next.cards[cardId] = {
+      ...next.cards[cardId],
+      completedAt: targetIsDone ? timestamp : null,
+      updatedAt: timestamp,
+    };
+  }
+
+  return normalizeBoard(touch(next, now));
 }
 
 export function moveCardRelative(
@@ -512,7 +531,10 @@ export function parsePersistedBoard(raw: string | null): {
   try {
     const parsed = JSON.parse(raw);
     const version = (parsed as { version?: unknown }).version;
-    if (!isBoardLike(parsed) || (version !== 1 && version !== 2 && version !== BOARD_SCHEMA_VERSION)) {
+    if (
+      !isBoardLike(parsed) ||
+      (version !== 1 && version !== 2 && version !== 3 && version !== BOARD_SCHEMA_VERSION)
+    ) {
       return {
         board: createDemoBoard(),
         recovered: true,
@@ -538,6 +560,21 @@ export function normalizeBoard(board: BoardState): BoardState {
   const labels = Array.isArray(board.labels) ? board.labels : STARTER_LABELS;
   const cards = normalizeCards(board.cards);
   const columns = normalizeColumns(board.columns, cards);
+  const sourceVersion = Number(board.version);
+  const isLegacyBoard = sourceVersion >= 1 && sourceVersion < BOARD_SCHEMA_VERSION;
+
+  if (isLegacyBoard) {
+    const doneCardIds = new Set(
+      columns.find((column) => column.id === DONE_COLUMN_ID)?.cardIds ?? [],
+    );
+    for (const card of Object.values(cards)) {
+      // v1–v3 did not record completion time. This one-time migration uses the
+      // last edit time only for cards already in Done, so historic months are estimates.
+      card.completedAt = doneCardIds.has(card.id)
+        ? normalizeTimestamp(card.updatedAt)
+        : null;
+    }
+  }
   const assigned = new Set(columns.flatMap((column) => column.cardIds));
   const firstColumn = columns[0];
 
@@ -588,6 +625,58 @@ export function diffAttachmentRefs(
   };
 }
 
+export type MonthlyCompletion = {
+  month: string;
+  monthLabel: string;
+  count: number;
+  cards: Card[];
+};
+
+export function getMonthlyCompletionStats(
+  board: BoardState,
+  recentMonths = 6,
+  now = new Date(),
+): MonthlyCompletion[] {
+  const monthCount = Math.max(0, Math.floor(recentMonths));
+  const referenceDate = toValidDate(now);
+  if (!monthCount || !referenceDate) {
+    return [];
+  }
+
+  const doneColumn = board.columns.find((column) => column.id === DONE_COLUMN_ID);
+  const doneCards = (doneColumn?.cardIds ?? [])
+    .map((id) => board.cards[id])
+    .filter((card): card is Card => card != null);
+
+  const groups = new Map<string, Card[]>();
+  for (const card of doneCards) {
+    const completedAt = toValidDate(card.completedAt);
+    if (!completedAt) {
+      continue;
+    }
+    const month = getLocalMonthKey(completedAt);
+    const list = groups.get(month);
+    if (list) {
+      list.push(card);
+    } else {
+      groups.set(month, [card]);
+    }
+  }
+
+  return getRecentMonthKeys(referenceDate, monthCount).map((month) => {
+    const [year, monthNumber] = month.split("-").map(Number);
+    const cards = groups.get(month) ?? [];
+    return {
+      month,
+      monthLabel: `${year} 年 ${monthNumber} 月`,
+      count: cards.length,
+      cards: [...cards].sort((a, b) =>
+        (b.completedAt ?? "").localeCompare(a.completedAt ?? ""),
+      ),
+    };
+  });
+}
+
 function createSeedCard(input: {
   id: string;
   title: string;
@@ -614,6 +703,7 @@ function createSeedCard(input: {
     })),
     createdAt: "2026-07-01T09:00:00.000Z",
     updatedAt: "2026-07-01T09:00:00.000Z",
+    completedAt: input.id === "card-done" ? "2026-07-01T09:00:00.000Z" : null,
   };
 }
 
@@ -704,6 +794,7 @@ function normalizeCards(cards: Record<string, Card>): Record<string, Card> {
         typeof raw.createdAt === "string" ? raw.createdAt : new Date().toISOString(),
       updatedAt:
         typeof raw.updatedAt === "string" ? raw.updatedAt : new Date().toISOString(),
+      completedAt: normalizeTimestamp((raw as { completedAt?: unknown }).completedAt),
     };
   }
 
@@ -833,8 +924,31 @@ function cloneBoard(board: BoardState): BoardState {
   };
 }
 
-function touch(board: BoardState): BoardState {
-  return { ...board, lastSavedAt: new Date().toISOString() };
+function touch(board: BoardState, now = new Date()): BoardState {
+  return { ...board, lastSavedAt: normalizeTimestamp(now) ?? new Date().toISOString() };
+}
+
+function normalizeTimestamp(value: unknown): string | null {
+  const date = toValidDate(value);
+  return date ? date.toISOString() : null;
+}
+
+function toValidDate(value: unknown): Date | null {
+  const date = value instanceof Date ? value : typeof value === "string" ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+}
+
+function getLocalMonthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getRecentMonthKeys(referenceDate: Date, count: number): string[] {
+  const keys: string[] = [];
+  for (let offset = count - 1; offset >= 0; offset -= 1) {
+    const date = new Date(referenceDate.getFullYear(), referenceDate.getMonth() - offset, 1);
+    keys.push(getLocalMonthKey(date));
+  }
+  return keys;
 }
 
 function clamp(value: number, min: number, max: number): number {

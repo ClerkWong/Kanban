@@ -11,6 +11,7 @@ import {
   getBoardStats,
   getColumnWip,
   getLocalDateString,
+  getMonthlyCompletionStats,
   isFilterActive,
   makeId,
   moveCard,
@@ -27,6 +28,7 @@ import type { FormEvent } from "react";
 import { CardItem } from "./CardItem";
 import { ConfirmModal } from "./ConfirmModal";
 import { DetailModal } from "./DetailModal";
+import { MonthlyReportModal } from "./MonthlyReportModal";
 import { SyncSettingsModal } from "./SyncSettingsModal";
 import { VoiceCaptureButton } from "./VoiceCaptureButton";
 import { usePlatform } from "../../platform/context";
@@ -60,6 +62,7 @@ export function BoardApp({
   const [loaded, setLoaded] = useState(false);
   const sync = useSync(board, setBoard, loaded);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const cardRefs = useRef(new Map<string, HTMLButtonElement>());
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -105,7 +108,9 @@ export function BoardApp({
     if (current.mode === "edit") {
       const card = board.cards[current.cardId];
       if (card) {
-        const { removed } = diffAttachmentRefs(card.attachments, next);
+        const { added, removed } = diffAttachmentRefs(card.attachments, next);
+        sync.queueUploads(added);
+        sync.queueDeletes(removed);
         removeAttachmentFiles(removed);
         setBoard((currentBoard) => updateCard(currentBoard, current.cardId, { attachments: next }));
       }
@@ -217,7 +222,11 @@ export function BoardApp({
       return;
     }
 
-    const { removed } = diffAttachmentRefs(detailOriginalAttachments(detail), detail.draft.attachments);
+    const { added, removed } = diffAttachmentRefs(detailOriginalAttachments(detail), detail.draft.attachments);
+    if (detail.mode === "edit") {
+      sync.queueUploads(added);
+      sync.queueDeletes(removed);
+    }
     removeAttachmentFiles(removed);
     if (detail.mode === "add") {
       const nextId = makeId("card");
@@ -228,6 +237,7 @@ export function BoardApp({
           title: input.title,
         }),
       );
+      sync.queueUploads(input.attachments);
       setPendingFocusId(nextId);
       setLiveMessage(`已新增「${input.title}」。`);
     } else {
@@ -251,7 +261,9 @@ export function BoardApp({
   function confirmDelete(cardId: string) {
     const title = board.cards[cardId]?.title ?? "卡片";
     const position = findNearestFocus(board.columns, cardId);
-    removeAttachmentFiles(board.cards[cardId]?.attachments ?? []);
+    const attachments = board.cards[cardId]?.attachments ?? [];
+    sync.queueDeletes(attachments);
+    removeAttachmentFiles(attachments);
     setBoard((current) => deleteCard(current, cardId));
     setPendingFocusId(position);
     setLiveMessage(`已永久刪除「${title}」。`);
@@ -259,7 +271,9 @@ export function BoardApp({
   }
 
   function confirmReset() {
-    removeAttachmentFiles(Object.values(board.cards).flatMap((card) => card.attachments));
+    const attachments = Object.values(board.cards).flatMap((card) => card.attachments);
+    sync.queueDeletes(attachments);
+    removeAttachmentFiles(attachments);
     setBoard(createDemoBoard());
     setFilters(emptyFilters);
     setDetail(null);
@@ -307,7 +321,7 @@ export function BoardApp({
         <div className="brandBlock">
           <p className="eyebrow">本機優先 Kanban PWA</p>
           <h1>本機 Kanban 看板</h1>
-          <p className="storageNote">資料只保存在本裝置/瀏覽器，離線後仍可使用核心流程。</p>
+          <p className="storageNote">資料先保存在本裝置；啟用同步後可跨裝置共用，離線仍可使用核心流程。</p>
         </div>
 
         <div className="statsGrid" aria-label="看板統計">
@@ -317,18 +331,28 @@ export function BoardApp({
           <Stat label="逾期" value={stats.overdue} tone={stats.overdue ? "danger" : "ok"} />
         </div>
 
-        <button
-          type="button"
-          className={`syncPill ${sync.status}`}
-          onClick={() => setSyncModalOpen(true)}
-          aria-label="開啟雲端同步設定"
-        >
-          {sync.status === "disabled" && "同步：未啟用"}
-          {sync.status === "pending" && "同步：待同步"}
-          {sync.status === "syncing" && "同步中…"}
-          {sync.status === "synced" && "同步：已同步"}
-          {sync.status === "error" && "同步：失敗"}
-        </button>
+        <div className="topBarActions">
+          <button
+            type="button"
+            className="syncPill"
+            onClick={() => setReportOpen(true)}
+            aria-label="開啟每月完成報表"
+          >
+            📊 報表
+          </button>
+          <button
+            type="button"
+            className={`syncPill ${sync.status}`}
+            onClick={() => setSyncModalOpen(true)}
+            aria-label="開啟雲端同步設定"
+          >
+            {sync.status === "disabled" && "同步：未啟用"}
+            {sync.status === "pending" && "同步：待同步"}
+            {sync.status === "syncing" && "同步中…"}
+            {sync.status === "synced" && "同步：已同步"}
+            {sync.status === "error" && "同步：失敗"}
+          </button>
+        </div>
       </section>
 
       <section className="toolBand" aria-label="搜尋與篩選">
@@ -544,6 +568,15 @@ export function BoardApp({
         <SyncSettingsModal sync={sync} modalRef={modalRef} onClose={() => setSyncModalOpen(false)} />
       )}
 
+      {reportOpen && (
+        <MonthlyReportModal
+          stats={getMonthlyCompletionStats(board)}
+          labels={board.labels}
+          modalRef={modalRef}
+          onClose={() => setReportOpen(false)}
+        />
+      )}
+
       {confirmAction && (
         <ConfirmModal
           confirmAction={confirmAction}
@@ -555,6 +588,13 @@ export function BoardApp({
               : confirmDelete(confirmAction.cardId)
           }
         />
+      )}
+
+      {!platform.isNative && (
+        <footer className="appFooter">
+          <a href="/privacy">隱私說明</a>
+          <a href="/support">支援</a>
+        </footer>
       )}
     </main>
   );

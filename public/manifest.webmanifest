@@ -1,7 +1,7 @@
 {
   "name": "本機 Kanban 看板",
   "short_name": "Kanban",
-  "description": "離線可用、只存於本裝置瀏覽器的 Kanban PWA。",
+  "description": "離線可用、本機優先，並可選擇跨裝置同步的 Kanban PWA。",
   "lang": "zh-Hant",
   "start_url": "/",
   "scope": "/",

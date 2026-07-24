@@ -23,8 +23,8 @@ function makeRef(id: string, overrides: Partial<AttachmentRef> = {}): Attachment
   };
 }
 
-test("schema 版本為 3 且示範卡片帶空附件陣列", () => {
-  assert.equal(BOARD_SCHEMA_VERSION, 3);
+test("schema 版本為 4 且示範卡片帶空附件陣列", () => {
+  assert.equal(BOARD_SCHEMA_VERSION, 4);
   const board = createDemoBoard(new Date(2026, 6, 16));
   for (const card of Object.values(board.cards)) {
     assert.deepEqual(card.attachments, []);
@@ -40,14 +40,14 @@ test("v1 資料無錯遷移為目前版本，每張卡片補上 attachments: []"
 
   const parsed = parsePersistedBoard(JSON.stringify(v1));
   assert.equal(parsed.error, null);
-  assert.equal(parsed.board.version, 3);
+  assert.equal(parsed.board.version, BOARD_SCHEMA_VERSION);
   assertBoardInvariants(parsed.board);
   for (const card of Object.values(parsed.board.cards)) {
     assert.deepEqual(card.attachments, []);
   }
 });
 
-test("非 1 或 2 的版本仍載入示範資料並回報錯誤", () => {
+test("未知版本仍載入示範資料並回報錯誤", () => {
   const bogus = JSON.parse(serializeBoard(createDemoBoard(new Date(2026, 6, 16))));
   bogus.version = 99;
   const parsed = parsePersistedBoard(JSON.stringify(bogus));

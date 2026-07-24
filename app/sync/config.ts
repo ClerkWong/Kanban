@@ -4,17 +4,28 @@ const CONFIG_KEY = "kanban-sync-config-v1";
 const REVISION_KEY = "kanban-sync-revision-v1";
 
 export function normalizeBaseUrl(input: string): string {
-  const trimmed = input.trim().replace(/\/+$/, "");
+  const trimmed = input.trim();
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
   } catch {
     throw new Error("同步伺服器網址格式不正確。");
   }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("同步伺服器網址必須是 http(s)。");
+  const isLocalHttp =
+    parsed.protocol === "http:" &&
+    (parsed.hostname === "localhost" ||
+      parsed.hostname === "127.0.0.1" ||
+      parsed.hostname === "[::1]");
+  if (parsed.protocol !== "https:" && !isLocalHttp) {
+    throw new Error("同步伺服器必須使用 HTTPS；只有本機開發可使用 HTTP。");
   }
-  return trimmed;
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error("同步伺服器網址不可包含帳密、查詢參數或片段。");
+  }
+  if (parsed.pathname !== "/" && parsed.pathname !== "") {
+    throw new Error("同步伺服器網址不可包含額外路徑。");
+  }
+  return parsed.origin;
 }
 
 export function loadSyncConfig(): SyncConfig | null {
@@ -27,7 +38,7 @@ export function loadSyncConfig(): SyncConfig | null {
     if (typeof parsed.baseUrl !== "string" || typeof parsed.token !== "string" || !parsed.baseUrl || !parsed.token) {
       return null;
     }
-    return { baseUrl: parsed.baseUrl, token: parsed.token };
+    return { baseUrl: normalizeBaseUrl(parsed.baseUrl), token: parsed.token };
   } catch {
     return null;
   }

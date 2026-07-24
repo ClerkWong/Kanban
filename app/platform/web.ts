@@ -165,6 +165,16 @@ export const webCapabilities: PlatformCapabilities = {
       return { fileName, size: blob.size };
     },
 
+    async exists(fileName): Promise<boolean> {
+      const value = await withStore<Blob | undefined>("readonly", (store) => store.get(fileName));
+      return value instanceof Blob;
+    },
+
+    async write(fileName, data, mimeType): Promise<void> {
+      const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType });
+      await withStore("readwrite", (store) => store.put(blob, fileName));
+    },
+
     async loadAsUrl(fileName): Promise<string> {
       const blob = await withStore<Blob | undefined>("readonly", (store) => store.get(fileName));
       if (!blob) {

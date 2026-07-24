@@ -1,13 +1,47 @@
 {
+  "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "kanban-sync",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-22",
-  "observability": { "enabled": true },
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1
+  },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "kanban-sync",
-      "database_id": "5089c3b6-d0f5-45ed-bafe-88f568e8da55"
+      "database_id": "5089c3b6-d0f5-45ed-bafe-88f568e8da55",
+      "migrations_dir": "migrations"
     }
-  ]
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ATTACHMENTS",
+      "bucket_name": "kanban-attachments"
+    }
+  ],
+  "env": {
+    "staging": {
+      "name": "kanban-sync-staging",
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "kanban-sync-staging",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "ATTACHMENTS",
+          "bucket_name": "kanban-attachments-staging"
+        }
+      ]
+    }
+  }
 }

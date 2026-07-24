@@ -8,6 +8,8 @@ export type SavedFile = {
   size: number;
 };
 
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
 export interface PlatformCapabilities {
   isNative: boolean;
   takePhoto(): Promise<CaptureResult | null>;
@@ -22,6 +24,8 @@ export interface PlatformCapabilities {
   };
   attachments: {
     save(id: string, capture: CaptureResult): Promise<SavedFile>;
+    exists(fileName: string): Promise<boolean>;
+    write(fileName: string, data: Blob | ArrayBuffer, mimeType: string): Promise<void>;
     loadAsUrl(fileName: string, mimeType: string): Promise<string>;
     remove(fileName: string): Promise<void>;
   };
