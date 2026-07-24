@@ -2,7 +2,7 @@
 
 - 最後更新：2026-07-24
 - 目前分支：`main`
-- 已推送基準：`bd17e5b`（`Prepare Kanban beta release`）
+- 已推送基準：`62ba6ff`（`Add configurable titles and consolidate release plan`）
 
 本文件整併先前兩份規劃，是後續工作、驗收與發布順序的單一依據。
 已完成的歷史實作只保留結果與證據；未完成項目依實際執行順序排列。
@@ -12,14 +12,15 @@
 | 項目 | 狀態 | 說明 |
 | --- | --- | --- |
 | 月報資料模型 | 已完成 | 以 `completedAt` 計算最近六個日曆月；schema v4 可遷移 v1/v2/v3 |
-| 3b 附件用戶端 | 已完成本機實作 | 有持久化 upload/delete queue、先上傳後推 board、按需下載與重試 |
-| Worker 3b | 已完成本機實作 | 有 R2 API、10 MiB 限制、request ID、結構化錯誤、409 與 runtime tests |
-| staging 設定 | 已完成設定，尚無遠端資源 | Wrangler environment、scripts 與 dry-run 已存在 |
+| 3b 附件用戶端 | 已完成單一看板實作 | 多看板版仍需讓 queue、下載與 R2 key 按 Project/Board 隔離 |
+| Worker 3b | 已完成單一看板實作 | 多看板版仍需 identity、ACL、API v2、封存與 ActivityLog |
+| 多專案／多看板規格 | 已核准 | 實作計畫位於 `docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md` |
+| staging 設定 | 基礎設定完成，尚無遠端資源 | Wrangler environment 與 scripts 可沿用；應用 schema/API 需先升級 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
 | Sites 關聯 | 已完成 beta 關聯 | `.openai/hosting.json` 已保存 beta `project_id`；Sites 本身不擁有同步 D1/R2 |
-| 客製 title | 已完成本機實作，尚未提交或發布 | `public/app-config.json` 控制畫面與 WebView title；目前 beta v1 尚未包含 |
-| staging Worker/D1/R2/token | **尚未建立** | 下一個外部部署工作 |
+| 客製 title | 已完成並推送，尚未發布新版 beta | `public/app-config.json` 控制畫面與 WebView title；目前 beta v1 尚未包含 |
+| staging Worker/D1/R2/token | **尚未建立** | 多專案實作與本機驗收完成後的下一個外部部署工作 |
 | production Worker/D1 | 既有 3a 上線 | 尚未部署本次 3b Worker |
 | production R2 | **尚未建立** | 必須等 staging 驗收全數通過 |
 | iOS/Android | 可建置，未完成發行 | 尚缺實機、簽章、版本與內部分發／商店流程 |
@@ -29,17 +30,16 @@
 - 已推送候選版曾通過 52 個單元測試、8 個 Worker runtime tests、lint、typecheck、
   Web/mobile build、production/staging Worker dry-run、Android debug build、未簽章
   iOS simulator build 與 final mobile sync。
-- 目前尚未提交的客製 title 變更已通過 56 個單元測試、lint、typecheck、Web build、
+- 客製 title 變更已通過 56 個單元測試、lint、typecheck、Web build、
   mobile build 與完整 `pnpm mobile:sync`。
-- `main` 已推送至 GitHub；private beta v1 的來源是同一個 `bd17e5b`。
+- `main` 已推送至 GitHub；private beta v1 仍來自較早的 `bd17e5b`。
 
-## P0-1：提交客製 title 並更新 beta
+## P0-1：將客製 title 更新到 beta
 
-目前工作目錄包含尚未提交的 title 設定與本文件合併。先完成：
+客製 title 已在 `62ba6ff` 推送，但 Sites beta 尚未更新。先完成：
 
-1. 在 `public/app-config.json` 設定預期的 beta title。
-2. 確認設定為非空字串且不超過 80 個字元。
-3. 重跑最小品質關卡：
+1. 確認 `public/app-config.json` 是預期的 beta title，且為 1–80 個字元。
+2. 若 title 或其他來源再有修改，重跑最小品質關卡：
 
    ```bash
    pnpm test
@@ -50,9 +50,9 @@
    git diff --check
    ```
 
-4. 審查 diff，提交並推送。
-5. 從同一個 commit 儲存新的 Sites version，發布到既有 private beta。
-6. 驗證：
+3. 從 `62ba6ff` 或更新且已推送的同一 commit 儲存新的 Sites version，發布到既有
+   private beta。
+4. 驗證：
    - 看板主標題與瀏覽器分頁 title 使用 JSON 值。
    - 線上重新整理會取得新設定。
    - 離線時退回最後成功快取或內建預設。
@@ -62,7 +62,37 @@
 手機桌面圖示下方的 App 名稱是原生 metadata，不能只靠 App 重啟變更。若未來要求已安裝
 App 在不更新版本的情況下取得新 title，需要另外設計公開且可驗證的遠端設定端點。
 
-## P0-2：建立完全隔離的 staging
+## P0-2：依計畫實作多專案／多看板 v1
+
+規格與實作計畫：
+
+- [多專案／多看板管理 v1 規格](./docs/superpowers/specs/2026-07-24-multi-project-multi-board-design.md)
+- [多專案／多看板 v1 實作計畫](./docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md)
+
+依計畫的 14 個 Task 實作：
+
+1. Workspace → Project → Board domain types、local index、active context 與舊資料 migration。
+2. D1 workspace、user accounts、access tokens、projects、memberships、boards、activity logs。
+3. 個人 Bearer token、Project roles 與 Worker server-side authorization。
+4. `/me`、Project、members、Board content、archive/restore API v2。
+5. 「我的專案」、Project overview、Board switcher 與 role-aware UI。
+6. per-board revision、sync debounce、queue v2 與 board-scoped R2 attachment key。
+7. Project summary、server-side diff ActivityLog 與 archived read-only UI。
+8. legacy `/board` alias、single-board D1/local migration 與 shared token 換發。
+
+完成條件：
+
+- 一位 user 可在不同 Project 擁有不同角色。
+- 未參與 Project 無法列出、讀取或猜測內容。
+- Project/Board 名稱彼此獨立，一個 Project 可有多個 Board。
+- summary 只聚合目前 Project，沒有跨 Project dashboard。
+- 封存後內容、附件與 Log 可讀但不可修改。
+- 舊單一 Board、月報、附件 refs、墓碑與 revision 無資料遺失。
+- 單元、Worker runtime、Web/mobile build 與 local migration tests 全綠。
+
+在本節完成前，**不要建立 staging 遠端資源**。
+
+## P0-3：建立完全隔離的 staging
 
 正式資源不得拿來測試 3b。建立以下獨立資源：
 
@@ -100,7 +130,7 @@ App 在不更新版本的情況下取得新 title，需要另外設計公開且�
 - 未帶 token、錯 token 與有效 token 分別得到預期結果。
 - Worker logs 沒有 Bearer token 或附件內容。
 
-## P0-3：staging Release Candidate 驗收
+## P0-4：staging Release Candidate 驗收
 
 至少使用兩個獨立瀏覽器 profile，並加入一台 iOS 或 Android 實機。所有項目通過前，
 不得建立 production R2 或部署 production 3b。
@@ -131,9 +161,21 @@ pnpm sync:dry-run:staging
 git diff --check
 ```
 
+### 多專案與權限
+
+- [ ] 「我的專案」只顯示呼叫者參與的 Project。
+- [ ] 同一 user 可在 Project A 為 manager、Project B 為 viewer。
+- [ ] workspace admin 未加入 Project 時只能看管理 metadata，不能讀工作內容。
+- [ ] contributor 可改 Card，但不能管理成員或封存 Board。
+- [ ] viewer 可讀 Board、Attachment、summary 與 Log，但不能 mutation。
+- [ ] Project 與 Board 名稱可不同，改名互不影響。
+- [ ] 同一 Project 的多個 Board revision、離線 cache 與 queue 彼此隔離。
+- [ ] Project summary 不混入其他 Project，預設排除 archived Board。
+- [ ] 封存後唯讀、可看 Log，還原後 revision 與資料不重置。
+
 ### 3a 看板同步
 
-- [ ] 首台裝置可選擇合併或採用遠端看板。
+- [ ] 首台裝置可選擇合併或採用遠端 legacy Board。
 - [ ] 第二台裝置最終收斂到同一看板。
 - [ ] 新增、編輯、移動、完成、重開與刪除均可收斂。
 - [ ] 離線修改後重啟，恢復連線或回前景會自動同步。
@@ -143,6 +185,8 @@ git diff --check
 ### 3b 附件同步
 
 - [ ] A 裝置新增照片或錄音，B 裝置可下載、顯示與播放。
+- [ ] Attachment endpoint 與 R2 key 都包含正確 Project/Board scope。
+- [ ] 無 membership 的 user 即使知道 attachment ID 仍無法下載。
 - [ ] 遠端 board 不會先發布尚未成功上傳的附件參照。
 - [ ] B 裝置先看到參照時，下載失敗可重試，不會永久卡住。
 - [ ] 離線新增後重啟 App，恢復連線或回前景會補傳。
@@ -178,11 +222,12 @@ git diff --check
 - [ ] 背景／前景、斷網、重啟與低儲存空間不遺失 board。
 - [ ] App 內 title 使用候選 JSON 值。
 
-## P0-4：production cutover
+## P0-5：production cutover
 
 ### 前置條件
 
 - staging 上述清單全部通過並記錄證據。
+- multi-project migration、legacy alias、個人 token 與角色授權均已通過 staging。
 - 決定既有 beta Sites project 是否沿用並綁正式 custom domain；不要臨時覆寫
   `.openai/hosting.json` 的 project 關聯。
 - 準備 production token 發放與撤銷名單。
@@ -274,8 +319,9 @@ git diff --check
 | 階段 | 估計 |
 | --- | --- |
 | title 提交與 private beta v2 | 0.5 天 |
+| 多專案 domain、ACL、API、UI、migration 與測試 | 4–7 天 |
 | staging 資源建立與初始部署 | 0.5–1 天 |
-| 雙裝置、Web/PWA 與實機驗收 | 1–2 天 |
+| 多角色、雙裝置、Web/PWA 與實機驗收 | 2–3 天 |
 | production 備份、cutover 與觀察 | 1 天 |
 | 商店資料、簽章與審核 | 另案估算 |
 

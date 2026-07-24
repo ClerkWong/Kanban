@@ -143,5 +143,7 @@ pnpm sync:smoke
 ## 相關文件
 
 - [NextTasks.md](./NextTasks.md)：目前狀態、後續任務、驗收與 rollback runbook。
+- [多專案／多看板 v1 規格](./docs/superpowers/specs/2026-07-24-multi-project-multi-board-design.md)
+- [多專案／多看板 v1 實作計畫](./docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md)
 - [設計規格](./docs/superpowers/specs/2026-07-14-mobile-app-design.md)
 - [3a 同步計畫](./docs/superpowers/plans/2026-07-20-cloud-sync-phase3a.md)

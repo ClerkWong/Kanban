@@ -3,6 +3,10 @@
 日期：2026-07-14
 狀態：已與使用者逐段確認
 
+> 2026-07-24 更新：本文件的單一共用看板、共享 token 與 `/board` 同步模型，將由
+> [多專案／多看板管理 v1 規格](./2026-07-24-multi-project-multi-board-design.md)
+> 取代。附件、離線優先、Capacitor 與平台能力設計仍有效。
+
 ## 1. 目標與範圍
 
 在現有 Kanban PWA（vinext / Next.js 16 + React 19 + TypeScript + Tailwind 4，client-side 狀態模型 + localStorage）之上，擴展為可側載的 iOS / Android app，補齊三項裝置能力並升級為多裝置雲端同步：
