@@ -33,14 +33,28 @@ beforeAll(async () => {
   await env.DB
     .prepare("CREATE TABLE IF NOT EXISTS board (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL)")
     .run();
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS user_accounts (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+  ).run();
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS access_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, label TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, token_kind TEXT NOT NULL, legacy_user_id TEXT, created_at TEXT NOT NULL, last_used_at TEXT, revoked_at TEXT)",
+  ).run();
 });
 
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM board").run();
+  await env.DB.prepare("DELETE FROM access_tokens").run();
+  await env.DB.prepare("DELETE FROM user_accounts").run();
   await env.DB.prepare("DELETE FROM users").run();
   await env.DB.prepare("INSERT INTO users (id, name, token_hash) VALUES (?, ?, ?)")
     .bind("runtime-test-user", "Runtime test", tokenHash)
     .run();
+  await env.DB.prepare(
+    "INSERT INTO user_accounts (id, display_name, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)",
+  ).bind("runtime-test-user", "Runtime test", "2026-07-26T00:00:00.000Z", "2026-07-26T00:00:00.000Z").run();
+  await env.DB.prepare(
+    "INSERT INTO access_tokens (id, user_id, label, token_hash, token_kind, created_at) VALUES (?, ?, ?, ?, 'personal', ?)",
+  ).bind("runtime-test-token", "runtime-test-user", "Runtime", tokenHash, "2026-07-26T00:00:00.000Z").run();
 });
 
 afterEach(() => {

@@ -272,14 +272,14 @@ Add multi-project D1 schema
 
 **Steps**
 
-- [ ] 將 CORS、JSON response、request ID 與 error logging 從 `index.ts` 抽離。
-- [ ] `authenticate()` 回傳 `AuthenticatedUser`，不再只回 boolean。
-- [ ] token lookup 只接受 active user、未撤銷 token。
-- [ ] 以非阻塞方式更新 `last_used_at`，失敗不得洩漏 token 或使合法 request 500。
-- [ ] 建立 Workspace/Project membership lookup 與 capability checks。
-- [ ] 建立 append-only `writeAuditEvent()`；client 不可傳 actor。
-- [ ] router 僅負責 method/path dispatch；route handler 必須宣告所需 capability。
-- [ ] 保留既有 `/board` 與附件測試全綠，避免重構時改變 3a 行為。
+- [x] 將 CORS、JSON response、request ID 與 error logging 從 `index.ts` 抽離。
+- [x] `authenticate()` 回傳 `AuthenticatedUser`，不再只回 boolean。
+- [x] token lookup 只接受 active user、未撤銷 token。
+- [x] 以非阻塞方式更新 `last_used_at`，失敗不得洩漏 token 或使合法 request 500。
+- [x] 建立 Workspace/Project membership lookup 與 capability checks。
+- [x] 建立 append-only `writeAuditEvent()`；client 不可傳 actor。
+- [x] router 僅負責 method/path dispatch；route handler 必須宣告所需 capability。
+- [x] 保留既有 `/board` 與附件測試全綠，避免重構時改變 3a 行為。
 
 **Tests**
 

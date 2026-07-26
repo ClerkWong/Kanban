@@ -17,6 +17,7 @@
 | 多專案／多看板規格 | 已核准 | 實作計畫位於 `docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md` |
 | 多專案 Milestone A | 已完成，尚未推送 | Project domain／ACL capability、per-board storage、可恢復 legacy migration；尚未切換 UI |
 | 多專案 Worker Task 3 | 已完成，尚未推送 | additive D1 schema、append-only Activity Log constraints、個人／legacy token bootstrap；未套用遠端 |
+| 多專案 Worker Task 4 | 已完成，尚未推送 | HTTP/router、個人 identity、Project ACL、audit foundation；legacy API 保持相容 |
 | staging 設定 | 基礎設定完成，尚無遠端資源 | Wrangler environment 與 scripts 可沿用；應用 schema/API 需先升級 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
@@ -38,6 +39,8 @@
   mobile build；localStorage 中斷後可重跑修復，原 legacy key 不刪除。
 - 多專案 Task 3 已通過 112 個單元測試、8 個 Worker runtime tests、lint、typecheck，
   並以隔離本機 D1 驗證 fresh 與含 legacy board 的 0001→0002 路徑。
+- 多專案 Task 4 已通過 112 個單元測試、12 個 Worker runtime tests、lint、typecheck，
+  以及 production/staging Worker dry-run；未部署。
 - `main` 已推送至 GitHub；private beta v1 仍來自較早的 `bd17e5b`。
 
 ## P0-1：將客製 title 更新到 beta
