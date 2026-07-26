@@ -220,15 +220,15 @@ Add multi-board local storage migration
 
 **Migration requirements**
 
-- [ ] 保留原 `board` row 與 `users`，migration 過程不得 rename/drop。
-- [ ] additive migration 不立即複製 legacy Board，避免 migration/deploy 空窗漏寫。
-- [ ] 建立 deterministic default Workspace ID。
-- [ ] `user_accounts` 與 `access_tokens` 可從 legacy users 準備過渡資料，但原 rows 保留。
-- [ ] legacy token 標記為 legacy；不嘗試推測實際 actor。
-- [ ] 建立 `migration_state`，初始為 `pending`；v2 Project API 在完成前不可啟用。
-- [ ] fresh DB 沒有 legacy Board 時，bootstrap 建立 Workspace owner 後可直接標記完成。
-- [ ] 建立 active normalized name unique indexes、membership 與 log pagination indexes。
-- [ ] migration 重跑由 D1 migration table 阻止，SQL 本身避免留下半成品。
+- [x] 保留原 `board` row 與 `users`，migration 過程不得 rename/drop。
+- [x] additive migration 不立即複製 legacy Board，避免 migration/deploy 空窗漏寫。
+- [x] 建立 deterministic default Workspace ID。
+- [x] `user_accounts` 與 `access_tokens` 可從 legacy users 準備過渡資料，但原 rows 保留。
+- [x] legacy token 標記為 legacy；不嘗試推測實際 actor。
+- [x] 建立 `migration_state`，初始為 `pending`；v2 Project API 在完成前不可啟用。
+- [x] fresh DB 沒有 legacy Board 時，bootstrap 建立 Workspace owner 後可直接標記完成。
+- [x] 建立 active normalized name unique indexes、membership 與 log pagination indexes。
+- [x] migration 重跑由 D1 migration table 阻止，SQL 本身避免留下半成品。
 
 **Bootstrap script**
 

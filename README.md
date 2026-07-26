@@ -114,8 +114,26 @@ Wrangler 設定在 `worker-sync/wrangler.jsonc`：
 本機啟動：
 
 ```bash
+pnpm sync:migrate:local
 pnpm sync:dev
 ```
+
+多專案 schema 套用後，以固定的 owner UUID 初始化本機 Workspace。Token 只可從不回顯的
+互動提示或 stdin 傳入，腳本不接受 `--token`；請勿用會把明文留在 shell history 的
+命令組合：
+
+```bash
+pnpm sync:bootstrap -- \
+  --target local \
+  --user-id "11111111-2222-4333-8444-555555555555" \
+  --display-name "本機管理員" \
+  --workspace-name "開發 Workspace" \
+  --token-label "本機測試裝置"
+```
+
+重跑時使用相同 `--user-id`。`staging` 與 `production` target 會使用 remote D1；
+production 另須明確加入 `--confirm-production`。在 Task 1–13 本機驗收完成前，不得執行
+任何 remote target。腳本只顯示 target 與 resource IDs，不顯示 token 或 token hash。
 
 所有遠端 migration、資源建立與部署都屬外部變更。先依
 [NextTasks.md](./NextTasks.md) 建立 staging 並通過驗收；不要直接用 production
