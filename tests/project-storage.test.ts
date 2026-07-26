@@ -153,6 +153,25 @@ test("saveBoardRevision / loadBoardRevision round trip and reject invalid values
 
   storage.setItem(syncRevisionKey(UUID_BOARD_A), "-3");
   assert.equal(loadBoardRevision(storage, UUID_BOARD_A), 0);
+
+  assert.throws(() => saveBoardRevision(storage, UUID_BOARD_A, -1), /revision/);
+  assert.throws(() => saveBoardRevision(storage, UUID_BOARD_A, 1.5), /revision/);
+});
+
+test("storage writers reject unknown resource IDs", () => {
+  const storage = createMemoryStorage();
+  const board = createDemoBoard(new Date(2026, 6, 10));
+
+  assert.throws(() => saveBoardState(storage, "not-a-resource-id", board), /boardId/);
+  assert.throws(
+    () =>
+      saveActiveContext(storage, {
+        workspaceId: LOCAL_LEGACY_WORKSPACE_ID,
+        projectId: UUID_PROJECT_A,
+        boardId: "not-a-resource-id",
+      }),
+    /context/,
+  );
 });
 
 test("switching the active Board keeps Board A and Board B fully isolated", () => {

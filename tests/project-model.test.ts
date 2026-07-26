@@ -188,6 +188,14 @@ test("normalizeResourceName produces a case-folded comparison key", () => {
   assert.notEqual(a?.name, "project alpha");
 });
 
+test("normalizeResourceName normalizes compatibility characters in the comparison key", () => {
+  const fullWidth = normalizeResourceName("Ｐｒｏｊｅｃｔ");
+  const ascii = normalizeResourceName("project");
+  assert.ok(fullWidth && ascii);
+  assert.equal(fullWidth.key, ascii.key);
+  assert.equal(fullWidth.name, "Ｐｒｏｊｅｃｔ");
+});
+
 test("isUuid accepts real UUID strings and rejects everything else", () => {
   assert.equal(isUuid(VALID_UUID_A), true);
   assert.equal(isUuid("not-a-uuid"), false);

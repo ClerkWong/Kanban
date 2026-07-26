@@ -1,7 +1,7 @@
 # Kanban 後續任務與發布 Runbook
 
-- 最後更新：2026-07-24
-- 目前分支：`main`
+- 最後更新：2026-07-26
+- 目前分支：`feature/multi-project-v1`
 - 已推送基準：`62ba6ff`（`Add configurable titles and consolidate release plan`）
 
 本文件整併先前兩份規劃，是後續工作、驗收與發布順序的單一依據。
@@ -15,6 +15,7 @@
 | 3b 附件用戶端 | 已完成單一看板實作 | 多看板版仍需讓 queue、下載與 R2 key 按 Project/Board 隔離 |
 | Worker 3b | 已完成單一看板實作 | 多看板版仍需 identity、ACL、API v2、封存與 ActivityLog |
 | 多專案／多看板規格 | 已核准 | 實作計畫位於 `docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md` |
+| 多專案 Milestone A | 已完成，尚未推送 | Project domain／ACL capability、per-board storage、可恢復 legacy migration；尚未切換 UI |
 | staging 設定 | 基礎設定完成，尚無遠端資源 | Wrangler environment 與 scripts 可沿用；應用 schema/API 需先升級 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
@@ -32,6 +33,8 @@
   iOS simulator build 與 final mobile sync。
 - 客製 title 變更已通過 56 個單元測試、lint、typecheck、Web build、
   mobile build 與完整 `pnpm mobile:sync`。
+- 多專案 Milestone A 已通過 104 個單元測試、lint、typecheck、Web build 與
+  mobile build；localStorage 中斷後可重跑修復，原 legacy key 不刪除。
 - `main` 已推送至 GitHub；private beta v1 仍來自較早的 `bd17e5b`。
 
 ## P0-1：將客製 title 更新到 beta

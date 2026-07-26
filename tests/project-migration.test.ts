@@ -13,6 +13,7 @@ import {
   LOCAL_LEGACY_WORKSPACE_ID,
   saveActiveContext,
   syncRevisionKey,
+  WORKSPACE_INDEX_KEY,
   type StorageLike,
 } from "../app/projects/storage";
 
@@ -28,6 +29,24 @@ function createMemoryStorage(initial: Record<string, string> = {}): StorageLike 
     },
     removeItem: (key) => {
       map.delete(key);
+    },
+  };
+}
+
+function createFailOnceStorage(
+  failKey: string,
+  initial: Record<string, string>,
+): StorageLike {
+  const storage = createMemoryStorage(initial);
+  let failed = false;
+  return {
+    ...storage,
+    setItem: (key, value) => {
+      if (key === failKey && !failed) {
+        failed = true;
+        throw new Error("simulated localStorage failure");
+      }
+      storage.setItem(key, value);
     },
   };
 }
@@ -136,7 +155,7 @@ test("does not delete the legacy key before/after a successful migration", () =>
   assert.equal(storage.getItem(STORAGE_KEY), raw);
 });
 
-test("new per-board content key already present (already-migrated) leaves everything untouched", () => {
+test("new per-board content without index is repaired as an incomplete migration", () => {
   const board = createDemoBoard(new Date(2026, 6, 10));
   const storage = createMemoryStorage({
     [STORAGE_KEY]: serializeBoard(board),
@@ -146,7 +165,28 @@ test("new per-board content key already present (already-migrated) leaves everyt
   assert.equal(storage.getItem(syncRevisionKey(LOCAL_LEGACY_BOARD_ID)), null);
 
   const result = migrateLegacyBoard(storage);
-  assert.deepEqual(result, { status: "already-migrated", context: LEGACY_BOARD_CONTEXT });
+  assert.equal(result.status, "migrated");
+  assert.equal(loadWorkspaceIndex(storage).projects.length, 1);
+  assert.deepEqual(loadActiveContext(storage), LEGACY_BOARD_CONTEXT);
+});
+
+test("a retry repairs an interrupted migration without deleting legacy data", () => {
+  const board = createDemoBoard(new Date(2026, 6, 10));
+  const raw = serializeBoard(board);
+  const storage = createFailOnceStorage(WORKSPACE_INDEX_KEY, { [STORAGE_KEY]: raw });
+
+  const first = migrateLegacyBoard(storage);
+  assert.equal(first.status, "error");
+  assert.equal(storage.getItem(STORAGE_KEY), raw);
+  assert.ok(storage.getItem(boardContentKey(LOCAL_LEGACY_BOARD_ID)));
   assert.equal(loadWorkspaceIndex(storage).projects.length, 0);
-  assert.equal(loadActiveContext(storage), null);
+
+  const second = migrateLegacyBoard(storage);
+  assert.equal(second.status, "migrated");
+  assert.equal(loadWorkspaceIndex(storage).projects.length, 1);
+  assert.equal(loadWorkspaceIndex(storage).boards.length, 1);
+  assert.equal(storage.getItem(STORAGE_KEY), raw);
+
+  const third = migrateLegacyBoard(storage);
+  assert.equal(third.status, "already-migrated");
 });

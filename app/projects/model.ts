@@ -1,6 +1,6 @@
 // Pure domain logic for multi-project / multi-board (v1): safe parsers,
 // ID validation, and role-capability functions. No storage, no network, no
-// D1 -- see docs/superpowers/sdd/task-1-brief.md for scope.
+// D1 -- see the multi-project implementation plan, Task 1, for scope.
 //
 // House style follows app/board-model.ts: parsers accept `unknown` and
 // narrow defensively; malformed input is rejected rather than coerced into
@@ -92,7 +92,10 @@ export function normalizeResourceName(value: unknown): NormalizedResourceName | 
   if (!name || name.length > MAX_RESOURCE_NAME_LENGTH) {
     return null;
   }
-  return { name, key: name.toLocaleLowerCase("zh-Hant") };
+  return {
+    name,
+    key: name.normalize("NFKC").toLocaleLowerCase("en-US"),
+  };
 }
 
 // ---------------------------------------------------------------------------

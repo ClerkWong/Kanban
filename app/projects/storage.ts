@@ -24,7 +24,7 @@ export type StorageLike = {
 };
 
 // ---------------------------------------------------------------------------
-// Storage keys (verbatim from docs/superpowers/sdd/task-2-brief.md)
+// Storage keys (verbatim from the multi-project implementation plan, Task 2)
 // ---------------------------------------------------------------------------
 
 export const WORKSPACE_INDEX_KEY = "kanban-workspace-index-v1";
@@ -63,6 +63,12 @@ function isValidWorkspaceId(value: unknown): value is string {
 
 function isValidProjectOrBoardId(value: unknown): value is string {
   return isUuid(value) || isLocalPlaceholderId(value);
+}
+
+function assertValidProjectOrBoardId(value: unknown, field: string): asserts value is string {
+  if (!isValidProjectOrBoardId(value)) {
+    throw new Error(`${field} 必須是 UUID 或已知的本機 placeholder ID。`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +156,13 @@ export function loadWorkspaceIndex(storage: StorageLike): WorkspaceIndex {
 }
 
 export function saveWorkspaceIndex(storage: StorageLike, index: WorkspaceIndex): void {
+  const parsed = parseWorkspaceIndex(JSON.stringify(index));
+  if (
+    parsed.projects.length !== index.projects.length ||
+    parsed.boards.length !== index.boards.length
+  ) {
+    throw new Error("Workspace index 含有無效的 Project 或 Board metadata。");
+  }
   storage.setItem(WORKSPACE_INDEX_KEY, JSON.stringify(index));
 }
 
@@ -198,6 +211,9 @@ export function loadActiveContext(storage: StorageLike): BoardContext | null {
 }
 
 export function saveActiveContext(storage: StorageLike, context: BoardContext): void {
+  if (!parseActiveContext(context)) {
+    throw new Error("Active Board context 含有無效的 resource ID。");
+  }
   storage.setItem(ACTIVE_CONTEXT_KEY, JSON.stringify(context));
 }
 
@@ -219,10 +235,12 @@ export type LoadedBoard = {
  * migrated to the server, or `LOCAL_LEGACY_BOARD_ID` pre-migration). Reuses
  * `parsePersistedBoard`'s safe fallback -- malformed content never throws. */
 export function loadBoardState(storage: StorageLike, boardId: string): LoadedBoard {
+  assertValidProjectOrBoardId(boardId, "boardId");
   return parsePersistedBoard(storage.getItem(boardContentKey(boardId)));
 }
 
 export function saveBoardState(storage: StorageLike, boardId: string, board: BoardState): void {
+  assertValidProjectOrBoardId(boardId, "boardId");
   storage.setItem(boardContentKey(boardId), serializeBoard(board));
 }
 
@@ -234,11 +252,16 @@ export function saveBoardState(storage: StorageLike, boardId: string, board: Boa
  * Mirrors `loadSyncRevision` in app/sync/config.ts but per-board and against
  * an injectable `StorageLike` instead of the global `window.localStorage`. */
 export function loadBoardRevision(storage: StorageLike, boardId: string): number {
+  assertValidProjectOrBoardId(boardId, "boardId");
   const raw = storage.getItem(syncRevisionKey(boardId));
   const value = Number(raw);
   return Number.isInteger(value) && value > 0 ? value : 0;
 }
 
 export function saveBoardRevision(storage: StorageLike, boardId: string, revision: number): void {
+  assertValidProjectOrBoardId(boardId, "boardId");
+  if (!Number.isInteger(revision) || revision < 0) {
+    throw new Error("Board revision 必須是大於或等於 0 的整數。");
+  }
   storage.setItem(syncRevisionKey(boardId), String(revision));
 }

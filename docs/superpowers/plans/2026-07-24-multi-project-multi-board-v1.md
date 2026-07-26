@@ -122,12 +122,12 @@ workspaces/{workspaceId}/projects/{projectId}/boards/{boardId}/attachments/{atta
 
 **Steps**
 
-- [ ] 先寫角色矩陣、空白／過長名稱、malformed JSON 與 ID validation 的失敗測試。
-- [ ] 實作 domain types 與 parser，不修改目前 `BoardState`。
-- [ ] 明確區分 `ProjectMembership` 與既有 `Card.members`；後者仍是顯示文字且不參與 ACL。
-- [ ] 確保 viewer 永遠無 mutation capability；contributor 無 membership/archive 能力。
-- [ ] 確保 workspace role 不會自動轉換成 Project content permission。
-- [ ] 執行：
+- [x] 先寫角色矩陣、空白／過長名稱、malformed JSON 與 ID validation 的失敗測試。
+- [x] 實作 domain types 與 parser，不修改目前 `BoardState`。
+- [x] 明確區分 `ProjectMembership` 與既有 `Card.members`；後者仍是顯示文字且不參與 ACL。
+- [x] 確保 viewer 永遠無 mutation capability；contributor 無 membership/archive 能力。
+- [x] 確保 workspace role 不會自動轉換成 Project content permission。
+- [x] 執行：
 
   ```bash
   pnpm test
@@ -168,16 +168,16 @@ kanban-sync-config-v2
 
 **Steps**
 
-- [ ] 定義可注入的 `StorageLike`，測試不直接依賴 browser global。
-- [ ] 寫入 project index、active context 與 per-board BoardState parser。
-- [ ] 使用 `local:legacy-project`／`local:legacy-board` 作為只存在本機的 placeholder；
+- [x] 定義可注入的 `StorageLike`，測試不直接依賴 browser global。
+- [x] 寫入 project index、active context 與 per-board BoardState parser。
+- [x] 使用 `local:legacy-project`／`local:legacy-board` 作為只存在本機的 placeholder；
   placeholder 絕不可送入 API。
-- [ ] 偵測舊 `kanban-pwa-board-v1`，複製到新版 key 並驗證 serialize round trip。
-- [ ] 遷移成功前保留舊 key；不可先刪再寫。
-- [ ] 重複執行 migration 必須冪等，不重複 Project/Board。
-- [ ] malformed 舊資料使用既有安全 fallback，並保留可理解的 migration error。
-- [ ] 加入 active Board 切換測試，確認 Board A/B 不共用內容或 revision。
-- [ ] 執行：
+- [x] 偵測舊 `kanban-pwa-board-v1`，複製到新版 key 並驗證 serialize round trip。
+- [x] 遷移成功前保留舊 key；不可先刪再寫。
+- [x] 重複執行 migration 必須冪等，不重複 Project/Board；中斷後可重跑修復。
+- [x] malformed 舊資料使用既有安全 fallback，並保留可理解的 migration error。
+- [x] 加入 active Board 切換測試，確認 Board A/B 不共用內容或 revision。
+- [x] 執行：
 
   ```bash
   pnpm test
@@ -870,7 +870,7 @@ Prepare multi-project staging release
 
 ### Milestone A — Domain ready
 
-Task 1–2 完成：
+Task 1–2 已於 2026-07-26 完成：
 
 - local multi-board storage 可用。
 - legacy local migration 冪等且不刪原資料。
