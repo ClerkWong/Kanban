@@ -39,15 +39,38 @@ export function parseProjectRole(value: unknown): ProjectRole {
 export async function readJsonObject(
   request: Request,
   allowedKeys: readonly string[],
+  maxBytes = 65_536,
+  tooLargeCode = "request_too_large",
 ): Promise<Record<string, unknown>> {
   const contentLength = request.headers.get("Content-Length");
-  if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > 65_536) {
-    throw new RequestError(413, "request_too_large");
+  if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > maxBytes) {
+    throw new RequestError(413, tooLargeCode);
   }
-  const text = await request.text();
-  if (new TextEncoder().encode(text).length > 65_536) {
-    throw new RequestError(413, "request_too_large");
+  if (!request.body) throw new RequestError(400, "invalid_json");
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new RequestError(413, tooLargeCode);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
   }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder().decode(bytes);
   let value: unknown;
   try {
     value = JSON.parse(text);

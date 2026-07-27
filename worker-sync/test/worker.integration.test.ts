@@ -39,10 +39,18 @@ beforeAll(async () => {
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS access_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, label TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, token_kind TEXT NOT NULL, legacy_user_id TEXT, created_at TEXT NOT NULL, last_used_at TEXT, revoked_at TEXT)",
   ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS migration_state (
+       id INTEGER PRIMARY KEY, status TEXT NOT NULL, default_workspace_id TEXT NOT NULL,
+       legacy_project_id TEXT NOT NULL, legacy_board_id TEXT NOT NULL,
+       locked_at TEXT, completed_at TEXT, updated_at TEXT NOT NULL, error TEXT
+     )`,
+  ).run();
 });
 
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM board").run();
+  await env.DB.prepare("DELETE FROM migration_state").run();
   await env.DB.prepare("DELETE FROM access_tokens").run();
   await env.DB.prepare("DELETE FROM user_accounts").run();
   await env.DB.prepare("DELETE FROM users").run();
@@ -55,6 +63,16 @@ beforeEach(async () => {
   await env.DB.prepare(
     "INSERT INTO access_tokens (id, user_id, label, token_hash, token_kind, created_at) VALUES (?, ?, ?, ?, 'personal', ?)",
   ).bind("runtime-test-token", "runtime-test-user", "Runtime", tokenHash, "2026-07-26T00:00:00.000Z").run();
+  await env.DB.prepare(
+    `INSERT INTO migration_state (
+       id, status, default_workspace_id, legacy_project_id, legacy_board_id, updated_at
+     ) VALUES (1, 'pending', ?, ?, ?, ?)`,
+  ).bind(
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000003",
+    "00000000-0000-4000-8000-000000000004",
+    "2026-07-26T00:00:00.000Z",
+  ).run();
 });
 
 afterEach(() => {
@@ -110,6 +128,27 @@ describe("Worker runtime integration", () => {
 
     const responses = await Promise.all([makeCreate(), makeCreate()]);
     expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+  });
+
+  it("keeps legacy reads available but returns a retryable error for PUT while migration is locked", async () => {
+    await env.DB.prepare(
+      "INSERT INTO board (id, revision, data, updated_at) VALUES (1, 4, ?, ?)",
+    ).bind(JSON.stringify(board()), "2026-07-26T00:00:00.000Z").run();
+    await env.DB.prepare(
+      "UPDATE migration_state SET status = 'locked' WHERE id = 1",
+    ).run();
+
+    expect((await dispatch("/board", { headers: authorizationHeaders() })).status).toBe(200);
+    const put = await dispatch("/board", {
+      method: "PUT",
+      headers: authorizationHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ baseRevision: 4, board: board(4) }),
+    });
+    expect(put.status).toBe(503);
+    expect(await put.json()).toMatchObject({ error: "migration_locked" });
+    expect(
+      await env.DB.prepare("SELECT revision FROM board WHERE id = 1").first<number>("revision"),
+    ).toBe(4);
   });
 
   it("uploads, returns metadata for, deletes, and then misses an attachment", async () => {

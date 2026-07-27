@@ -1,11 +1,10 @@
 import { json, responseHeaders } from "./http";
-import { decideBoardPut, isBoardPayload } from "./logic";
+import { handleBoardRequest } from "./boards";
 import { handleMembershipRequest } from "./memberships";
 import { handleProjectRequest, type ApiContext } from "./projects";
 import { AuthorizationError } from "./authorization";
 import { RequestError } from "./validation";
 
-const MAX_BOARD_BYTES = 1_000_000;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENT_FILE_NAME_LENGTH = 128;
 const ALLOWED_ATTACHMENT_TYPES = new Set([
@@ -14,11 +13,6 @@ const ALLOWED_ATTACHMENT_TYPES = new Set([
 ]);
 
 type RouteContext = ApiContext;
-type BoardRow = { revision: number; data: string };
-
-async function readBoard(env: Env): Promise<BoardRow | null> {
-  return env.DB.prepare("SELECT revision, data FROM board WHERE id = 1").first<BoardRow>();
-}
 
 function attachmentKey(pathname: string): string | null {
   if (!pathname.startsWith("/attachments/")) return null;
@@ -66,61 +60,6 @@ async function readBoundedBody(request: Request): Promise<Uint8Array | "empty" |
   return body;
 }
 
-async function handleBoard(context: RouteContext): Promise<Response | null> {
-  const { request, env, requestId } = context;
-  if (new URL(request.url).pathname !== "/board") return null;
-  if (request.method === "GET") {
-    const row = await readBoard(env);
-    return row
-      ? json(200, { revision: row.revision, board: JSON.parse(row.data), requestId }, requestId)
-      : json(404, { error: "empty", requestId }, requestId);
-  }
-  if (request.method !== "PUT") return null;
-  const text = await request.text();
-  if (new TextEncoder().encode(text).length > MAX_BOARD_BYTES) {
-    return json(413, { error: "board too large", requestId }, requestId);
-  }
-  let payload: { baseRevision?: unknown; board?: unknown };
-  try { payload = JSON.parse(text); } catch {
-    return json(400, { error: "invalid json", requestId }, requestId);
-  }
-  const baseRevision = Number(payload.baseRevision);
-  if (!Number.isInteger(baseRevision) || baseRevision < 0 || !isBoardPayload(payload.board)) {
-    return json(400, { error: "invalid payload", requestId }, requestId);
-  }
-  const row = await readBoard(env);
-  const decision = decideBoardPut(row?.revision ?? null, baseRevision);
-  if (decision.kind === "conflict") {
-    return row
-      ? json(409, { revision: row.revision, board: JSON.parse(row.data), requestId }, requestId)
-      : json(409, { revision: 0, board: null, requestId }, requestId);
-  }
-  const now = new Date().toISOString();
-  const data = JSON.stringify(payload.board);
-  if (decision.kind === "create") {
-    try {
-      await env.DB.prepare(
-        "INSERT INTO board (id, revision, data, updated_at) VALUES (1, 1, ?, ?)",
-      ).bind(data, now).run();
-      return json(200, { revision: 1, requestId }, requestId);
-    } catch (error) {
-      const fresh = await readBoard(env);
-      if (fresh) return json(409, { revision: fresh.revision, board: JSON.parse(fresh.data), requestId }, requestId);
-      throw error;
-    }
-  }
-  const result = await env.DB.prepare(
-    "UPDATE board SET revision = ?, data = ?, updated_at = ? WHERE id = 1 AND revision = ?",
-  ).bind(decision.nextRevision, data, now, baseRevision).run();
-  if (!result.meta.changes) {
-    const fresh = await readBoard(env);
-    return fresh
-      ? json(409, { revision: fresh.revision, board: JSON.parse(fresh.data), requestId }, requestId)
-      : json(409, { revision: 0, board: null, requestId }, requestId);
-  }
-  return json(200, { revision: decision.nextRevision, requestId }, requestId);
-}
-
 async function handleAttachment(context: RouteContext): Promise<Response | null> {
   const { request, env, requestId } = context;
   const key = attachmentKey(new URL(request.url).pathname);
@@ -164,8 +103,8 @@ type Route = {
 };
 const ROUTES: readonly Route[] = [
   { capability: "authenticated", handle: handleMembershipRequest },
+  { capability: "authenticated", handle: handleBoardRequest },
   { capability: "authenticated", handle: handleProjectRequest },
-  { capability: "authenticated", handle: handleBoard },
   { capability: "authenticated", handle: handleAttachment },
 ];
 

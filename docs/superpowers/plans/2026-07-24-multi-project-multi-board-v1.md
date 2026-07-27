@@ -399,18 +399,19 @@ PUT    /board
 
 **Steps**
 
-- [ ] Board metadata/name 和 `BoardState` JSON 分開。
-- [ ] Board create 使用 client UUID；name 在 active Project 內 normalized unique。
-- [ ] content GET/PUT 使用 per-board revision 與既有 1 MiB limit。
-- [ ] 409 只回目前 Board 的 revision/data，不混入其他 Board。
-- [ ] manager/contributor 可 PUT content；viewer 只能 GET。
-- [ ] archived Project/Board mutation 回 `resource_archived`，GET 保持可用。
-- [ ] Board archive/restore 不刪 data、revision 或 R2。
-- [ ] `/board` alias 直接解析 caller 可存取的 legacy Board ID，使用同一 row 與 revision。
-- [ ] migration `pending` 時 alias 使用 legacy `board`；`locked` 時 PUT 回 retryable 503；
+- [x] Board metadata/name 和 `BoardState` JSON 分開。
+- [x] Board create 使用 client UUID；name 在 active Project 內 normalized unique。
+- [x] content GET/PUT 使用 per-board revision 與既有 1 MiB limit。
+- [x] 409 只回目前 Board 的 revision/data，不混入其他 Board。
+- [x] manager/contributor 可 PUT content；viewer 只能 GET。
+- [x] archived Project 或 archived Board 的 content mutation 回 `resource_archived`，GET 保持
+  可用；archived Board 可先改名以解決 restore name conflict。
+- [x] Board archive/restore 不刪 data、revision 或 R2。
+- [x] `/board` alias 直接解析 caller 可存取的 legacy Board ID，使用同一 row 與 revision。
+- [x] migration `pending` 時 alias 使用 legacy `board`；`locked` 時 PUT 回 retryable 503；
   `complete` 時改用新版 `boards`。
-- [ ] alias 不建立長期 dual-write 或同時更新兩份 JSON。
-- [ ] 每個成功 content PUT 和 lifecycle mutation 寫入 audit foundation。
+- [x] alias 不建立長期 dual-write 或同時更新兩份 JSON。
+- [x] 每個成功 content PUT 和 lifecycle mutation 寫入 audit foundation。
 
 **Tests**
 
@@ -426,6 +427,11 @@ pnpm lint
 pnpm typecheck
 pnpm sync:dry-run
 ```
+
+驗收結果（2026-07-27）：113 個單元測試、33 個 Worker runtime tests、lint、
+typecheck、typed `no-floating-promises` 與 production/staging Worker dry-run 全數通過；
+runtime tests 已確認 concurrent revision conflict、跨 Project 隔離、audit failure rollback，
+以及 migration 三狀態下 `/board` 不會 dual-write。
 
 **Commit**
 
