@@ -314,8 +314,7 @@ Add Worker identity and authorization
 - Create: `worker-sync/src/projects.ts`
 - Create: `worker-sync/src/memberships.ts`
 - Create: `worker-sync/src/validation.ts`
-- Create: `worker-sync/test/projects.integration.test.ts`
-- Create: `worker-sync/test/memberships.integration.test.ts`
+- Create: `worker-sync/test/projects.integration.test.ts`（同檔涵蓋 Project 與 membership）
 - Modify: `worker-sync/src/router.ts`
 
 **Endpoints**
@@ -335,15 +334,15 @@ DELETE /projects/:projectId/members/:userId
 
 **Steps**
 
-- [ ] `GET /projects` 只查詢 caller memberships。
-- [ ] admin-only registry 使用 `/admin/projects`，只回管理 metadata。
-- [ ] Project create 使用 client-generated UUID 作 idempotency key；建立者成為 manager。
-- [ ] 驗證 active normalized name uniqueness；衝突回 409。
-- [ ] PATCH 只接受白名單欄位，不允許改 workspace ID、creator 或 status。
-- [ ] 不可移除／降級最後一位 active manager。
-- [ ] Project archive/restore 需 manager；restore 名稱衝突回 409。
-- [ ] 每個成功 mutation 與 membership change 原子寫入 audit。
-- [ ] archived Project membership 可調整，但內容仍唯讀；所有變更需留 Log。
+- [x] `GET /projects` 只查詢 caller memberships。
+- [x] admin-only registry 使用 `/admin/projects`，只回管理 metadata。
+- [x] Project create 使用 client-generated UUID 作 idempotency key；建立者成為 manager。
+- [x] 驗證 active normalized name uniqueness；衝突回 409。
+- [x] PATCH 只接受白名單欄位，不允許改 workspace ID、creator 或 status。
+- [x] 不可移除／降級最後一位 active manager。
+- [x] Project archive/restore 需 manager；restore 名稱衝突回 409。
+- [x] 每個成功 mutation 與 membership change 原子寫入 audit。
+- [x] archived Project membership 可調整，但內容仍唯讀；所有變更需留 Log。
 
 **Tests**
 
@@ -358,6 +357,10 @@ pnpm worker:test
 pnpm lint
 pnpm typecheck
 ```
+
+驗收結果（2026-07-26）：112 個單元測試、21 個 Worker runtime tests、lint、
+typecheck、typed `no-floating-promises` 與 production/staging Worker dry-run 全數通過；
+runtime test 已確認 audit 寫入失敗時 mutation 會回滾。
 
 **Commit**
 

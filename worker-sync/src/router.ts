@@ -1,6 +1,9 @@
-import type { AuthenticatedUser } from "./auth";
 import { json, responseHeaders } from "./http";
 import { decideBoardPut, isBoardPayload } from "./logic";
+import { handleMembershipRequest } from "./memberships";
+import { handleProjectRequest, type ApiContext } from "./projects";
+import { AuthorizationError } from "./authorization";
+import { RequestError } from "./validation";
 
 const MAX_BOARD_BYTES = 1_000_000;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -10,12 +13,7 @@ const ALLOWED_ATTACHMENT_TYPES = new Set([
   "audio/webm", "audio/mp4", "audio/aac", "audio/mpeg", "audio/wav", "audio/ogg",
 ]);
 
-type RouteContext = {
-  request: Request;
-  env: Env;
-  user: AuthenticatedUser;
-  requestId: string;
-};
+type RouteContext = ApiContext;
 type BoardRow = { revision: number; data: string };
 
 async function readBoard(env: Env): Promise<BoardRow | null> {
@@ -165,14 +163,26 @@ type Route = {
   handle(context: RouteContext): Promise<Response | null>;
 };
 const ROUTES: readonly Route[] = [
+  { capability: "authenticated", handle: handleMembershipRequest },
+  { capability: "authenticated", handle: handleProjectRequest },
   { capability: "authenticated", handle: handleBoard },
   { capability: "authenticated", handle: handleAttachment },
 ];
 
 export async function routeRequest(context: RouteContext): Promise<Response> {
-  for (const route of ROUTES) {
-    const response = await route.handle(context);
-    if (response) return response;
+  try {
+    for (const route of ROUTES) {
+      const response = await route.handle(context);
+      if (response) return response;
+    }
+  } catch (error) {
+    if (error instanceof AuthorizationError || error instanceof RequestError) {
+      return json(error.status, {
+        error: error.code,
+        requestId: context.requestId,
+      }, context.requestId);
+    }
+    throw error;
   }
   return json(404, { error: "not found", requestId: context.requestId }, context.requestId);
 }
