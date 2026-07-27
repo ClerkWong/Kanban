@@ -10,7 +10,6 @@ declare module "cloudflare:workers" {
 const token = "worker-runtime-test-token";
 const tokenHash = "3e8e0d7c0481d3805f19d9269f96965d4bc7848fa6d7e10291eb63115842ff87";
 const endpoint = "https://sync.test";
-const maxAttachmentBytes = 10 * 1024 * 1024;
 
 function authorizationHeaders(headers: HeadersInit = {}): Headers {
   const result = new Headers(headers);
@@ -151,90 +150,15 @@ describe("Worker runtime integration", () => {
     ).toBe(4);
   });
 
-  it("uploads, returns metadata for, deletes, and then misses an attachment", async () => {
-    const content = new Uint8Array([1, 2, 3, 4]);
-    const put = await dispatch("/attachments/runtime-test.jpeg", {
-      method: "PUT",
-      headers: authorizationHeaders({ "Content-Type": "image/jpeg" }),
-      body: content,
-    });
-    expect(put.status).toBe(200);
-
-    const get = await dispatch("/attachments/runtime-test.jpeg", { headers: authorizationHeaders() });
-    expect(get.status).toBe(200);
-    expect(get.headers.get("Content-Type")).toBe("image/jpeg");
-    expect(get.headers.get("Content-Length")).toBe(String(content.byteLength));
-    expect(get.headers.get("ETag")).toBeTruthy();
-    expect(get.headers.get("X-Content-Type-Options")).toBe("nosniff");
-    expect(get.headers.get("Cache-Control")).toBe("private, max-age=3600");
-    expect(new Uint8Array(await get.arrayBuffer())).toEqual(content);
-
+  it("keeps the legacy file-name attachment route disabled", async () => {
     expect(
-      (
-        await dispatch("/attachments/runtime-test.jpeg", {
-          method: "DELETE",
-          headers: authorizationHeaders(),
-        })
-      ).status,
-    ).toBe(200);
-    expect((await dispatch("/attachments/runtime-test.jpeg", { headers: authorizationHeaders() })).status).toBe(404);
+      (await dispatch("/attachments/runtime-test.jpeg", {
+        headers: authorizationHeaders(),
+      })).status,
+    ).toBe(404);
   });
 
-  it("rejects invalid keys, MIME types, and empty uploads", async () => {
-    expect(
-      (
-        await dispatch("/attachments/%2F", {
-          method: "PUT",
-          headers: authorizationHeaders({ "Content-Type": "image/jpeg" }),
-          body: new Uint8Array([1]),
-        })
-      ).status,
-    ).toBe(400);
-    expect(
-      (
-        await dispatch("/attachments/nope.txt", {
-          method: "PUT",
-          headers: authorizationHeaders({ "Content-Type": "text/plain" }),
-          body: "x",
-        })
-      ).status,
-    ).toBe(415);
-    expect(
-      (
-        await dispatch("/attachments/empty.jpeg", {
-          method: "PUT",
-          headers: authorizationHeaders({ "Content-Type": "image/jpeg" }),
-          body: "",
-        })
-      ).status,
-    ).toBe(400);
-  });
-
-  it("rejects declared and streamed uploads above 10 MiB", async () => {
-    const declaredTooLarge = await dispatch("/attachments/declared.jpeg", {
-      method: "PUT",
-      headers: authorizationHeaders({
-        "Content-Type": "image/jpeg",
-        "Content-Length": String(maxAttachmentBytes + 1),
-      }),
-      body: new Uint8Array([1]),
-    });
-    expect(declaredTooLarge.status).toBe(413);
-
-    const streamedTooLarge = await dispatch("/attachments/streamed.jpeg", {
-      method: "PUT",
-      headers: authorizationHeaders({ "Content-Type": "image/jpeg" }),
-      body: new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(new Uint8Array(maxAttachmentBytes + 1));
-          controller.close();
-        },
-      }),
-    });
-    expect(streamedTooLarge.status).toBe(413);
-  });
-
-  it("turns D1 and R2 failures into the same JSON, CORS, request-id error envelope", async () => {
+  it("turns D1 failures into the JSON, CORS, request-id error envelope", async () => {
     vi.spyOn(env.DB, "prepare").mockImplementationOnce(() => {
       throw new Error("D1 is unavailable");
     });
@@ -243,12 +167,5 @@ describe("Worker runtime integration", () => {
     expect(await d1Failure.json()).toMatchObject({ error: "internal error" });
     expect(d1Failure.headers.get("Access-Control-Allow-Origin")).toBe("*");
     expect(d1Failure.headers.get("X-Request-Id")).toMatch(/^[0-9a-f-]{36}$/);
-
-    vi.spyOn(env.ATTACHMENTS, "get").mockRejectedValueOnce(new Error("R2 is unavailable"));
-    const r2Failure = await dispatch("/attachments/error.jpeg", { headers: authorizationHeaders() });
-    expect(r2Failure.status).toBe(500);
-    expect(await r2Failure.json()).toMatchObject({ error: "internal error" });
-    expect(r2Failure.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(r2Failure.headers.get("X-Request-Id")).toMatch(/^[0-9a-f-]{36}$/);
   });
 });

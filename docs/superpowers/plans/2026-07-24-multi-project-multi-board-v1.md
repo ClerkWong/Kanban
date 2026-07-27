@@ -528,14 +528,14 @@ DELETE /projects/:projectId/boards/:boardId/attachments/:attachmentId
 
 **Steps**
 
-- [ ] Worker 從已授權 context 組合 R2 key，不接受完整 key。
-- [ ] manager/contributor 可 PUT/DELETE；viewer 僅 GET。
-- [ ] archived Project/Board 仍可 GET，拒絕 PUT/DELETE。
-- [ ] 保留 10 MiB bounded stream、MIME allowlist、ETag、nosniff 與 request ID。
-- [ ] 同 attachment ID 在不同 Board 形成不同 R2 objects。
-- [ ] 無 membership 或 Board 不屬於 Project 時，在碰 R2 前回 404。
-- [ ] production R2 尚無舊資料，因此不新增舊 `/attachments/:fileName` alias。
-- [ ] 更新 CORS methods/headers 測試但不放寬認證。
+- [x] Worker 從已授權 context 組合 R2 key，不接受完整 key。
+- [x] manager/contributor 可 PUT/DELETE；viewer 僅 GET。
+- [x] archived Project/Board 仍可 GET，拒絕 PUT/DELETE。
+- [x] 保留 10 MiB bounded stream、MIME allowlist、ETag、nosniff 與 request ID。
+- [x] 同 attachment ID 在不同 Board 形成不同 R2 objects。
+- [x] 無 membership 或 Board 不屬於 Project 時，在碰 R2 前回 404。
+- [x] production R2 尚無舊資料，因此不新增舊 `/attachments/:fileName` alias。
+- [x] 更新 CORS methods/headers 測試但不放寬認證。
 
 **Tests**
 
@@ -552,6 +552,13 @@ pnpm typecheck
 pnpm sync:dry-run
 pnpm sync:dry-run:staging
 ```
+
+驗收結果（2026-07-27）：115 個單元測試、46 個 Worker runtime tests、lint、
+typecheck、generated Worker types check 與 production/staging Worker dry-run 全數通過；
+runtime tests 已確認三角色權限、跨 Project／Board 隔離、archived read-only、10 MiB
+精確邊界、empty／invalid ID／unsupported MIME／404，以及 D1 authz failure 不會碰 R2。
+既有 `AttachmentRef.id` 為 `att-…`，因此 scoped endpoint 接受 1–128 字元的安全單一
+ID segment；仍拒絕 fileName、斜線與完整 R2 key。
 
 **Commit**
 

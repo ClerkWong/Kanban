@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | 月報資料模型 | 已完成 | 以 `completedAt` 計算最近六個日曆月；schema v4 可遷移 v1/v2/v3 |
 | 3b 附件用戶端 | 已完成單一看板實作 | 多看板版仍需讓 queue、下載與 R2 key 按 Project/Board 隔離 |
-| Worker 3b | 已完成單一看板實作 | 多看板版仍需 identity、ACL、API v2、封存與 ActivityLog |
+| Worker 3b | 多專案後端已完成，尚未推送 | identity、ACL、Project/Board API、summary、Activity Log 與 scoped R2 API 已完成；client 尚未切換 |
 | 多專案／多看板規格 | 已核准 | 實作計畫位於 `docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md` |
 | 多專案 Milestone A | 已完成，尚未推送 | Project domain／ACL capability、per-board storage、可恢復 legacy migration；尚未切換 UI |
 | 多專案 Worker Task 3 | 已完成，尚未推送 | additive D1 schema、append-only Activity Log constraints、個人／legacy token bootstrap；未套用遠端 |
@@ -21,6 +21,7 @@
 | 多專案 Worker Task 5 | 已完成，尚未推送 | `/me`、Project lifecycle、membership 與 admin registry APIs；具備 last-manager guard、idempotency 與原子 audit |
 | 多專案 Worker Task 6 | 已完成，尚未推送 | multi-board metadata/content、per-board revision、archive/restore 與 migration-aware `/board` alias；未套用遠端 |
 | 多專案 Worker Task 7 | 已完成，尚未推送 | Project summary、六個月月報、server-side Board diff 與 Project/Board Activity Log cursor API；未套用遠端 |
+| 多專案 Worker Task 8 | 已完成，尚未推送 | Attachment API 與 R2 key 已限定到 Workspace/Project/Board；三角色與 archived read-only 已驗證，未套用遠端 |
 | staging 設定 | 基礎設定完成，尚無遠端資源 | Wrangler environment 與 scripts 可沿用；應用 schema/API 需先升級 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
@@ -54,6 +55,10 @@
 - 多專案 Task 7 已通過 115 個單元測試、40 個 Worker runtime tests、lint、typecheck；
   已驗證 Project/Board Log 隔離、同 timestamp cursor、archived history、summary archived
   filter、六個月零值與 audit 隱私，且 Task 6 audit rollback 測試持續通過，未部署。
+- 多專案 Task 8 已通過 115 個單元測試、46 個 Worker runtime tests、lint、typecheck、
+  generated Worker types check 與 production/staging Worker dry-run；已驗證三角色權限、
+  Project/Board R2 key 隔離、archived read-only、10 MiB 邊界，及 authz failure 不碰 R2，
+  未部署。
 - `main` 已推送至 GitHub；private beta v1 仍來自較早的 `bd17e5b`。
 
 ## P0-1：將客製 title 更新到 beta

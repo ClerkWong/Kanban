@@ -5,7 +5,7 @@ const UUID_PATTERN =
 
 export class RequestError extends Error {
   constructor(
-    public readonly status: 400 | 404 | 409 | 413 | 503,
+    public readonly status: 400 | 404 | 409 | 413 | 415 | 503,
     public readonly code: string,
   ) {
     super(code);
