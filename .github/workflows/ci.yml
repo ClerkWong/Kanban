@@ -31,8 +31,14 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
-      - run: pnpm worker:test
+      - name: Unit tests
+        run: pnpm test
+      - name: Client migration release gate
+        run: pnpm test:release:migration
+      - name: Worker runtime tests
+        run: pnpm worker:test
+      - name: Role matrix and legacy alias release gate
+        run: pnpm worker:test:release
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build

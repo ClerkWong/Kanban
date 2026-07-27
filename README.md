@@ -185,6 +185,13 @@ pnpm sync:smoke
 腳本不接受命令列 token，也不會修改遠端看板。CI、repo、bundle 與 log 都不得包含
 明文 token。
 
+Staging 資源建立、角色驗證與協調重設請依
+[multi-project staging runbook](./docs/runbooks/multi-project-staging.md)；個人 token
+的建立、列示、輪替、撤銷與裝置遺失處理請依
+[token lifecycle runbook](./docs/runbooks/token-lifecycle.md)。`pnpm sync:token` 的
+create 只從隱藏提示或 stdin 讀取明文，list 不查詢 token hash，production 操作必須
+加上 `--confirm-production`。
+
 ## Project／Board 與同步行為
 
 - 「我的專案」只列出目前 user 具有 membership 的 Project；沒有跨專案內容總覽。
