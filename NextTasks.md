@@ -2,7 +2,7 @@
 
 - 最後更新：2026-07-27
 - 目前分支：`feature/multi-project-v1`
-- 已推送基準：`9d54dac`（`Add project management views`，Task 1–12）
+- 已推送功能基準：`d9a2bf2`（`Migrate legacy boards to projects`，Task 1–13）
 
 本文件整併先前兩份規劃，是後續工作、驗收與發布順序的單一依據。
 已完成的歷史實作只保留結果與證據；未完成項目依實際執行順序排列。
@@ -26,7 +26,8 @@
 | 多專案 Client Task 10 | 已完成並推送 | per-board store/revision/sync、queue v2、stale response suppression 與 legacy queue blocker |
 | 多專案 Client Task 11 | 已完成並推送 | Web／Capacitor 共用 ProjectApp、我的專案、專案摘要、Board switcher、嚴格 hash route 與 viewer/archive 唯讀 UI |
 | 多專案 Client Task 12 | 已完成並推送 | manager Project／Board lifecycle、成員角色、archived views、summary filter、Activity Log cursor 與離線管理 guard |
-| 多專案 Task 13 | 已完成，待本次 commit/push | legacy lock/copy/rollback、client merge/remote、一次性 backup、personal token 換發、verification script 與 E2E |
+| 多專案 Task 13 | 已完成並推送 | legacy lock/copy/rollback、client merge/remote、一次性 backup、personal token 換發、verification script 與 E2E |
+| 多專案 Task 14 | 下一個實作項目 | staging-ready CI、fresh clone／原生完整關卡與 staging/token/reset runbooks |
 | staging 設定 | 基礎設定完成，尚無遠端資源 | Wrangler environment 與 scripts 可沿用；應用 schema/API 需先升級 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
@@ -83,8 +84,9 @@
   Web/mobile build、Worker types check 與 production/staging dry-run；已驗證 legacy
   lock/copy/rollback、merge/remote、一次性 backup、personal token 驗證後撤銷 shared
   token，以及角色、Board 隔離、archive 與 alias authority E2E。
-- `feature/multi-project-v1` 已推送到 `9d54dac`（Task 1–12）；private beta v1 仍來自較早的
-  `bd17e5b`。下一個實作項目是 Task 13 legacy migration 與端到端驗證。
+- `feature/multi-project-v1` 的 Task 1–13 功能已推送到 `d9a2bf2`；private beta v1
+  仍來自較早的 `bd17e5b`。下一個實作項目是 Task 14 staging-ready release
+  candidate；Task 14 完成前仍不建立 staging 遠端資源。
 
 ## P0-1：將客製 title 更新到 beta
 
