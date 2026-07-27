@@ -466,16 +466,16 @@ GET /projects/:projectId/boards/:boardId/logs
 
 **Steps**
 
-- [ ] Worker 比較成功 PUT 前後的 canonical BoardState。
-- [ ] 每個成功 Board revision 寫一筆 `board.content_updated`，其中產生 card created、
+- [x] Worker 比較成功 PUT 前後的 canonical BoardState。
+- [x] 每個成功 Board revision 寫一筆 `board.content_updated`，其中產生 card created、
   changed fields、moved、completed、reopened、deleted changes。
-- [ ] attachment 只記 add/remove metadata，不記 bytes；Card description 不記完整前後值。
-- [ ] `metadata.changes` 最多 200 筆；超過時寫各類 count 與 `truncated: true`。
-- [ ] Project summary 預設只計 active Board，可明確包含 archived。
-- [ ] 月報使用 `completedAt`，最近六個日曆月含零資料月份。
-- [ ] Log cursor pagination 預設 50、上限 200，排序穩定。
-- [ ] viewer 可讀 summary/log；無 membership 仍回 404。
-- [ ] audit 寫入失敗時 Board mutation 不得成功。
+- [x] attachment 只記 add/remove metadata，不記 bytes；Card description 不記完整前後值。
+- [x] `metadata.changes` 最多 200 筆；超過時寫各類 count 與 `truncated: true`。
+- [x] Project summary 預設只計 active Board，可明確包含 archived。
+- [x] 月報使用 `completedAt`，最近六個日曆月含零資料月份。
+- [x] Log cursor pagination 預設 50、上限 200，排序穩定。
+- [x] viewer 可讀 summary/log；無 membership 仍回 404。
+- [x] audit 寫入失敗時 Board mutation 不得成功。
 
 **Tests**
 
@@ -491,6 +491,12 @@ pnpm worker:test
 pnpm lint
 pnpm typecheck
 ```
+
+驗收結果（2026-07-27）：115 個單元測試、40 個 Worker runtime tests、lint 與
+typecheck 全數通過；runtime tests 已確認 Project／Board Log 隔離、同 timestamp
+cursor 穩定分頁、archived history 可讀、summary 預設排除 archived Board、六個月零值，
+以及 Log 不含 description 全文、附件內容或 Bearer token。Task 6 的 audit failure
+rollback 測試亦持續通過。
 
 **Commit**
 

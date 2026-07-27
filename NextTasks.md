@@ -20,6 +20,7 @@
 | 多專案 Worker Task 4 | 已完成，尚未推送 | HTTP/router、個人 identity、Project ACL、audit foundation；legacy API 保持相容 |
 | 多專案 Worker Task 5 | 已完成，尚未推送 | `/me`、Project lifecycle、membership 與 admin registry APIs；具備 last-manager guard、idempotency 與原子 audit |
 | 多專案 Worker Task 6 | 已完成，尚未推送 | multi-board metadata/content、per-board revision、archive/restore 與 migration-aware `/board` alias；未套用遠端 |
+| 多專案 Worker Task 7 | 已完成，尚未推送 | Project summary、六個月月報、server-side Board diff 與 Project/Board Activity Log cursor API；未套用遠端 |
 | staging 設定 | 基礎設定完成，尚無遠端資源 | Wrangler environment 與 scripts 可沿用；應用 schema/API 需先升級 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
@@ -50,6 +51,9 @@
   typed `no-floating-promises` 檢查，以及 production/staging Worker dry-run；已驗證
   Board A/B revision 隔離、concurrent write、archive/restore、audit rollback，與 `/board`
   在 migration pending／locked／complete 的單一權威資料切換，未部署。
+- 多專案 Task 7 已通過 115 個單元測試、40 個 Worker runtime tests、lint、typecheck；
+  已驗證 Project/Board Log 隔離、同 timestamp cursor、archived history、summary archived
+  filter、六個月零值與 audit 隱私，且 Task 6 audit rollback 測試持續通過，未部署。
 - `main` 已推送至 GitHub；private beta v1 仍來自較早的 `bd17e5b`。
 
 ## P0-1：將客製 title 更新到 beta

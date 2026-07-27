@@ -1,7 +1,9 @@
 import { json, responseHeaders } from "./http";
 import { handleBoardRequest } from "./boards";
 import { handleMembershipRequest } from "./memberships";
+import { handleLogRequest } from "./logs";
 import { handleProjectRequest, type ApiContext } from "./projects";
+import { handleReportRequest } from "./reports";
 import { AuthorizationError } from "./authorization";
 import { RequestError } from "./validation";
 
@@ -104,6 +106,8 @@ type Route = {
 const ROUTES: readonly Route[] = [
   { capability: "authenticated", handle: handleMembershipRequest },
   { capability: "authenticated", handle: handleBoardRequest },
+  { capability: "authenticated", handle: handleReportRequest },
+  { capability: "authenticated", handle: handleLogRequest },
   { capability: "authenticated", handle: handleProjectRequest },
   { capability: "authenticated", handle: handleAttachment },
 ];

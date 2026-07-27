@@ -1,5 +1,6 @@
 import { prepareAuditEvent } from "./audit";
 import { authorizeProject, type ProjectAccess } from "./authorization";
+import { diffBoardStates } from "./board-diff";
 import type { BoardRow, MigrationStateRow, ProjectRow } from "./db-types";
 import { json } from "./http";
 import { parseBoardPutPayload } from "./logic";
@@ -406,6 +407,7 @@ async function putBoardContent(
     data: JSON.stringify(payload.board),
     updated_at: now,
   };
+  const diff = diffBoardStates(JSON.parse(row.data) as unknown, payload.board);
   const results = await context.env.DB.batch([
     context.env.DB.prepare(
       `UPDATE boards SET revision = ?, data = ?, updated_at = ?
@@ -427,6 +429,9 @@ async function putBoardContent(
       boardAudit(project, next, context.user.id, "board.content_updated", {
         fromRevision: row.revision,
         toRevision: nextRevision,
+        changes: diff.changes,
+        counts: diff.counts,
+        truncated: diff.truncated,
       }),
       true,
     ),
