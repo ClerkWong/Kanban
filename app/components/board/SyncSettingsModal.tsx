@@ -69,6 +69,11 @@ export function SyncSettingsModal({
           目前狀態：{statusText[sync.status]}
           {sync.errorMessage && <span className="syncErrorText">（{sync.errorMessage}）</span>}
         </p>
+        {sync.session && (
+          <p className="syncStatusLine">
+            目前使用者：{sync.session.user.displayName}
+          </p>
+        )}
 
         {sync.configured ? (
           <div className="syncActions">

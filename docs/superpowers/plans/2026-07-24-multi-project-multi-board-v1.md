@@ -586,15 +586,15 @@ Scope attachments to project boards
 
 **Steps**
 
-- [ ] `SyncConfig` v2 仍只持久化 base URL/token；`/me` 回應建立 runtime session。
-- [ ] 個人 user ID、workspace role 不接受 local override。
-- [ ] 實作 Project list/detail/summary/members/logs client。
-- [ ] 實作 Board list/metadata/content/archive/restore client。
-- [ ] Board fetch/push 都要求 `BoardContext`。
-- [ ] Attachment URL 使用 Project/Board/Attachment IDs，不再只用 fileName。
-- [ ] 統一 401/403/404/409/resource_archived error mapping。
-- [ ] token 切換時清除 runtime session 與 remote index，不刪本機 Board data。
-- [ ] Sync settings 首次連線先呼叫 `/me`，顯示目前 user display name。
+- [x] `SyncConfig` v2 仍只持久化 base URL/token；`/me` 回應建立 runtime session。
+- [x] 個人 user ID、workspace role 不接受 local override。
+- [x] 實作 Project list/detail/summary/members/logs client。
+- [x] 實作 Board list/metadata/content/archive/restore client。
+- [x] Board fetch/push 都要求 `BoardContext`。
+- [x] Attachment URL 使用 Project/Board/Attachment IDs，不再只用 fileName。
+- [x] 統一 401/403/404/409/resource_archived error mapping。
+- [x] token 切換時清除 runtime session 與 remote index，不刪本機 Board data。
+- [x] Sync settings 首次連線先呼叫 `/me`，顯示目前 user display name。
 
 **Tests**
 
@@ -610,6 +610,14 @@ pnpm typecheck
 pnpm build
 pnpm mobile:build
 ```
+
+驗收結果（2026-07-27）：124 個單元測試、46 個 Worker runtime tests、lint、
+typecheck、Web build 與 mobile build 全數通過。Client parser 已拒絕 malformed
+Project、Board、summary、revision 與 session payload；測試亦涵蓋 nested URL encoding、
+401/403/404/409/`resource_archived` mapping、token 切換與逾時 session 回應隔離。
+Task 10 完成前，既有單一看板 UI 明確使用 `legacy` compatibility functions；新的 v2
+Board 與 Attachment API 一律要求 `BoardContext`，不會讓尚未具備 Project 導航的 UI
+猜測遠端資源。
 
 **Commit**
 

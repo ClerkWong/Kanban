@@ -1,6 +1,10 @@
 import type { PlatformCapabilities } from "../platform/types";
 import { normalizeBaseUrl, type SyncConfig } from "./config";
-import { AttachmentApiError, deleteRemoteAttachment, uploadAttachment } from "./attachment-api";
+import {
+  AttachmentApiError,
+  deleteLegacyRemoteAttachment,
+  uploadLegacyAttachment,
+} from "./attachment-api";
 
 const QUEUE_KEY = "kanban-attachment-queue-v1";
 const MAX_RETRY_DELAY_MS = 60_000;
@@ -223,9 +227,9 @@ export async function processQueue(
           throw new LocalAttachmentMissingError();
         }
         const blob = await readLocalBlob(platform, item.fileName, item.mimeType);
-        await uploadAttachment(config, item.fileName, blob, item.mimeType);
+        await uploadLegacyAttachment(config, item.fileName, blob, item.mimeType);
       } else {
-        await deleteRemoteAttachment(config, item.fileName);
+        await deleteLegacyRemoteAttachment(config, item.fileName);
       }
       queue = queue.filter((candidate) => candidate !== item);
       processed += 1;

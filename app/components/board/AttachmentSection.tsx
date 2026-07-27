@@ -4,7 +4,7 @@ import type { AttachmentRef } from "../../board-model";
 import { usePlatform } from "../../platform/context";
 import { makeId } from "../../board-model";
 import { CapabilityError, MAX_ATTACHMENT_BYTES, base64ByteSize } from "../../platform/types";
-import { cacheDownloadedAttachment } from "../../sync/attachment-api";
+import { cacheLegacyDownloadedAttachment } from "../../sync/attachment-api";
 import { loadSyncConfig } from "../../sync/config";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -34,7 +34,7 @@ export function AttachmentSection({
         return false;
       }
       try {
-        return cacheDownloadedAttachment(
+        return cacheLegacyDownloadedAttachment(
           config,
           platform,
           attachment.fileName,

@@ -3,9 +3,17 @@ import test from "node:test";
 import { cacheDownloadedAttachment } from "../app/sync/attachment-api";
 import type { PlatformCapabilities } from "../app/platform/types";
 
+const context = {
+  workspaceId: "10000000-0000-4000-8000-000000000001",
+  projectId: "10000000-0000-4000-8000-000000000002",
+  boardId: "10000000-0000-4000-8000-000000000003",
+};
+const attachmentId = "att-10000000-0000-4000-8000-000000000004";
+
 test("下載附件會以原始 fileName 寫入本機快取，且不涉及 upload queue", async () => {
   const originalFetch = globalThis.fetch;
   let written: { fileName: string; mimeType: string; size: number } | null = null;
+  let requestedUrl = "";
   const platform = {
     attachments: {
       write: async (fileName: string, data: Blob | ArrayBuffer, mimeType: string) => {
@@ -17,15 +25,24 @@ test("下載附件會以原始 fileName 寫入本機快取，且不涉及 upload
       },
     },
   } as PlatformCapabilities;
-  globalThis.fetch = async () => new Response(new Blob(["cached"], { type: "image/jpeg" }));
+  globalThis.fetch = async (input) => {
+    requestedUrl = String(input);
+    return new Response(new Blob(["cached"], { type: "image/jpeg" }));
+  };
   try {
     const cached = await cacheDownloadedAttachment(
       { baseUrl: "https://sync.example", token: "secret" },
+      context,
+      attachmentId,
       platform,
       "att-original.jpeg",
       "image/jpeg",
     );
     assert.equal(cached, true);
+    assert.equal(
+      requestedUrl,
+      `https://sync.example/projects/${context.projectId}/boards/${context.boardId}/attachments/${attachmentId}`,
+    );
     assert.deepEqual(written, { fileName: "att-original.jpeg", mimeType: "image/jpeg", size: 6 });
   } finally {
     globalThis.fetch = originalFetch;
@@ -40,6 +57,8 @@ test("切換同步設定後，已開始的下載不寫入快取", async () => {
   try {
     const cached = await cacheDownloadedAttachment(
       { baseUrl: "https://sync.example", token: "secret" },
+      context,
+      attachmentId,
       platform,
       "att-original.jpeg",
       "image/jpeg",

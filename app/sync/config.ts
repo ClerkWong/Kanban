@@ -1,6 +1,8 @@
+import { SYNC_CONFIG_KEY_V2 } from "../projects/storage";
+
 export type SyncConfig = { baseUrl: string; token: string };
 
-const CONFIG_KEY = "kanban-sync-config-v1";
+const LEGACY_CONFIG_KEY = "kanban-sync-config-v1";
 const REVISION_KEY = "kanban-sync-revision-v1";
 
 export function normalizeBaseUrl(input: string): string {
@@ -30,15 +32,31 @@ export function normalizeBaseUrl(input: string): string {
 
 export function loadSyncConfig(): SyncConfig | null {
   try {
-    const raw = window.localStorage.getItem(CONFIG_KEY);
+    const raw =
+      window.localStorage.getItem(SYNC_CONFIG_KEY_V2) ??
+      window.localStorage.getItem(LEGACY_CONFIG_KEY);
     if (!raw) {
       return null;
     }
-    const parsed = JSON.parse(raw) as Partial<SyncConfig>;
-    if (typeof parsed.baseUrl !== "string" || typeof parsed.token !== "string" || !parsed.baseUrl || !parsed.token) {
+    const value = JSON.parse(raw) as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
       return null;
     }
-    return { baseUrl: normalizeBaseUrl(parsed.baseUrl), token: parsed.token };
+    const parsed = value as Record<string, unknown>;
+    if (
+      typeof parsed.baseUrl !== "string" ||
+      typeof parsed.token !== "string" ||
+      !parsed.baseUrl ||
+      !parsed.token
+    ) {
+      return null;
+    }
+    const config = { baseUrl: normalizeBaseUrl(parsed.baseUrl), token: parsed.token };
+    if (!window.localStorage.getItem(SYNC_CONFIG_KEY_V2)) {
+      window.localStorage.setItem(SYNC_CONFIG_KEY_V2, JSON.stringify(config));
+      window.localStorage.removeItem(LEGACY_CONFIG_KEY);
+    }
+    return config;
   } catch {
     return null;
   }
@@ -46,9 +64,14 @@ export function loadSyncConfig(): SyncConfig | null {
 
 export function saveSyncConfig(config: SyncConfig | null): void {
   if (config) {
-    window.localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+    window.localStorage.setItem(SYNC_CONFIG_KEY_V2, JSON.stringify({
+      baseUrl: normalizeBaseUrl(config.baseUrl),
+      token: config.token,
+    }));
+    window.localStorage.removeItem(LEGACY_CONFIG_KEY);
   } else {
-    window.localStorage.removeItem(CONFIG_KEY);
+    window.localStorage.removeItem(SYNC_CONFIG_KEY_V2);
+    window.localStorage.removeItem(LEGACY_CONFIG_KEY);
     window.localStorage.removeItem(REVISION_KEY);
   }
 }

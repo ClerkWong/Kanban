@@ -1,7 +1,12 @@
 "use client";
 
 import { type BoardState, parsePersistedBoard, serializeBoard } from "../board-model";
-import { type PushResult, SyncApiError, fetchRemoteBoard, pushRemoteBoard } from "./api";
+import {
+  type LegacyPushResult,
+  SyncApiError,
+  fetchLegacyRemoteBoard,
+  pushLegacyRemoteBoard,
+} from "./api";
 import {
   type SyncConfig,
   loadSyncConfig,
@@ -10,7 +15,7 @@ import {
   saveSyncRevision,
 } from "./config";
 import { mergeBoards } from "./merge";
-import { downloadAttachment as downloadRemoteAttachment } from "./attachment-api";
+import { downloadLegacyAttachment as downloadRemoteAttachment } from "./attachment-api";
 import {
   enqueueDelete,
   enqueueExistingAttachments,
@@ -19,6 +24,8 @@ import {
   processQueue,
 } from "./attachment-queue";
 import { usePlatform } from "../platform/context";
+import { ApiClientError } from "../projects/api";
+import { fetchRuntimeSession, type RuntimeSession } from "../projects/session";
 import type { AttachmentRef } from "../board-model";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
@@ -29,6 +36,7 @@ export type SyncHandle = {
   status: SyncStatus;
   errorMessage: string;
   configured: boolean;
+  session: RuntimeSession | null;
   syncNow: () => void;
   enable: (config: SyncConfig, initialMode: "download" | "merge") => Promise<void>;
   disable: () => void;
@@ -60,6 +68,7 @@ export function useSync(
   const [config, setConfig] = useState<SyncConfig | null>(null);
   const [status, setStatus] = useState<SyncStatus>("disabled");
   const [errorMessage, setErrorMessage] = useState("");
+  const [session, setSession] = useState<RuntimeSession | null>(null);
   const boardRef = useRef(board);
   const configRef = useRef<SyncConfig | null>(null);
   const busyRef = useRef(false);
@@ -188,7 +197,7 @@ export function useSync(
             busyRef.current = false;
             return;
           }
-          const remote = await fetchRemoteBoard(active);
+          const remote = await fetchLegacyRemoteBoard(active);
           if (!configIsCurrent(active)) {
             busyRef.current = false;
             return;
@@ -222,7 +231,11 @@ export function useSync(
               busyRef.current = false;
               return;
             }
-            const result: PushResult = await pushRemoteBoard(active, baseRevision, candidate);
+            const result: LegacyPushResult = await pushLegacyRemoteBoard(
+              active,
+              baseRevision,
+              candidate,
+            );
             if (!configIsCurrent(active)) {
               busyRef.current = false;
               return;
@@ -292,7 +305,12 @@ export function useSync(
       setConfig(stored);
       setStatus("syncing");
       try {
-        const remote = await fetchRemoteBoard(stored);
+        const identity = await fetchRuntimeSession(stored);
+        if (!configIsCurrent(stored)) {
+          return;
+        }
+        setSession(identity);
+        const remote = await fetchLegacyRemoteBoard(stored);
         if (!configIsCurrent(stored)) {
           return;
         }
@@ -305,6 +323,9 @@ export function useSync(
         }
         await runSync();
       } catch {
+        if (!configIsCurrent(stored)) {
+          return;
+        }
         setStatus("error");
         setErrorMessage("啟動同步失敗，將於下次變更或手動重試時再試。");
       }
@@ -356,17 +377,23 @@ export function useSync(
 
   const enable = useCallback(
     async (next: SyncConfig, initialMode: "download" | "merge") => {
-      saveSyncConfig(next);
-      setConfig(next);
+      setSession(null);
       configRef.current = next;
       setStatus("syncing");
       setErrorMessage("");
       try {
+        const identity = await fetchRuntimeSession(next);
+        if (!configIsCurrent(next)) {
+          return;
+        }
+        saveSyncConfig(next);
+        setConfig(next);
+        setSession(identity);
         const localCards = boardRef.current.cards;
         if (initialMode === "merge") {
           await enqueueExistingAttachments(next, platform, localCards);
         }
-        const remote = await fetchRemoteBoard(next);
+        const remote = await fetchLegacyRemoteBoard(next);
         if (!configIsCurrent(next)) {
           return;
         }
@@ -386,9 +413,16 @@ export function useSync(
         }
         await runSync();
       } catch (error) {
+        if (!configIsCurrent(next)) {
+          return;
+        }
+        configRef.current = null;
+        setConfig(null);
+        setSession(null);
+        saveSyncConfig(null);
         setStatus("error");
         setErrorMessage(
-          error instanceof SyncApiError && error.status === 401
+          error instanceof ApiClientError && error.status === 401
             ? "token 無效，請確認後重新輸入。"
             : "無法連線到同步伺服器，請確認網址與網路。",
         );
@@ -400,6 +434,7 @@ export function useSync(
   const disable = useCallback(() => {
     saveSyncConfig(null);
     setConfig(null);
+    setSession(null);
     configRef.current = null;
     if (retryTimerRef.current) {
       clearTimeout(retryTimerRef.current);
@@ -449,6 +484,7 @@ export function useSync(
     status,
     errorMessage,
     configured: config !== null,
+    session,
     syncNow,
     enable,
     disable,
