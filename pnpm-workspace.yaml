@@ -1,3 +1,9 @@
 allowBuilds:
+  # Vite/Vitest depend on esbuild's platform binary.
+  esbuild: true
+  # Next/Vinext image tooling installs sharp's platform binary.
+  sharp: true
+  # ESLint/Next resolution uses the platform-specific resolver binary.
+  unrs-resolver: true
   # @cloudflare/vitest-pool-workers starts the locally installed workerd binary.
   workerd: true
