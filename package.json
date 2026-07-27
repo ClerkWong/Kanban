@@ -25,6 +25,8 @@
     "sync:dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler dev -c worker-sync/wrangler.jsonc",
     "sync:migrate:local": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler d1 migrations apply kanban-sync --local -c worker-sync/wrangler.jsonc",
     "sync:bootstrap": "tsx scripts/bootstrap-sync-workspace.ts",
+    "sync:migrate:legacy": "tsx scripts/migrate-legacy-board.ts",
+    "sync:verify:migration": "tsx scripts/verify-multi-project-migration.ts",
     "sync:migrate": "pnpm sync:migrate:prod",
     "sync:deploy": "pnpm sync:deploy:prod",
     "sync:migrate:staging": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler d1 migrations apply kanban-sync-staging --remote --env staging -c worker-sync/wrangler.jsonc",

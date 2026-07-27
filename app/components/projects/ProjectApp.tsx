@@ -36,6 +36,7 @@ import { loadSyncConfig, type SyncConfig } from "../../sync/config";
 import { BoardNavigation } from "./BoardNavigation";
 import { MyProjectsView } from "./MyProjectsView";
 import { ProjectOverview } from "./ProjectOverview";
+import { LegacyMigrationGate } from "./LegacyMigrationGate";
 
 type ProjectAppProps = {
   enableServiceWorker?: boolean;
@@ -154,29 +155,41 @@ export function ProjectApp({
   }
   if (route.kind === "projects") {
     return (
-      <MyProjectsView
+      <LegacyMigrationGate
+        config={bootstrap.config}
+        session={bootstrap.session}
         projects={bootstrap.projects}
-        userName={bootstrap.session.user.displayName}
-      />
+      >
+        <MyProjectsView
+          projects={bootstrap.projects}
+          userName={bootstrap.session.user.displayName}
+        />
+      </LegacyMigrationGate>
     );
   }
   return (
-    <ProjectRouteView
+    <LegacyMigrationGate
       config={bootstrap.config}
-      route={route}
-      enableServiceWorker={enableServiceWorker}
-      appConfigUrl={appConfigUrl}
-      onProjectsChanged={() => {
-        void Promise.all([
-          listProjects(bootstrap.config, "active"),
-          listProjects(bootstrap.config, "archived"),
-        ]).then(([active, archived]) => {
-          setBootstrap((current) => current.kind === "ready"
-            ? { ...current, projects: [...active, ...archived] }
-            : current);
-        }).catch(() => {});
-      }}
-    />
+      session={bootstrap.session}
+      projects={bootstrap.projects}
+    >
+      <ProjectRouteView
+        config={bootstrap.config}
+        route={route}
+        enableServiceWorker={enableServiceWorker}
+        appConfigUrl={appConfigUrl}
+        onProjectsChanged={() => {
+          void Promise.all([
+            listProjects(bootstrap.config, "active"),
+            listProjects(bootstrap.config, "archived"),
+          ]).then(([active, archived]) => {
+            setBootstrap((current) => current.kind === "ready"
+              ? { ...current, projects: [...active, ...archived] }
+              : current);
+          }).catch(() => {});
+        }}
+      />
+    </LegacyMigrationGate>
   );
 }
 

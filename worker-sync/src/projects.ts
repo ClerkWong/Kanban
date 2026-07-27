@@ -10,6 +10,7 @@ import {
   parseUuid,
   readJsonObject,
 } from "./validation";
+import { sha256Hex } from "./logic";
 
 export type ApiContext = {
   request: Request;
@@ -254,16 +255,59 @@ async function updateProject(
 
 export async function handleProjectRequest(context: ApiContext): Promise<Response | null> {
   const url = new URL(context.request.url);
-  if (url.pathname !== "/me" && !url.pathname.startsWith("/projects") && url.pathname !== "/admin/projects") {
+  if (!url.pathname.startsWith("/me") && !url.pathname.startsWith("/projects") && url.pathname !== "/admin/projects") {
     return null;
   }
   await requireMigrationComplete(context.env.DB);
+  if (
+    url.pathname === "/me/replace-legacy-token" &&
+    context.request.method === "POST"
+  ) {
+    if (context.user.tokenKind !== "legacy") {
+      throw new RequestError(409, "token_not_legacy");
+    }
+    const body = await readJsonObject(context.request, ["newToken"], 8192);
+    if (
+      typeof body.newToken !== "string" ||
+      body.newToken.length < 32 ||
+      body.newToken.length > 4096 ||
+      /\s/.test(body.newToken)
+    ) {
+      throw new RequestError(400, "invalid_token");
+    }
+    const newTokenHash = await sha256Hex(body.newToken);
+    const replacement = await context.env.DB.prepare(
+      `SELECT access_tokens.id, access_tokens.user_id
+       FROM access_tokens
+       INNER JOIN user_accounts ON user_accounts.id = access_tokens.user_id
+       WHERE access_tokens.token_hash = ?
+         AND access_tokens.token_kind = 'personal'
+         AND access_tokens.revoked_at IS NULL
+         AND user_accounts.status = 'active'`,
+    ).bind(newTokenHash).first<{ id: string; user_id: string }>();
+    if (!replacement) throw new RequestError(400, "invalid_replacement_token");
+    const now = new Date().toISOString();
+    const result = await context.env.DB.prepare(
+      `UPDATE access_tokens SET revoked_at = ?
+       WHERE id = ? AND token_kind = 'legacy' AND revoked_at IS NULL`,
+    ).bind(now, context.user.tokenId).run();
+    if (!result.meta.changes) throw new RequestError(409, "token_already_replaced");
+    return json(200, {
+      userId: replacement.user_id,
+      tokenKind: "personal",
+      requestId: context.requestId,
+    }, context.requestId);
+  }
   if (url.pathname === "/me" && context.request.method === "GET") {
     const memberships = await context.env.DB.prepare(
       "SELECT workspace_id, role FROM workspace_members WHERE user_id = ?",
     ).bind(context.user.id).all<{ workspace_id: string; role: string }>();
     return json(200, {
-      user: { id: context.user.id, displayName: context.user.displayName },
+      user: {
+        id: context.user.id,
+        displayName: context.user.displayName,
+        tokenKind: context.user.tokenKind,
+      },
       workspaces: memberships.results.map((row) => ({ workspaceId: row.workspace_id, role: row.role })),
       requestId: context.requestId,
     }, context.requestId);

@@ -113,7 +113,7 @@ describe("Project and membership APIs", () => {
   it("returns identity and an admin registry without project content", async () => {
     const me = await dispatch(managerToken, "/me");
     expect(await me.json()).toMatchObject({
-      user: { id: managerId },
+      user: { id: managerId, tokenKind: "personal" },
       workspaces: [{ workspaceId, role: "admin" }],
     });
     const registry = await dispatch(managerToken, "/admin/projects");
@@ -121,6 +121,44 @@ describe("Project and membership APIs", () => {
     const body = await registry.json() as { projects: Array<Record<string, unknown>> };
     expect(body.projects.map((row) => row.id).sort()).toEqual([projectA, projectB]);
     expect(body.projects.every((row) => !("boards" in row) && !("activeBoardCount" in row))).toBe(true);
+  });
+
+  it("validates a personal replacement before revoking a shared legacy token", async () => {
+    const legacyUserId = "20000000-0000-4000-8000-000000000099";
+    const legacyToken = "legacy-shared-token-that-is-long-enough";
+    const now = "2026-07-27T00:00:00.000Z";
+    await env.DB.prepare(
+      "INSERT INTO user_accounts (id, display_name, status, created_at, updated_at) VALUES (?, 'Legacy', 'active', ?, ?)",
+    ).bind(legacyUserId, now, now).run();
+    await env.DB.prepare(
+      "INSERT INTO access_tokens (id, user_id, label, token_hash, token_kind, created_at) VALUES (?, ?, 'legacy', ?, 'legacy', ?)",
+    ).bind(
+      "20000000-0000-4000-8000-000000000098",
+      legacyUserId,
+      await sha256Hex(legacyToken),
+      now,
+    ).run();
+
+    const invalid = await dispatch(legacyToken, "/me/replace-legacy-token", {
+      method: "POST",
+      body: JSON.stringify({ newToken: "not-a-valid-personal-token-value-0000" }),
+    });
+    expect(invalid.status).toBe(400);
+    expect((await dispatch(legacyToken, "/me")).status).toBe(200);
+
+    const replaced = await dispatch(legacyToken, "/me/replace-legacy-token", {
+      method: "POST",
+      body: JSON.stringify({ newToken: managerToken }),
+    });
+    expect(replaced.status).toBe(200);
+    expect(await replaced.json()).toMatchObject({
+      userId: managerId,
+      tokenKind: "personal",
+    });
+    expect((await dispatch(legacyToken, "/me")).status).toBe(401);
+    expect(await (await dispatch(managerToken, "/me")).json()).toMatchObject({
+      user: { tokenKind: "personal" },
+    });
   });
 
   it("creates idempotently, makes the creator manager, and rejects active name conflicts", async () => {

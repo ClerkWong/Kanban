@@ -7,6 +7,7 @@ export type RuntimeSession = {
   user: {
     id: string;
     displayName: string;
+    tokenKind: "personal" | "legacy";
   };
   workspaces: Array<{
     workspaceId: string;
@@ -29,6 +30,7 @@ export function parseRuntimeSession(value: unknown): RuntimeSession | null {
     !isUuid(user.id) ||
     typeof user.displayName !== "string" ||
     !user.displayName ||
+    (user.tokenKind !== "personal" && user.tokenKind !== "legacy") ||
     !Array.isArray(raw.workspaces)
   ) {
     return null;
@@ -41,7 +43,7 @@ export function parseRuntimeSession(value: unknown): RuntimeSession | null {
   });
   if (workspaces.length !== raw.workspaces.length) return null;
   return {
-    user: { id: user.id, displayName: user.displayName },
+    user: { id: user.id, displayName: user.displayName, tokenKind: user.tokenKind },
     workspaces,
   };
 }
@@ -57,4 +59,24 @@ export async function fetchRuntimeSession(config: SyncConfig): Promise<RuntimeSe
     );
   }
   return session;
+}
+
+/** Validates the replacement as a live personal token before asking the
+ * server to revoke the currently authenticated legacy shared token. */
+export async function replaceLegacyToken(
+  legacyConfig: SyncConfig,
+  newToken: string,
+): Promise<RuntimeSession> {
+  const replacementConfig = { ...legacyConfig, token: newToken };
+  const replacement = await fetchRuntimeSession(replacementConfig);
+  if (replacement.user.tokenKind !== "personal") {
+    throw new Error("替代 token 必須是有效的個人 token。");
+  }
+  await requestJson(
+    legacyConfig,
+    "/me/replace-legacy-token",
+    "換發 legacy token",
+    { method: "POST", body: JSON.stringify({ newToken }) },
+  );
+  return replacement;
 }

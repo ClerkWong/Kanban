@@ -1319,6 +1319,29 @@ textarea {
   width: min(620px, 100%);
 }
 
+.migrationSection {
+  display: grid;
+  gap: 12px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+
+.migrationSection h3,
+.migrationSection p {
+  margin: 0;
+}
+
+.migrationSection p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.migrationChoices {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 /* Monthly Report Modal */
 .reportModal {
   width: min(900px, 100%);

@@ -829,19 +829,19 @@ Add project management views
 
 **Steps**
 
-- [ ] 偵測 local placeholder 與 server legacy Project/Board，提供 merge/remote 選擇。
-- [ ] migration command 先把 `migration_state` 設為 `locked`，阻擋 legacy PUT。
-- [ ] lock 後才讀取最新 legacy row，建立 Workspace/Project/Board 與 memberships。
-- [ ] Board copy、role/token mapping 全數成功後才原子標記 `complete`；失敗回 `pending`。
-- [ ] merge 使用既有 card-level LWW 與 tombstones，不做整份覆蓋。
-- [ ] migration 完成並成功 serialize/sync 後才標記完成；保留一次可匯出的 legacy backup。
-- [ ] shared legacy token 顯示換發提示；個人 token 驗證成功後才撤銷舊 token。
-- [ ] 驗證 old `/board` client 與 v2 client 使用同一 revision row。
-- [ ] migration lock 期間 old client 保留 pending data並在解除後重試。
-- [ ] 驗證 attachment queue v1 不會送到錯誤 Board。
-- [ ] 建立 migration verification script，比對 card/count/revision/completedAt/attachments/
+- [x] 偵測 local placeholder 與 server legacy Project/Board，提供 merge/remote 選擇。
+- [x] migration command 先把 `migration_state` 設為 `locked`，阻擋 legacy PUT。
+- [x] lock 後才讀取最新 legacy row，建立 Workspace/Project/Board 與 memberships。
+- [x] Board copy、role/token mapping 全數成功後才原子標記 `complete`；失敗回 `pending`。
+- [x] merge 使用既有 card-level LWW 與 tombstones，不做整份覆蓋。
+- [x] migration 完成並成功 serialize/sync 後才標記完成；保留一次可匯出的 legacy backup。
+- [x] shared legacy token 顯示換發提示；個人 token 驗證成功後才撤銷舊 token。
+- [x] 驗證 old `/board` client 與 v2 client 使用同一 revision row。
+- [x] migration lock 期間 old client 保留 pending data並在解除後重試。
+- [x] 驗證 attachment queue v1 不會送到錯誤 Board。
+- [x] 建立 migration verification script，比對 card/count/revision/completedAt/attachments/
   tombstones，不輸出 Card descriptions 或 token。
-- [ ] README 補上 Workspace/Project/Board 操作、角色與 migration runbook。
+- [x] README 補上 Workspace/Project/Board 操作、角色與 migration runbook。
 
 **E2E scenarios**
 
@@ -863,6 +863,15 @@ pnpm sync:dry-run
 pnpm sync:dry-run:staging
 git diff --check
 ```
+
+驗收結果（2026-07-27）：144 個單元測試、48 個 Worker runtime tests、lint、
+typecheck、Web/mobile build、generated Worker types check 與 production/staging dry-run
+全數通過。Migration command 先獨立鎖定 legacy PUT，再於受控 transaction 從最新
+`board` row 建立預設 Project/Board 與 memberships；失敗路徑回復 `pending`。Client
+明確要求 merge/remote 選擇，merge 成功推送後才寫入完成 marker，並只建立一次可匯出
+backup。`/me` 回傳 token kind；legacy token 只有在替代 personal token 通過 server
+驗證後才撤銷。E2E 驗證角色、Board A/B 隔離、archive read-only 與 `/board`/v2
+共用 revision authority；舊 attachment queue blocker 測試持續通過。
 
 **Commit**
 

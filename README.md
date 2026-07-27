@@ -13,6 +13,7 @@ D1、附件存入 R2，供多裝置共用。
 - 看板新增、編輯、拖放、鍵盤移動、搜尋、篩選、WIP 與逾期統計。
 - 本機儲存與離線啟動；同步失敗不影響本機編輯。
 - 最近六個日曆月的完成報表，以卡片 `completedAt` 計算。
+- 多個 Project／Board、每個 Project 獨立角色、封存唯讀與 Activity Log。
 - Web 附件使用 IndexedDB；iOS/Android 使用 Capacitor Filesystem。
 - 照片、錄音與原生繁中語音建卡。
 - 選用的 D1 看板同步與 R2 附件同步；Bearer token 只由使用者在裝置端輸入。
@@ -23,6 +24,7 @@ D1、附件存入 R2，供多裝置共用。
 ```text
 app/
   components/board/   共用看板 UI
+  components/projects/ Project／Board 導覽、管理與 legacy migration UI
   platform/           Web / Capacitor 裝置能力
   sync/               看板與附件同步用戶端
 mobile/               純 Vite 的 Capacitor Web bundle 入口
@@ -135,6 +137,41 @@ pnpm sync:bootstrap -- \
 production 另須明確加入 `--confirm-production`。在 Task 1–13 本機驗收完成前，不得執行
 任何 remote target。腳本只顯示 target 與 resource IDs，不顯示 token 或 token hash。
 
+### Legacy 單看板切換
+
+舊 `board` row 的切換必須在 bootstrap 完成後由明確命令執行。命令會先把
+`migration_state` 設為 `locked`，使舊 `/board` PUT 收到可重試的 503；接著才從最新
+legacy row 複製 revision 與完整 Board JSON，建立預設 Project／Board 與 memberships，
+最後標記 `complete`。複製失敗會把狀態回復為 `pending`：
+
+```bash
+pnpm sync:migrate:legacy -- \
+  --target local \
+  --manager-user-id "11111111-2222-4333-8444-555555555555"
+```
+
+Staging 改用 `--target staging`；production 還必須加入 `--confirm-production`。不得在
+未備份、未確認 manager UUID 或 client 仍大量使用舊版時執行 production cutover。
+
+切換前後可將 `/board` 與 v2 Board API 的 JSON response 各保存為權限受控的暫存檔，
+再執行：
+
+```bash
+pnpm sync:verify:migration -- \
+  --legacy-file /path/to/legacy-snapshot.json \
+  --v2-file /path/to/v2-snapshot.json
+```
+
+驗證輸出只包含 revision、card/completed/attachment/tombstone 數量與 `completedAt`
+清單，不輸出卡片描述或 token。Snapshot 與 client 匯出的
+`kanban-legacy-backup.json` 仍可能含工作內容，驗證後應依資料政策安全刪除。
+
+新版 client 偵測到 local placeholder 與 server legacy Board 時，會要求明確選擇
+「合併本機與遠端」或「採用遠端」。合併沿用 card-level LWW 與 tombstone 規則，
+不做整份覆蓋；原本機 Board 只備份一次。若 `/me` 回報目前使用 shared legacy token，
+client 會要求輸入個人 token。Worker 會先驗證個人 token 有效，成功後才撤銷舊 token；
+驗證失敗時原 token 保持有效。
+
 所有遠端 migration、資源建立與部署都屬外部變更。先依
 [NextTasks.md](./NextTasks.md) 建立 staging 並通過驗收；不要直接用 production
 測試附件流程。部署後可用只讀 smoke test：
@@ -148,9 +185,12 @@ pnpm sync:smoke
 腳本不接受命令列 token，也不會修改遠端看板。CI、repo、bundle 與 log 都不得包含
 明文 token。
 
-## 同步行為與限制
+## Project／Board 與同步行為
 
-- 單一共用看板，以 revision 樂觀鎖與卡片級 `updatedAt` LWW 合併。
+- 「我的專案」只列出目前 user 具有 membership 的 Project；沒有跨專案內容總覽。
+- Manager 管理 Project、成員與 Board；Contributor 可修改卡片；Viewer 唯讀。
+- 每個 Board 使用獨立 revision、local cache、attachment queue 與 R2 scope。
+- 同步以 revision 樂觀鎖與卡片級 `updatedAt` LWW 合併。
 - 刪除墓碑保留 30 天；離線超過 30 天的舊裝置仍可能讓已刪卡片重新出現。
 - 附件上限為 10 MiB。上傳必須先成功，board 才可發布附件參照；刪除則在 board
   不再引用後送出冪等 DELETE。

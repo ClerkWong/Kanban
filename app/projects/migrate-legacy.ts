@@ -10,6 +10,8 @@
 // crossing that boundary must still gate on `isServerResourceId`.
 
 import { parsePersistedBoard, serializeBoard, STORAGE_KEY } from "../board-model";
+import type { BoardState } from "../board-model";
+import { mergeBoards } from "../sync/merge";
 import { LOCAL_LEGACY_BOARD_ID, LOCAL_LEGACY_PROJECT_ID } from "./model";
 import type { BoardContext } from "./types";
 import {
@@ -28,6 +30,16 @@ import {
 
 const LEGACY_PROJECT_NAME = "舊版看板";
 const LEGACY_BOARD_NAME = "舊版看板";
+export const LEGACY_BACKUP_KEY = "kanban-legacy-backup-v1";
+export const LEGACY_SERVER_ADOPTION_KEY = "kanban-legacy-server-adoption-v1";
+
+export type ServerMigrationChoice = "merge" | "remote";
+
+export type LegacyBackup = {
+  exportedAt: string;
+  source: "legacy-local";
+  board: BoardState;
+};
 
 export type MigrationResult =
   /** No legacy data and nothing migrated yet -- a genuinely fresh install. */
@@ -50,6 +62,84 @@ export const LEGACY_BOARD_CONTEXT: BoardContext = {
   projectId: LOCAL_LEGACY_PROJECT_ID,
   boardId: LOCAL_LEGACY_BOARD_ID,
 };
+
+export const SERVER_LEGACY_CONTEXT: BoardContext = {
+  workspaceId: "00000000-0000-4000-8000-000000000001",
+  projectId: "00000000-0000-4000-8000-000000000003",
+  boardId: "00000000-0000-4000-8000-000000000004",
+};
+
+export function hasLocalLegacyBoard(storage: StorageLike): boolean {
+  return storage.getItem(STORAGE_KEY) !== null ||
+    storage.getItem(boardContentKey(LOCAL_LEGACY_BOARD_ID)) !== null;
+}
+
+export function needsServerLegacyChoice(
+  storage: StorageLike,
+  context: BoardContext,
+): boolean {
+  return hasLocalLegacyBoard(storage) &&
+    storage.getItem(LEGACY_SERVER_ADOPTION_KEY) !==
+      `${context.workspaceId}/${context.projectId}/${context.boardId}`;
+}
+
+export function markServerLegacyAdopted(
+  storage: StorageLike,
+  context: BoardContext,
+): void {
+  storage.setItem(
+    LEGACY_SERVER_ADOPTION_KEY,
+    `${context.workspaceId}/${context.projectId}/${context.boardId}`,
+  );
+}
+
+export function loadLegacyBackup(storage: StorageLike): LegacyBackup | null {
+  const raw = storage.getItem(LEGACY_BACKUP_KEY);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<LegacyBackup>;
+    const parsed = parsePersistedBoard(JSON.stringify(value.board));
+    return value.source === "legacy-local" &&
+      typeof value.exportedAt === "string" &&
+      !parsed.recovered
+      ? { exportedAt: value.exportedAt, source: "legacy-local", board: parsed.board }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Applies an explicit local-vs-remote choice. The original local board is
+ * backed up once and never overwritten by later retries. */
+export function adoptServerLegacyBoard(
+  storage: StorageLike,
+  context: BoardContext,
+  remoteBoard: BoardState,
+  remoteRevision: number,
+  choice: ServerMigrationChoice,
+  now = new Date(),
+): { board: BoardState; backup: LegacyBackup } {
+  const localRaw =
+    storage.getItem(boardContentKey(LOCAL_LEGACY_BOARD_ID)) ??
+    storage.getItem(STORAGE_KEY);
+  const local = parsePersistedBoard(localRaw).board;
+  const existingBackup = loadLegacyBackup(storage);
+  const backup = existingBackup ?? {
+    exportedAt: now.toISOString(),
+    source: "legacy-local" as const,
+    board: local,
+  };
+  if (!existingBackup) {
+    storage.setItem(LEGACY_BACKUP_KEY, JSON.stringify(backup));
+  }
+  const board = choice === "merge" ? mergeBoards(local, remoteBoard) : remoteBoard;
+  const verified = parsePersistedBoard(serializeBoard(board));
+  if (verified.recovered) throw new Error("遷移後的看板無法安全序列化。");
+  saveBoardState(storage, context.boardId, verified.board);
+  saveBoardRevision(storage, context.boardId, remoteRevision);
+  saveActiveContext(storage, context);
+  return { board: verified.board, backup };
+}
 
 /** Detects the legacy `kanban-pwa-board-v1` key and, if present and not yet
  * migrated, copies its content into `kanban-board-v1:{LOCAL_LEGACY_BOARD_ID}`

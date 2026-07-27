@@ -32,7 +32,7 @@ class MemoryStorage {
 
 function session(userId: string, displayName: string): RuntimeSession {
   return {
-    user: { id: userId, displayName },
+    user: { id: userId, displayName, tokenKind: "personal" },
     workspaces: [{ workspaceId, role: "member" }],
   };
 }
@@ -64,19 +64,19 @@ async function withWindowStorage(
 
 test("runtime session accepts only server identity and known workspace roles", () => {
   assert.deepEqual(parseRuntimeSession({
-    user: { id: userA, displayName: "Alice", role: "owner" },
+    user: { id: userA, displayName: "Alice", role: "owner", tokenKind: "legacy" },
     workspaces: [{ workspaceId, role: "admin", userId: userB }],
     localUserId: userB,
   }), {
-    user: { id: userA, displayName: "Alice" },
+    user: { id: userA, displayName: "Alice", tokenKind: "legacy" },
     workspaces: [{ workspaceId, role: "admin" }],
   });
   assert.equal(parseRuntimeSession({
-    user: { id: "local-user", displayName: "Bad" },
+    user: { id: "local-user", displayName: "Bad", tokenKind: "personal" },
     workspaces: [],
   }), null);
   assert.equal(parseRuntimeSession({
-    user: { id: userA, displayName: "Alice" },
+    user: { id: userA, displayName: "Alice", tokenKind: "personal" },
     workspaces: [{ workspaceId, role: "manager" }],
   }), null);
 });
