@@ -894,16 +894,17 @@ Migrate legacy boards to projects
 
 **Steps**
 
-- [ ] CI 增加 multi-project migration、role matrix 與 legacy alias tests。
-- [ ] 重新產生並檢查 Worker bindings types。
-- [ ] fresh clone 執行完整品質關卡。
-- [ ] Android debug 與未簽章 iOS simulator build。
-- [ ] final `pnpm mobile:sync`，確認原生 bundle 是同一 commit。
-- [ ] 撰寫 staging bootstrap：workspace owner、個人 tokens、Project roles。
-- [ ] 撰寫 token create/revoke/rotate/device-lost 流程。
-- [ ] 撰寫 staging reset：D1 board/log 與 R2 object 協調清除。
-- [ ] 更新 `NextTasks.md`，將本機實作標記完成，但 staging 驗收仍保持未勾選。
-- [ ] commit 後才依 `NextTasks.md` 建立 staging 遠端資源。
+- [x] CI 增加 multi-project migration、role matrix 與 legacy alias tests。
+- [x] 重新產生並檢查 Worker bindings types。
+- [x] fresh clone 執行完整品質關卡。
+- [x] Android debug 與未簽章 iOS simulator build。
+- [x] final `pnpm mobile:sync`，確認原生 bundle 是同一 commit。
+- [x] 撰寫 staging bootstrap：workspace owner、個人 tokens、Project roles。
+- [x] 撰寫 token create/revoke/rotate/device-lost 流程。
+- [x] 撰寫 staging reset：D1 board/log 與 R2 object 協調清除。
+- [x] 更新 `NextTasks.md`，將本機實作標記完成，但 staging 驗收仍保持未勾選。
+- [x] 確認只有 commit/push 後才依 `NextTasks.md` 另行建立 staging 遠端資源；本 Task
+  未變更遠端。
 
 **Full gate**
 
@@ -921,6 +922,14 @@ pnpm sync:dry-run:staging
 pnpm mobile:sync
 git diff --check
 ```
+
+驗收結果（2026-07-27）：以 commit `fb7c609` 建立全新 clone，`pnpm install
+--frozen-lockfile`、150 個單元測試、48 個 Worker runtime tests、12 個 client
+migration release tests、8 個 role/legacy alias release tests、lint、typecheck、
+Web/mobile build、Worker types check、production/staging dry-run、final Capacitor sync、
+Android debug 與未簽章 iOS simulator build 全數通過。Fresh clone 驗收另修正 pnpm
+build-script allowlist 與缺少直接 `tsx` devDependency，artifact fixture-token scan 與
+tracked secret-file scan 均無命中。Staging 遠端資源與部署尚未建立。
 
 **Commit**
 

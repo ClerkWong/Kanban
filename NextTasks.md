@@ -2,7 +2,7 @@
 
 - 最後更新：2026-07-27
 - 目前分支：`feature/multi-project-v1`
-- 已推送功能基準：`d9a2bf2`（`Migrate legacy boards to projects`，Task 1–13）
+- 已推送功能基準：`fb7c609`（Task 1–14）
 
 本文件整併先前兩份規劃，是後續工作、驗收與發布順序的單一依據。
 已完成的歷史實作只保留結果與證據；未完成項目依實際執行順序排列。
@@ -27,7 +27,7 @@
 | 多專案 Client Task 11 | 已完成並推送 | Web／Capacitor 共用 ProjectApp、我的專案、專案摘要、Board switcher、嚴格 hash route 與 viewer/archive 唯讀 UI |
 | 多專案 Client Task 12 | 已完成並推送 | manager Project／Board lifecycle、成員角色、archived views、summary filter、Activity Log cursor 與離線管理 guard |
 | 多專案 Task 13 | 已完成並推送 | legacy lock/copy/rollback、client merge/remote、一次性 backup、personal token 換發、verification script 與 E2E |
-| 多專案 Task 14 | 下一個實作項目 | staging-ready CI、fresh clone／原生完整關卡與 staging/token/reset runbooks |
+| 多專案 Task 14 | 已完成並推送 | staging-ready CI、fresh clone／原生完整關卡、受限 token CLI 與 staging/token/reset runbooks |
 | staging 設定 | 基礎設定完成，尚無遠端資源 | Wrangler environment 與 scripts 可沿用；應用 schema/API 需先升級 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
@@ -84,9 +84,15 @@
   Web/mobile build、Worker types check 與 production/staging dry-run；已驗證 legacy
   lock/copy/rollback、merge/remote、一次性 backup、personal token 驗證後撤銷 shared
   token，以及角色、Board 隔離、archive 與 alias authority E2E。
-- `feature/multi-project-v1` 的 Task 1–13 功能已推送到 `d9a2bf2`；private beta v1
-  仍來自較早的 `bd17e5b`。下一個實作項目是 Task 14 staging-ready release
-  candidate；Task 14 完成前仍不建立 staging 遠端資源。
+- 多專案 Task 14 已在 `fb7c609` 的 fresh clone 通過 frozen install、150 個單元測試、
+  48 個 Worker runtime tests、12 個 client migration 與 8 個 role/legacy alias
+  release tests、lint、typecheck、Web/mobile build、Worker types、production/staging
+  dry-run、final mobile sync、Android debug 與未簽章 iOS simulator build。Artifact
+  fixture-token 與 tracked secret-file scan 無命中。
+- `feature/multi-project-v1` 的 Task 1–14 本機候選功能基準是 `fb7c609`；private beta
+  v1 仍來自較早的 `bd17e5b`。下一步是 P0-3：依
+  `docs/runbooks/multi-project-staging.md` 建立完全隔離的 staging；目前尚未建立或部署
+  任何 staging Worker/D1/R2/token。
 
 ## P0-1：將客製 title 更新到 beta
 
