@@ -774,15 +774,15 @@ Add project and board navigation
 
 **Steps**
 
-- [ ] manager 可建立／改名／封存／還原 Board。
-- [ ] manager 可改 Project 名稱、管理 member role、封存／還原 Project。
-- [ ] 不顯示永久刪除。
-- [ ] 最後 manager guard 在 UI 預先提示，但仍以 server 為準。
-- [ ] contributor/viewer 不顯示管理入口；直接呼叫 API 仍由 Worker 拒絕。
-- [ ] archived Project/Board 使用唯讀版面並保留 summary/log/attachment download。
-- [ ] Log 支援 Project/Board filter、cursor 載入更多與可理解的繁中 action 文案。
-- [ ] Project summary 預設排除 archived Board，提供明確「包含封存」filter。
-- [ ] 管理 mutation 斷網時立即說明需要連線，不排入 Board offline queue。
+- [x] manager 可建立／改名／封存／還原 Board。
+- [x] manager 可改 Project 名稱、管理 member role、封存／還原 Project。
+- [x] 不顯示永久刪除。
+- [x] 最後 manager guard 在 UI 預先提示，但仍以 server 為準。
+- [x] contributor/viewer 不顯示管理入口；直接呼叫 API 仍由 Worker 拒絕。
+- [x] archived Project/Board 使用唯讀版面並保留 summary/log/attachment download。
+- [x] Log 支援 Project/Board filter、cursor 載入更多與可理解的繁中 action 文案。
+- [x] Project summary 預設排除 archived Board，提供明確「包含封存」filter。
+- [x] 管理 mutation 斷網時立即說明需要連線，不排入 Board offline queue。
 
 **Validation**
 
@@ -796,6 +796,14 @@ pnpm mobile:sync
 ```
 
 手動檢查 360 px、768 px、桌面寬度及鍵盤操作。
+
+驗收結果（2026-07-27）：140 個單元測試、46 個 Worker runtime tests、lint、
+typecheck、Web build、mobile build 與完整 `pnpm mobile:sync` 全數通過。Project
+manager 可管理名稱、狀態、成員角色與 Board lifecycle；最後 manager 在 UI 預先
+阻擋，server guard 仍保留。Contributor／viewer 看不到管理入口。Archived Project
+只提供還原與唯讀內容，archived Board 可瀏覽、下載附件及查看 Log。摘要預設排除封存
+看板，可明確切換包含封存；Log 可依 Board 篩選並使用 cursor 載入更多。所有管理
+mutation 在離線時於送出前停止，不進入 Board queue。
 
 **Commit**
 

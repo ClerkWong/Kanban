@@ -166,6 +166,16 @@ export function ProjectApp({
       route={route}
       enableServiceWorker={enableServiceWorker}
       appConfigUrl={appConfigUrl}
+      onProjectsChanged={() => {
+        void Promise.all([
+          listProjects(bootstrap.config, "active"),
+          listProjects(bootstrap.config, "archived"),
+        ]).then(([active, archived]) => {
+          setBootstrap((current) => current.kind === "ready"
+            ? { ...current, projects: [...active, ...archived] }
+            : current);
+        }).catch(() => {});
+      }}
     />
   );
 }
@@ -175,12 +185,15 @@ function ProjectRouteView({
   route,
   enableServiceWorker,
   appConfigUrl,
+  onProjectsChanged,
 }: {
   config: SyncConfig;
   route: Exclude<ProjectRoute, { kind: "projects" }>;
   enableServiceWorker: boolean;
   appConfigUrl: string;
+  onProjectsChanged: () => void;
 }) {
+  const [refreshToken, setRefreshToken] = useState(0);
   const [state, setState] = useState<{
     detail: ProjectDetail | null;
     report: ProjectReport | null;
@@ -248,7 +261,7 @@ function ProjectRouteView({
     return () => {
       cancelled = true;
     };
-  }, [config, route]);
+  }, [config, refreshToken, route]);
 
   const board = useMemo(
     () => route.kind === "board"
@@ -266,9 +279,16 @@ function ProjectRouteView({
   if (route.kind === "project") {
     return (
       <ProjectOverview
+        key={refreshToken}
+        config={config}
         detail={state.detail}
         report={state.report}
-        boards={state.activeBoards}
+        activeBoards={state.activeBoards}
+        allBoards={state.allBoards}
+        onRefresh={() => {
+          setRefreshToken((current) => current + 1);
+          onProjectsChanged();
+        }}
       />
     );
   }
