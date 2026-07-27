@@ -33,6 +33,7 @@
         {
           "binding": "DB",
           "database_name": "kanban-sync-staging",
+          "database_id": "bcae6724-352b-453d-92e4-28bcf229f76f",
           "migrations_dir": "migrations"
         }
       ],
