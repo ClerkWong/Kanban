@@ -4,8 +4,12 @@ import type { AttachmentRef } from "../../board-model";
 import { usePlatform } from "../../platform/context";
 import { makeId } from "../../board-model";
 import { CapabilityError, MAX_ATTACHMENT_BYTES, base64ByteSize } from "../../platform/types";
-import { cacheLegacyDownloadedAttachment } from "../../sync/attachment-api";
+import {
+  cacheDownloadedAttachment,
+  cacheLegacyDownloadedAttachment,
+} from "../../sync/attachment-api";
 import { loadSyncConfig } from "../../sync/config";
+import type { BoardContext } from "../../projects/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export function AttachmentSection({
@@ -13,11 +17,15 @@ export function AttachmentSection({
   onChange,
   onError,
   onDownload,
+  readOnly = false,
+  context,
 }: {
   attachments: AttachmentRef[];
   onChange: (next: AttachmentRef[]) => void;
   onError: (error: unknown) => void;
   onDownload?: (attachment: AttachmentRef) => Promise<boolean>;
+  readOnly?: boolean;
+  context?: BoardContext;
 }) {
   const platform = usePlatform();
   const [recording, setRecording] = useState(false);
@@ -34,6 +42,22 @@ export function AttachmentSection({
         return false;
       }
       try {
+        if (context) {
+          return cacheDownloadedAttachment(
+            config,
+            context,
+            attachment.id,
+            platform,
+            attachment.fileName,
+            attachment.mimeType,
+            () => {
+              const current = loadSyncConfig();
+              return Boolean(
+                current && current.baseUrl === config.baseUrl && current.token === config.token,
+              );
+            },
+          );
+        }
         return cacheLegacyDownloadedAttachment(
           config,
           platform,
@@ -50,7 +74,7 @@ export function AttachmentSection({
         return false;
       }
     },
-    [platform],
+    [context, platform],
   );
 
   function updateRecording(next: boolean) {
@@ -180,7 +204,7 @@ export function AttachmentSection({
   return (
     <fieldset className="fieldGroup">
       <legend>附件</legend>
-      <div className="attachmentActions">
+      {!readOnly && <div className="attachmentActions">
         <button type="button" className="secondaryButton" disabled={busy || recording} onClick={addPhoto}>
           ＋ 照片
         </button>
@@ -198,7 +222,7 @@ export function AttachmentSection({
             錄音中…再按一次完成
           </span>
         )}
-      </div>
+      </div>}
       {errorMessage && (
         <p className="attachmentError" role="alert">
           {errorMessage}
@@ -218,6 +242,7 @@ export function AttachmentSection({
                 setConfirmingRemoveId((current) => (current === attachment.id ? null : current))
               }
               onDownload={onDownload ?? downloadFromCurrentSync}
+              readOnly={readOnly}
             />
           ))}
         </ul>
@@ -232,12 +257,14 @@ function AttachmentItem({
   onRemoveClick,
   onResetArmed,
   onDownload,
+  readOnly,
 }: {
   attachment: AttachmentRef;
   armed: boolean;
   onRemoveClick: () => void;
   onResetArmed: () => void;
   onDownload?: (attachment: AttachmentRef) => Promise<boolean>;
+  readOnly: boolean;
 }) {
   const platform = usePlatform();
   const [url, setUrl] = useState<string | null>(null);
@@ -316,15 +343,17 @@ function AttachmentItem({
           )}
         </span>
       )}
-      <button
-        type="button"
-        className={armed ? "iconOnly attachmentRemoveArmed" : "iconOnly"}
-        aria-label={armed ? "確認移除" : `移除附件 ${attachment.fileName}`}
-        onClick={onRemoveClick}
-        onBlur={onResetArmed}
-      >
-        {armed ? "確認移除" : "−"}
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          className={armed ? "iconOnly attachmentRemoveArmed" : "iconOnly"}
+          aria-label={armed ? "確認移除" : `移除附件 ${attachment.fileName}`}
+          onClick={onRemoveClick}
+          onBlur={onResetArmed}
+        >
+          {armed ? "確認移除" : "−"}
+        </button>
+      )}
     </li>
   );
 }

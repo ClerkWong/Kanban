@@ -22,9 +22,15 @@ import {
   updateCard,
   updateWipLimit,
   type AttachmentRef,
+  type BoardState,
 } from "../../board-model";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type {
+  Dispatch,
+  FormEvent,
+  ReactNode,
+  SetStateAction,
+} from "react";
 import { CardItem } from "./CardItem";
 import { ConfirmModal } from "./ConfirmModal";
 import { DetailModal } from "./DetailModal";
@@ -34,6 +40,11 @@ import { VoiceCaptureButton } from "./VoiceCaptureButton";
 import { usePlatform } from "../../platform/context";
 import { CapabilityError } from "../../platform/types";
 import { useSync } from "../../sync/useSync";
+import type { SyncHandle } from "../../sync/useSync";
+import { useBoardSync, type BoardSyncHandle } from "../../sync/useBoardSync";
+import { useBoardStore } from "../../projects/useBoardStore";
+import type { BoardContext } from "../../projects/types";
+import type { BoardAccess } from "../../projects/navigation";
 import {
   type ConfirmState,
   type DetailState,
@@ -49,22 +60,146 @@ import { bundledAppConfig, loadAppConfig } from "../../app-config";
 export function BoardApp({
   enableServiceWorker = false,
   appConfigUrl = "/app-config.json",
+  context,
+  access,
+  navigation,
 }: {
   enableServiceWorker?: boolean;
   appConfigUrl?: string;
+  context?: BoardContext;
+  access?: BoardAccess;
+  navigation?: ReactNode;
+}) {
+  return context ? (
+    <ScopedBoardApp
+      context={context}
+      access={access}
+      navigation={navigation}
+      enableServiceWorker={enableServiceWorker}
+      appConfigUrl={appConfigUrl}
+    />
+  ) : (
+    <LegacyBoardApp
+      enableServiceWorker={enableServiceWorker}
+      appConfigUrl={appConfigUrl}
+    />
+  );
+}
+
+function LegacyBoardApp({
+  enableServiceWorker,
+  appConfigUrl,
+}: {
+  enableServiceWorker: boolean;
+  appConfigUrl: string;
+}) {
+  const [board, setBoard] = useState(() => createDemoBoard());
+  const [loaded, setLoaded] = useState(false);
+  const [storageMessage, setStorageMessage] = useState("");
+  const sync = useSync(board, setBoard, loaded);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      const stored = parsePersistedBoard(window.localStorage.getItem(STORAGE_KEY));
+      setBoard(stored.board);
+      if (stored.error) setStorageMessage(stored.error);
+      setLoaded(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, serializeBoard(board));
+    } catch {
+      queueMicrotask(() => {
+        setStorageMessage("儲存失敗：資料目前可能只在這個分頁可見。");
+      });
+    }
+  }, [board, loaded]);
+
+  return (
+    <BoardSurface
+      board={board}
+      setBoard={setBoard}
+      sync={sync}
+      storageMessage={storageMessage}
+      access={{ canEdit: true, canWriteAttachments: true, readOnlyReason: null }}
+      enableServiceWorker={enableServiceWorker}
+      appConfigUrl={appConfigUrl}
+      showSyncSettings
+    />
+  );
+}
+
+function ScopedBoardApp({
+  context,
+  access = { canEdit: false, canWriteAttachments: false, readOnlyReason: "唯讀模式。" },
+  navigation,
+  enableServiceWorker,
+  appConfigUrl,
+}: {
+  context: BoardContext;
+  access?: BoardAccess;
+  navigation?: ReactNode;
+  enableServiceWorker: boolean;
+  appConfigUrl: string;
+}) {
+  const store = useBoardStore(context.boardId);
+  const sync = useBoardSync(
+    context,
+    store.board,
+    store.setBoard,
+    store.loaded,
+    !access.canEdit,
+  );
+  return (
+    <BoardSurface
+      board={store.board}
+      setBoard={store.setBoard}
+      sync={sync}
+      storageMessage={store.errorMessage}
+      access={access}
+      context={context}
+      navigation={navigation}
+      enableServiceWorker={enableServiceWorker}
+      appConfigUrl={appConfigUrl}
+    />
+  );
+}
+
+function BoardSurface({
+  board,
+  setBoard,
+  sync,
+  storageMessage,
+  access,
+  context,
+  navigation,
+  enableServiceWorker,
+  appConfigUrl,
+  showSyncSettings = false,
+}: {
+  board: BoardState;
+  setBoard: Dispatch<SetStateAction<BoardState>>;
+  sync: SyncHandle | BoardSyncHandle;
+  storageMessage: string;
+  access: BoardAccess;
+  context?: BoardContext;
+  navigation?: ReactNode;
+  enableServiceWorker: boolean;
+  appConfigUrl: string;
+  showSyncSettings?: boolean;
 }) {
   const [appTitle, setAppTitle] = useState(bundledAppConfig.title);
-  const [board, setBoard] = useState(() => createDemoBoard());
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [detail, setDetail] = useState<DetailState | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmState>(null);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
   const [liveMessage, setLiveMessage] = useState("");
-  const [storageMessage, setStorageMessage] = useState("");
+  const [runtimeStorageMessage, setRuntimeStorageMessage] = useState("");
   const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
   const [restoreFocusId, setRestoreFocusId] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const sync = useSync(board, setBoard, loaded);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const cardRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -121,6 +256,7 @@ export function BoardApp({
   }
 
   function applyAttachmentsChange(current: DetailState, next: AttachmentRef[]) {
+    if (!access.canEdit || !access.canWriteAttachments) return;
     setDetail((existing) =>
       existing ? { ...existing, draft: { ...existing.draft, attachments: next } } : existing,
     );
@@ -145,37 +281,12 @@ export function BoardApp({
   const stats = useMemo(() => getBoardStats(board, today), [board, today]);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      const stored = parsePersistedBoard(window.localStorage.getItem(STORAGE_KEY));
-      setBoard(stored.board);
-      if (stored.error) {
-        setStorageMessage(stored.error);
-      }
-      setLoaded(true);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!loaded) {
-      return;
-    }
-
-    try {
-      window.localStorage.setItem(STORAGE_KEY, serializeBoard(board));
-    } catch {
-      queueMicrotask(() => {
-        setStorageMessage("儲存失敗：資料目前可能只在這個分頁可見。");
-      });
-    }
-  }, [board, loaded]);
-
-  useEffect(() => {
     if (!enableServiceWorker) {
       return;
     }
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {
-        setStorageMessage("離線快取啟用失敗；本機資料仍會保存在此瀏覽器。");
+        setRuntimeStorageMessage("離線快取啟用失敗；本機資料仍會保存在此瀏覽器。");
       });
     }
   }, [enableServiceWorker]);
@@ -201,11 +312,13 @@ export function BoardApp({
   }, [detail, confirmAction, syncModalOpen, restoreFocusId]);
 
   function openAdd(columnId: string) {
+    if (!access.canEdit) return;
     setRestoreFocusId(null);
     setDetail({ mode: "add", columnId, draft: createDraft() });
   }
 
   function openAddWithTitle(columnId: string, title: string) {
+    if (!access.canEdit) return;
     setRestoreFocusId(null);
     setDetail({ mode: "add", columnId, draft: { ...createDraft(), title } });
     setLiveMessage(`已辨識語音，請確認卡片內容後儲存。`);
@@ -231,7 +344,7 @@ export function BoardApp({
 
   function saveDetail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!detail) {
+    if (!detail || !access.canEdit) {
       return;
     }
 
@@ -268,6 +381,7 @@ export function BoardApp({
   }
 
   function requestDelete(cardId: string) {
+    if (!access.canEdit) return;
     const title = board.cards[cardId]?.title ?? "這張卡片";
     if (detail) {
       const { added } = diffAttachmentRefs(detailOriginalAttachments(detail), detail.draft.attachments);
@@ -278,6 +392,7 @@ export function BoardApp({
   }
 
   function confirmDelete(cardId: string) {
+    if (!access.canEdit) return;
     const title = board.cards[cardId]?.title ?? "卡片";
     const position = findNearestFocus(board.columns, cardId);
     const attachments = board.cards[cardId]?.attachments ?? [];
@@ -290,6 +405,7 @@ export function BoardApp({
   }
 
   function confirmReset() {
+    if (!access.canEdit) return;
     const attachments = Object.values(board.cards).flatMap((card) => card.attachments);
     sync.queueDeletes(attachments);
     removeAttachmentFiles(attachments);
@@ -301,6 +417,7 @@ export function BoardApp({
   }
 
   function moveWithButtons(cardId: string, direction: "up" | "down" | "left" | "right") {
+    if (!access.canEdit) return;
     if (filtersActive) {
       setLiveMessage("搜尋或篩選中已暫停移動與排序，請先清除條件。");
       return;
@@ -321,7 +438,7 @@ export function BoardApp({
   }
 
   function dropCard(columnId: string, targetIndex: number) {
-    if (!draggedCardId || filtersActive) {
+    if (!access.canEdit || !draggedCardId || filtersActive) {
       return;
     }
 
@@ -336,6 +453,7 @@ export function BoardApp({
 
   return (
     <main className="appShell">
+      {navigation}
       <section className="topBar" aria-label="看板摘要">
         <div className="brandBlock">
           <p className="eyebrow">本機優先 Kanban PWA</p>
@@ -362,8 +480,11 @@ export function BoardApp({
           <button
             type="button"
             className={`syncPill ${sync.status}`}
-            onClick={() => setSyncModalOpen(true)}
-            aria-label="開啟雲端同步設定"
+            onClick={() => {
+              if (showSyncSettings) setSyncModalOpen(true);
+              else sync.syncNow();
+            }}
+            aria-label={showSyncSettings ? "開啟雲端同步設定" : "立即同步此看板"}
           >
             {sync.status === "disabled" && "同步：未啟用"}
             {sync.status === "pending" && "同步：待同步"}
@@ -428,19 +549,24 @@ export function BoardApp({
         <button type="button" className="secondaryButton" onClick={() => setFilters(emptyFilters)}>
           清除
         </button>
-        <button type="button" className="dangerGhost" onClick={() => setConfirmAction({ type: "reset" })}>
-          重設示範資料
-        </button>
+        {access.canEdit && (
+          <button type="button" className="dangerGhost" onClick={() => setConfirmAction({ type: "reset" })}>
+            重設示範資料
+          </button>
+        )}
       </section>
 
-      {(filtersActive || storageMessage || capabilityMessage || sync.status === "error") && (
+      {(filtersActive || storageMessage || runtimeStorageMessage || capabilityMessage ||
+        sync.status === "error" || access.readOnlyReason) && (
         <section className="noticeStack" aria-live="polite">
+          {access.readOnlyReason && <p className="notice readOnlyNotice">{access.readOnlyReason}</p>}
           {filtersActive && (
             <p className="notice">
               搜尋/篩選啟用中，已暫停拖曳、移動與重排，避免破壞原始排序。清除條件後即可調整順序。
             </p>
           )}
           {storageMessage && <p className="notice warning">{storageMessage}</p>}
+          {runtimeStorageMessage && <p className="notice warning">{runtimeStorageMessage}</p>}
           {capabilityMessage && (
             <p className="notice warning">
               {capabilityMessage}
@@ -479,7 +605,7 @@ export function BoardApp({
               key={column.id}
               className={`column ${wip.reached ? "wipReached" : ""}`}
               onDragOver={(event) => {
-                if (!filtersActive) {
+                if (access.canEdit && !filtersActive) {
                   event.preventDefault();
                 }
               }}
@@ -497,7 +623,7 @@ export function BoardApp({
                     </p>
                   )}
                 </div>
-                {wip.limit !== null && (
+                {wip.limit !== null && access.canEdit && (
                   <label className="wipInput">
                     <span>上限</span>
                     <input
@@ -528,11 +654,14 @@ export function BoardApp({
                       labels={board.labels}
                       today={today}
                       movementDisabled={filtersActive}
+                      readOnly={!access.canEdit}
                       onOpen={() => openEdit(card.id)}
                       onMove={(direction) => moveWithButtons(card.id, direction)}
-                      onChecklistToggle={(itemId) =>
-                        setBoard((current) => toggleChecklistItem(current, card.id, itemId))
-                      }
+                      onChecklistToggle={(itemId) => {
+                        if (access.canEdit) {
+                          setBoard((current) => toggleChecklistItem(current, card.id, itemId));
+                        }
+                      }}
                       setRef={(node) => {
                         if (node) {
                           cardRefs.current.set(card.id, node);
@@ -548,18 +677,20 @@ export function BoardApp({
                 )}
               </div>
 
-              <div className="addCardRow">
-                <button type="button" className="addCardButton" onClick={() => openAdd(column.id)}>
-                  ＋ 新增卡片
-                </button>
-                {speechAvailable && (
-                  <VoiceCaptureButton
-                    columnTitle={column.title}
-                    onResult={(text) => openAddWithTitle(column.id, text)}
-                    onError={reportCapabilityError}
-                  />
-                )}
-              </div>
+              {access.canEdit && (
+                <div className="addCardRow">
+                  <button type="button" className="addCardButton" onClick={() => openAdd(column.id)}>
+                    ＋ 新增卡片
+                  </button>
+                  {speechAvailable && (
+                    <VoiceCaptureButton
+                      columnTitle={column.title}
+                      onResult={(text) => openAddWithTitle(column.id, text)}
+                      onError={reportCapabilityError}
+                    />
+                  )}
+                </div>
+              )}
             </article>
           );
         })}
@@ -580,10 +711,13 @@ export function BoardApp({
           onDraftChange={(draft) => setDetail((current) => (current ? { ...current, draft } : current))}
           onAttachmentsChange={(next) => applyAttachmentsChange(detail, next)}
           onCapabilityError={reportCapabilityError}
+          readOnly={!access.canEdit}
+          attachmentsReadOnly={!access.canWriteAttachments}
+          attachmentContext={context}
         />
       )}
 
-      {syncModalOpen && (
+      {syncModalOpen && showSyncSettings && "enable" in sync && (
         <SyncSettingsModal sync={sync} modalRef={modalRef} onClose={() => setSyncModalOpen(false)} />
       )}
 

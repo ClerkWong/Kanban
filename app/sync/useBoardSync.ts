@@ -151,6 +151,7 @@ export function useBoardSync(
   board: BoardState,
   setBoard: Dispatch<SetStateAction<BoardState>>,
   loaded: boolean,
+  readOnly = false,
 ): BoardSyncHandle {
   const platform = usePlatform();
   const [config, setConfig] = useState<SyncConfig | null>(null);
@@ -282,6 +283,16 @@ export function useBoardSync(
         // this Board's v2 key and deletes the global key.
         loadBoardRevisionWithLegacyMigration(storage, scope.context.boardId);
 
+        if (readOnly) {
+          const remote = await fetchRemoteBoard(scope.config, scope.context);
+          if (!canWrite()) return;
+          applyBoard(remote.board);
+          saveBoardRevision(storage, scope.context.boardId, remote.revision);
+          await cacheMissingAttachments(scope, remote.board, canWrite);
+          if (canWrite()) setStatus("synced");
+          return;
+        }
+
         const beforeUploads = boardRef.current;
         const uploads = await processQueue(
           scope,
@@ -409,6 +420,7 @@ export function useBoardSync(
       identity,
       loaded,
       platform,
+      readOnly,
       scheduleRetry,
       setBoard,
     ],

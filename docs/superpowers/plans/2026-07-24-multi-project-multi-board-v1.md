@@ -715,15 +715,15 @@ Isolate sync state by board
 
 **Steps**
 
-- [ ] Web/Capacitor 都掛載 `ProjectApp`，不複製 UI。
-- [ ] 未設定同步時保留 local legacy Board 入口與啟用同步流程。
-- [ ] 有 session 時預設顯示「我的專案」，只使用 API 已授權資料。
-- [ ] Project overview 顯示 Project summary、active Board list、自己的角色。
-- [ ] Board 頁面顯示 breadcrumb、Board switcher 與 archive banner。
-- [ ] `BoardApp` 接受 `BoardContext`、permissions 與 store/sync handle，不再假設唯一 Board。
-- [ ] viewer/archived 隱藏或停用新增、編輯、拖放、WIP、附件 mutation。
-- [ ] hash 解析拒絕 malformed IDs，fallback 到最近有效 context 或我的專案。
-- [ ] 鍵盤 focus、mobile safe-area 與水平看板體驗不回歸。
+- [x] Web/Capacitor 都掛載 `ProjectApp`，不複製 UI。
+- [x] 未設定同步時保留 local legacy Board 入口與啟用同步流程。
+- [x] 有 session 時預設顯示「我的專案」，只使用 API 已授權資料。
+- [x] Project overview 顯示 Project summary、active Board list、自己的角色。
+- [x] Board 頁面顯示 breadcrumb、Board switcher 與 archive banner。
+- [x] `BoardApp` 接受 `BoardContext`、permissions 與 store/sync handle，不再假設唯一 Board。
+- [x] viewer/archived 隱藏或停用新增、編輯、拖放、WIP、附件 mutation。
+- [x] hash 解析拒絕 malformed IDs，fallback 到最近有效 context 或我的專案。
+- [x] 鍵盤 focus、mobile safe-area 與水平看板體驗不回歸。
 
 **Tests**
 
@@ -739,6 +739,14 @@ pnpm typecheck
 pnpm build
 pnpm mobile:build
 ```
+
+驗收結果（2026-07-27）：137 個單元測試、46 個 Worker runtime tests、lint、
+typecheck、Web build 與 mobile build 全數通過。Web／Capacitor 共用 `ProjectApp`；
+未設定同步時保留 legacy 單看板與設定入口，已有 session 時則以 `GET /projects`
+授權結果顯示「我的專案」、專案摘要、active Board 與角色。hash route 嚴格拒絕
+malformed／placeholder ID，無權 context 回到最近有效看板或專案列表。Viewer、
+archived Project/Board 的 UI 與同步均為唯讀：不送既有 pending queue、不合併本機
+內容回推遠端，但仍可讀取卡片及透過 scoped endpoint 下載附件。
 
 **Commit**
 

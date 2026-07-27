@@ -9,6 +9,7 @@ export function CardItem({
   labels,
   today,
   movementDisabled,
+  readOnly = false,
   onOpen,
   onMove,
   onChecklistToggle,
@@ -21,6 +22,7 @@ export function CardItem({
   labels: Label[];
   today: string;
   movementDisabled: boolean;
+  readOnly?: boolean;
   onOpen: () => void;
   onMove: (direction: "up" | "down" | "left" | "right") => void;
   onChecklistToggle: (itemId: string) => void;
@@ -34,7 +36,7 @@ export function CardItem({
   const cardLabels = labels.filter((label) => card.labelIds.includes(label.id));
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (!event.altKey) {
+    if (readOnly || !event.altKey) {
       return;
     }
     if (event.key === "ArrowUp") {
@@ -58,9 +60,9 @@ export function CardItem({
   return (
     <article
       className="card"
-      draggable={!movementDisabled}
+      draggable={!movementDisabled && !readOnly}
       onDragStart={(event) => {
-        if (movementDisabled) {
+        if (movementDisabled || readOnly) {
           event.preventDefault();
           return;
         }
@@ -69,7 +71,7 @@ export function CardItem({
       }}
       onDragEnd={onDragEnd}
       onDragOver={(event) => {
-        if (!movementDisabled) {
+        if (!movementDisabled && !readOnly) {
           event.preventDefault();
         }
       }}
@@ -122,6 +124,7 @@ export function CardItem({
               <input
                 type="checkbox"
                 checked={item.done}
+                disabled={readOnly}
                 onChange={() => onChecklistToggle(item.id)}
               />
               <span>{item.text}</span>
@@ -130,12 +133,14 @@ export function CardItem({
         </div>
       )}
 
-      <div className="moveControls" aria-label={`${card.title} 移動控制`}>
-        <IconButton label="向上移動" text="↑" disabled={movementDisabled} onClick={() => onMove("up")} />
-        <IconButton label="向下移動" text="↓" disabled={movementDisabled} onClick={() => onMove("down")} />
-        <IconButton label="移到左欄" text="←" disabled={movementDisabled} onClick={() => onMove("left")} />
-        <IconButton label="移到右欄" text="→" disabled={movementDisabled} onClick={() => onMove("right")} />
-      </div>
+      {!readOnly && (
+        <div className="moveControls" aria-label={`${card.title} 移動控制`}>
+          <IconButton label="向上移動" text="↑" disabled={movementDisabled} onClick={() => onMove("up")} />
+          <IconButton label="向下移動" text="↓" disabled={movementDisabled} onClick={() => onMove("down")} />
+          <IconButton label="移到左欄" text="←" disabled={movementDisabled} onClick={() => onMove("left")} />
+          <IconButton label="移到右欄" text="→" disabled={movementDisabled} onClick={() => onMove("right")} />
+        </div>
+      )}
     </article>
   );
 }

@@ -2,7 +2,7 @@
 
 - 最後更新：2026-07-27
 - 目前分支：`feature/multi-project-v1`
-- 已推送基準：`d7a67f3`（`Scope attachments to project boards`，Task 1–8）
+- 已推送基準：`1c23239`（`Isolate sync state by board`，Task 1–10）
 
 本文件整併先前兩份規劃，是後續工作、驗收與發布順序的單一依據。
 已完成的歷史實作只保留結果與證據；未完成項目依實際執行順序排列。
@@ -22,8 +22,9 @@
 | 多專案 Worker Task 6 | 已完成並推送 | multi-board metadata/content、per-board revision、archive/restore 與 migration-aware `/board` alias；未套用遠端 |
 | 多專案 Worker Task 7 | 已完成並推送 | Project summary、六個月月報、server-side Board diff 與 Project/Board Activity Log cursor API；未套用遠端 |
 | 多專案 Worker Task 8 | 已完成並推送 | Attachment API 與 R2 key 已限定到 Workspace/Project/Board；三角色與 archived read-only 已驗證，未套用遠端 |
-| 多專案 Client Task 9 | 已完成，本機 commit 尚未推送 | runtime `/me` session、Project/Board v2 client、scoped Attachment API、嚴格 parser 與統一錯誤 mapping |
-| 多專案 Client Task 10 | 已完成，本次 commit 尚未推送 | per-board store/revision/sync、queue v2、stale response suppression 與 legacy queue blocker；目前單一看板 UI 保留薄 compatibility wrapper，Task 11 切換 |
+| 多專案 Client Task 9 | 已完成並推送 | runtime `/me` session、Project/Board v2 client、scoped Attachment API、嚴格 parser 與統一錯誤 mapping |
+| 多專案 Client Task 10 | 已完成並推送 | per-board store/revision/sync、queue v2、stale response suppression 與 legacy queue blocker |
+| 多專案 Client Task 11 | 已完成，待本次 commit/push | Web／Capacitor 共用 ProjectApp、我的專案、專案摘要、Board switcher、嚴格 hash route 與 viewer/archive 唯讀 UI |
 | staging 設定 | 基礎設定完成，尚無遠端資源 | Wrangler environment 與 scripts 可沿用；應用 schema/API 需先升級 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
@@ -69,8 +70,11 @@
   Web build 與 mobile build；已驗證 Board A/B queue 並行安全、完整 scope 隔離、
   stale response suppression、pending upload gate、archived/403/404 停止自動重試，
   以及舊 queue/revision 的安全 migration blocker。
-- `feature/multi-project-v1` 已推送到 `d7a67f3`（Task 1–8）；private beta v1 仍來自較早的
-  `bd17e5b`。Task 9–10 的本機 commits 仍需另行推送。
+- 多專案 Task 11 已通過 137 個單元測試、46 個 Worker runtime tests、lint、typecheck、
+  Web build 與 mobile build；已驗證嚴格 hash routing、無權 context fallback、
+  Project role／archive 唯讀 actions，以及 scoped 附件重試下載。
+- `feature/multi-project-v1` 已推送到 `1c23239`（Task 1–10）；private beta v1 仍來自較早的
+  `bd17e5b`。Task 11 待本次 commit/push。
 
 ## P0-1：將客製 title 更新到 beta
 
