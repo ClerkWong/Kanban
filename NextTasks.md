@@ -2,7 +2,7 @@
 
 - 最後更新：2026-07-27
 - 目前分支：`feature/multi-project-v1`
-- 已推送基準：`1c23239`（`Isolate sync state by board`，Task 1–10）
+- 已推送基準：`9d54dac`（`Add project management views`，Task 1–12）
 
 本文件整併先前兩份規劃，是後續工作、驗收與發布順序的單一依據。
 已完成的歷史實作只保留結果與證據；未完成項目依實際執行順序排列。
@@ -12,10 +12,10 @@
 | 項目 | 狀態 | 說明 |
 | --- | --- | --- |
 | 月報資料模型 | 已完成 | 以 `completedAt` 計算最近六個日曆月；schema v4 可遷移 v1/v2/v3 |
-| 3b 附件用戶端 | 多看板同步層已完成 | queue v2、下載與 R2 endpoint 已按 user/Project/Board/Attachment 隔離；Task 11 才切換 UI |
+| 3b 附件用戶端 | 多看板同步層與 UI 已完成 | queue v2、下載與 R2 endpoint 已按 user/Project/Board/Attachment 隔離 |
 | Worker 3b | 多專案後端已完成並推送 | identity、ACL、Project/Board API、summary、Activity Log 與 scoped R2 API 已完成；尚未部署 |
 | 多專案／多看板規格 | 已核准 | 實作計畫位於 `docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md` |
-| 多專案 Milestone A | 已完成並推送 | Project domain／ACL capability、per-board storage、可恢復 legacy migration；尚未切換 UI |
+| 多專案 Milestone A | 已完成並推送 | Project domain／ACL capability、per-board storage 與可恢復 legacy migration |
 | 多專案 Worker Task 3 | 已完成並推送 | additive D1 schema、append-only Activity Log constraints、個人／legacy token bootstrap；未套用遠端 |
 | 多專案 Worker Task 4 | 已完成並推送 | HTTP/router、個人 identity、Project ACL、audit foundation；legacy API 保持相容 |
 | 多專案 Worker Task 5 | 已完成並推送 | `/me`、Project lifecycle、membership 與 admin registry APIs；具備 last-manager guard、idempotency 與原子 audit |
@@ -25,7 +25,7 @@
 | 多專案 Client Task 9 | 已完成並推送 | runtime `/me` session、Project/Board v2 client、scoped Attachment API、嚴格 parser 與統一錯誤 mapping |
 | 多專案 Client Task 10 | 已完成並推送 | per-board store/revision/sync、queue v2、stale response suppression 與 legacy queue blocker |
 | 多專案 Client Task 11 | 已完成並推送 | Web／Capacitor 共用 ProjectApp、我的專案、專案摘要、Board switcher、嚴格 hash route 與 viewer/archive 唯讀 UI |
-| 多專案 Client Task 12 | 已完成，待本次 commit/push | manager Project／Board lifecycle、成員角色、archived views、summary filter、Activity Log cursor 與離線管理 guard |
+| 多專案 Client Task 12 | 已完成並推送 | manager Project／Board lifecycle、成員角色、archived views、summary filter、Activity Log cursor 與離線管理 guard |
 | staging 設定 | 基礎設定完成，尚無遠端資源 | Wrangler environment 與 scripts 可沿用；應用 schema/API 需先升級 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
@@ -78,8 +78,8 @@
   Web build、mobile build 與完整 mobile sync；已驗證 manager-only actions、
   last-manager guard、archived read-only、Log filter/cursor、summary archived filter
   與離線管理操作不進 queue。
-- `feature/multi-project-v1` 已推送到 `e316953`（Task 1–11）；private beta v1 仍來自較早的
-  `bd17e5b`。Task 12 待本次 commit/push。
+- `feature/multi-project-v1` 已推送到 `9d54dac`（Task 1–12）；private beta v1 仍來自較早的
+  `bd17e5b`。下一個實作項目是 Task 13 legacy migration 與端到端驗證。
 
 ## P0-1：將客製 title 更新到 beta
 
