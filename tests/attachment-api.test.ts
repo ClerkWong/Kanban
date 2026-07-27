@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cacheDownloadedAttachment } from "../app/sync/attachment-api";
+import {
+  cacheDownloadedAttachment,
+  deleteRemoteAttachment,
+  uploadAttachment,
+} from "../app/sync/attachment-api";
+import { ApiClientError } from "../app/projects/api";
 import type { PlatformCapabilities } from "../app/platform/types";
 
 const context = {
@@ -66,6 +71,49 @@ test("切換同步設定後，已開始的下載不寫入快取", async () => {
     );
     assert.equal(cached, false);
     assert.equal(writes, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("scoped upload/delete use attachmentId rather than local fileName", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; method: string }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ url: String(input), method: init?.method ?? "GET" });
+    return new Response(null, { status: 204 });
+  };
+  try {
+    const config = { baseUrl: "https://sync.example", token: "secret" };
+    await uploadAttachment(
+      config,
+      context,
+      attachmentId,
+      new Blob(["photo"]),
+      "image/jpeg",
+    );
+    await deleteRemoteAttachment(config, context, attachmentId);
+    assert.deepEqual(requests, [
+      {
+        url: `https://sync.example/projects/${context.projectId}/boards/${context.boardId}/attachments/${attachmentId}`,
+        method: "PUT",
+      },
+      {
+        url: `https://sync.example/projects/${context.projectId}/boards/${context.boardId}/attachments/${attachmentId}`,
+        method: "DELETE",
+      },
+    ]);
+    await assert.rejects(
+      () => uploadAttachment(
+        config,
+        context,
+        "local/photo.jpg",
+        new Blob(["photo"]),
+        "image/jpeg",
+      ),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.code === "invalid_attachment_id",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

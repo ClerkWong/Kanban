@@ -646,16 +646,16 @@ Add multi-project client APIs
 
 **Steps**
 
-- [ ] `useBoardStore(boardId)` 只讀寫該 Board local key。
-- [ ] `useBoardSync(context, board, setBoard, loaded)` 管理 per-board revision/debounce。
-- [ ] 切換 Board 時取消舊 request 的寫回；晚到 response 不得污染新 Board。
-- [ ] queue v2 item 包含 endpoint identity、userId、workspaceId、projectId、boardId、
+- [x] `useBoardStore(boardId)` 只讀寫該 Board local key。
+- [x] `useBoardSync(context, board, setBoard, loaded)` 管理 per-board revision/debounce。
+- [x] 切換 Board 時取消舊 request 的寫回；晚到 response 不得污染新 Board。
+- [x] queue v2 item 包含 endpoint identity、userId、workspaceId、projectId、boardId、
   attachmentId、fileName、operation。
-- [ ] queue v1 無法判定 Board 時停住並顯示 migration blocker，不猜測 destination。
-- [ ] pending upload 仍先成功，再允許相同 Board content 發布 ref。
-- [ ] remote archive/membership removal 保留 local pending data，停止自動重試。
-- [ ] Board A/B 可同時有 pending queue，不互相阻塞或去重。
-- [ ] 移除全域單一 revision key 的實際使用，保留一次性 migration read。
+- [x] queue v1 無法判定 Board 時停住並顯示 migration blocker，不猜測 destination。
+- [x] pending upload 仍先成功，再允許相同 Board content 發布 ref。
+- [x] remote archive/membership removal 保留 local pending data，停止自動重試。
+- [x] Board A/B 可同時有 pending queue，不互相阻塞或去重。
+- [x] 移除全域單一 revision key 的實際使用，保留一次性 migration read。
 
 **Tests**
 
@@ -672,6 +672,13 @@ pnpm typecheck
 pnpm build
 pnpm mobile:build
 ```
+
+驗收結果（2026-07-27）：133 個單元測試、46 個 Worker runtime tests、lint、
+typecheck、Web build 與 mobile build 全數通過。已驗證 Board A/B queue 並行寫回不會
+互相覆蓋、endpoint/token/user/Project/Board scope 隔離、Board 切換與 unmount 的 stale
+response suppression、413/archived/403/404 停止自動重試、v1 queue migration blocker，
+以及舊全域 revision 只讀一次後立即移至 per-board key。既有單一看板 UI 保留薄
+compatibility wrapper；Task 11 將改由 `ProjectApp` 掛載新的 store/sync hooks。
 
 **Commit**
 

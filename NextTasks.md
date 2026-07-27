@@ -12,7 +12,7 @@
 | 項目 | 狀態 | 說明 |
 | --- | --- | --- |
 | 月報資料模型 | 已完成 | 以 `completedAt` 計算最近六個日曆月；schema v4 可遷移 v1/v2/v3 |
-| 3b 附件用戶端 | 已完成單一看板實作 | 多看板版仍需讓 queue、下載與 R2 key 按 Project/Board 隔離 |
+| 3b 附件用戶端 | 多看板同步層已完成 | queue v2、下載與 R2 endpoint 已按 user/Project/Board/Attachment 隔離；Task 11 才切換 UI |
 | Worker 3b | 多專案後端已完成並推送 | identity、ACL、Project/Board API、summary、Activity Log 與 scoped R2 API 已完成；尚未部署 |
 | 多專案／多看板規格 | 已核准 | 實作計畫位於 `docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md` |
 | 多專案 Milestone A | 已完成並推送 | Project domain／ACL capability、per-board storage、可恢復 legacy migration；尚未切換 UI |
@@ -22,7 +22,8 @@
 | 多專案 Worker Task 6 | 已完成並推送 | multi-board metadata/content、per-board revision、archive/restore 與 migration-aware `/board` alias；未套用遠端 |
 | 多專案 Worker Task 7 | 已完成並推送 | Project summary、六個月月報、server-side Board diff 與 Project/Board Activity Log cursor API；未套用遠端 |
 | 多專案 Worker Task 8 | 已完成並推送 | Attachment API 與 R2 key 已限定到 Workspace/Project/Board；三角色與 archived read-only 已驗證，未套用遠端 |
-| 多專案 Client Task 9 | 已完成，本次 commit 尚未推送 | runtime `/me` session、Project/Board v2 client、scoped Attachment API、嚴格 parser 與統一錯誤 mapping；目前 UI 暫走明確 legacy compatibility layer，Task 10 移除 |
+| 多專案 Client Task 9 | 已完成，本機 commit 尚未推送 | runtime `/me` session、Project/Board v2 client、scoped Attachment API、嚴格 parser 與統一錯誤 mapping |
+| 多專案 Client Task 10 | 已完成，本次 commit 尚未推送 | per-board store/revision/sync、queue v2、stale response suppression 與 legacy queue blocker；目前單一看板 UI 保留薄 compatibility wrapper，Task 11 切換 |
 | staging 設定 | 基礎設定完成，尚無遠端資源 | Wrangler environment 與 scripts 可沿用；應用 schema/API 需先升級 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
@@ -64,8 +65,12 @@
   Web build 與 mobile build；已驗證 nested resource path、嚴格 response parser、
   401/403/404/409/archived mapping，以及 token/user 切換不會沿用舊 session 或刪除本機
   Board data。
+- 多專案 Task 10 已通過 133 個單元測試、46 個 Worker runtime tests、lint、typecheck、
+  Web build 與 mobile build；已驗證 Board A/B queue 並行安全、完整 scope 隔離、
+  stale response suppression、pending upload gate、archived/403/404 停止自動重試，
+  以及舊 queue/revision 的安全 migration blocker。
 - `feature/multi-project-v1` 已推送到 `d7a67f3`（Task 1–8）；private beta v1 仍來自較早的
-  `bd17e5b`。Task 9 完成本機 commit 後仍需另行推送。
+  `bd17e5b`。Task 9–10 的本機 commits 仍需另行推送。
 
 ## P0-1：將客製 title 更新到 beta
 

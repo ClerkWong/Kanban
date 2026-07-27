@@ -1,4 +1,10 @@
-import { SYNC_CONFIG_KEY_V2 } from "../projects/storage";
+import {
+  SYNC_CONFIG_KEY_V2,
+  loadBoardRevision,
+  saveBoardRevision,
+  syncRevisionKey,
+  type StorageLike,
+} from "../projects/storage";
 
 export type SyncConfig = { baseUrl: string; token: string };
 
@@ -76,12 +82,20 @@ export function saveSyncConfig(config: SyncConfig | null): void {
   }
 }
 
-export function loadSyncRevision(): number {
-  const raw = window.localStorage.getItem(REVISION_KEY);
-  const value = Number(raw);
-  return Number.isInteger(value) && value > 0 ? value : 0;
-}
-
-export function saveSyncRevision(revision: number): void {
-  window.localStorage.setItem(REVISION_KEY, String(revision));
+/** Reads the old single-board revision at most once, and immediately moves it
+ * into the active Board's v2 key. New sync code must only use per-board keys. */
+export function loadBoardRevisionWithLegacyMigration(
+  storage: StorageLike,
+  boardId: string,
+): number {
+  if (storage.getItem(syncRevisionKey(boardId)) !== null) {
+    return loadBoardRevision(storage, boardId);
+  }
+  const legacyRaw = storage.getItem(REVISION_KEY);
+  const legacyValue = Number(legacyRaw);
+  const revision =
+    Number.isInteger(legacyValue) && legacyValue > 0 ? legacyValue : 0;
+  saveBoardRevision(storage, boardId, revision);
+  storage.removeItem(REVISION_KEY);
+  return revision;
 }

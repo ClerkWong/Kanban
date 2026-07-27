@@ -30,9 +30,9 @@ export type StorageLike = {
 export const WORKSPACE_INDEX_KEY = "kanban-workspace-index-v1";
 export const ACTIVE_CONTEXT_KEY = "kanban-active-context-v1";
 
-/** `kanban-attachment-queue-v2` and `kanban-sync-config-v2` are not per-board
- * and have no read/write logic yet -- their full R/W lives in Task 10. The
- * keys are exported here so that string is only ever written once. */
+/** Queue/config are not per-board storage records, but their v2 keys live here
+ * so each persistent key string is declared exactly once. Queue v2 items carry
+ * their full user/Workspace/Project/Board scope in app/sync/attachment-queue.ts. */
 export const ATTACHMENT_QUEUE_KEY_V2 = "kanban-attachment-queue-v2";
 export const SYNC_CONFIG_KEY_V2 = "kanban-sync-config-v2";
 
@@ -249,8 +249,8 @@ export function saveBoardState(storage: StorageLike, boardId: string, board: Boa
 // ---------------------------------------------------------------------------
 
 /** Reads this Board's last-known-synced revision, isolated by `boardId`.
- * Mirrors `loadSyncRevision` in app/sync/config.ts but per-board and against
- * an injectable `StorageLike` instead of the global `window.localStorage`. */
+ * Uses an injectable `StorageLike` so migration and Board A/B isolation are
+ * testable without the browser global. */
 export function loadBoardRevision(storage: StorageLike, boardId: string): number {
   assertValidProjectOrBoardId(boardId, "boardId");
   const raw = storage.getItem(syncRevisionKey(boardId));
