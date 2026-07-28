@@ -125,7 +125,7 @@ pnpm sync:dev
 命令組合：
 
 ```bash
-pnpm sync:bootstrap -- \
+pnpm sync:bootstrap \
   --target local \
   --user-id "11111111-2222-4333-8444-555555555555" \
   --display-name "本機管理員" \
@@ -145,7 +145,7 @@ legacy row 複製 revision 與完整 Board JSON，建立預設 Project／Board �
 最後標記 `complete`。複製失敗會把狀態回復為 `pending`：
 
 ```bash
-pnpm sync:migrate:legacy -- \
+pnpm sync:migrate:legacy \
   --target local \
   --manager-user-id "11111111-2222-4333-8444-555555555555"
 ```
@@ -157,7 +157,7 @@ Staging 改用 `--target staging`；production 還必須加入 `--confirm-produc
 再執行：
 
 ```bash
-pnpm sync:verify:migration -- \
+pnpm sync:verify:migration \
   --legacy-file /path/to/legacy-snapshot.json \
   --v2-file /path/to/v2-snapshot.json
 ```

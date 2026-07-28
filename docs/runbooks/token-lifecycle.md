@@ -23,7 +23,7 @@ User account 必須先存在且為 `active`。初始 Workspace owner 使用
 由密碼管理器產生 token 並安全保存，透過隱藏提示輸入：
 
 ```bash
-pnpm sync:token -- create \
+pnpm sync:token create \
   --target staging \
   --user-id "USER_UUID" \
   --label "alice-iphone"
@@ -42,7 +42,7 @@ Label 應能辨識人員與裝置，但不要放 email、token 片段或其他�
 ## 2. 列出 token metadata
 
 ```bash
-pnpm sync:token -- list \
+pnpm sync:token list \
   --target staging \
   --user-id "USER_UUID"
 ```
@@ -56,7 +56,7 @@ pnpm sync:token -- list \
 撤銷前核對 target、user ID、token ID 與 label。若是輪替，必須先完成新 token 驗證：
 
 ```bash
-pnpm sync:token -- revoke \
+pnpm sync:token revoke \
   --target staging \
   --user-id "USER_UUID" \
   --token-id "TOKEN_UUID"

@@ -26,6 +26,24 @@ Cloudflare 參考：
 - [R2 建立 bucket](https://developers.cloudflare.com/r2/buckets/create-buckets/)
 - [R2 清空／刪除 bucket](https://developers.cloudflare.com/r2/buckets/delete-buckets/)
 
+## 目前 staging inventory
+
+以下資源已於 2026-07-27 建立，production 資源未變更：
+
+| 類型 | staging 值 |
+| --- | --- |
+| Worker URL | `https://kanban-sync-staging.clerk-wong.workers.dev` |
+| Worker deployment | `2280664a-b7cc-4511-9096-d65a37f1096e` |
+| D1 | `kanban-sync-staging` / `bcae6724-352b-453d-92e4-28bcf229f76f` |
+| R2 | private `kanban-attachments-staging` |
+| Owner user | `a14c7f5d-4c2e-4be2-8896-07652625d722` |
+| Token inventory | personal label `owner-web`，建立日期 2026-07-27 |
+| 本機保管位置 | macOS Keychain service `com.wongchambers.kanban.staging.sync-token`、account `staging-owner` |
+
+Token 明文與 hash 不得加入本表。撤銷時依
+[token-lifecycle.md](./token-lifecycle.md) 先建立替代 token、驗證，再以 token ID 撤銷；
+Keychain locator 只用於目前 staging operator 的本機 smoke test。
+
 ## 1. 固定 release candidate
 
 在預定 commit 的 fresh clone 執行：
@@ -93,7 +111,7 @@ pnpm sync:migrate:staging
 明文透過互動提示輸入，不放在命令列：
 
 ```bash
-pnpm sync:bootstrap -- \
+pnpm sync:bootstrap \
   --target staging \
   --user-id "OWNER_UUID" \
   --display-name "Staging Owner" \
@@ -150,7 +168,7 @@ WRANGLER_LOG_PATH=.wrangler/wrangler.log \
 安全刪除暫存 SQL，接著以隱藏提示為該 user 建立個人 token：
 
 ```bash
-pnpm sync:token -- create \
+pnpm sync:token create \
   --target staging \
   --user-id "USER_UUID" \
   --label "alice-web"

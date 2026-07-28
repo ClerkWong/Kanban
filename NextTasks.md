@@ -2,7 +2,7 @@
 
 - 最後更新：2026-07-27
 - 目前分支：`feature/multi-project-v1`
-- 已推送功能基準：`fb7c609`（Task 1–14）
+- 已推送功能基準：`fb7c609`（Task 1–14）；staging resource binding：`463f303`
 
 本文件整併先前兩份規劃，是後續工作、驗收與發布順序的單一依據。
 已完成的歷史實作只保留結果與證據；未完成項目依實際執行順序排列。
@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | 月報資料模型 | 已完成 | 以 `completedAt` 計算最近六個日曆月；schema v4 可遷移 v1/v2/v3 |
 | 3b 附件用戶端 | 多看板同步層與 UI 已完成 | queue v2、下載與 R2 endpoint 已按 user/Project/Board/Attachment 隔離 |
-| Worker 3b | 多專案後端已完成並推送 | identity、ACL、Project/Board API、summary、Activity Log 與 scoped R2 API 已完成；尚未部署 |
+| Worker 3b | 多專案後端已部署 staging | identity、ACL、Project/Board API、summary、Activity Log 與 scoped R2 API 已部署到隔離 staging；production 尚未部署 |
 | 多專案／多看板規格 | 已核准 | 實作計畫位於 `docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md` |
 | 多專案 Milestone A | 已完成並推送 | Project domain／ACL capability、per-board storage 與可恢復 legacy migration |
 | 多專案 Worker Task 3 | 已完成並推送 | additive D1 schema、append-only Activity Log constraints、個人／legacy token bootstrap；未套用遠端 |
@@ -28,12 +28,12 @@
 | 多專案 Client Task 12 | 已完成並推送 | manager Project／Board lifecycle、成員角色、archived views、summary filter、Activity Log cursor 與離線管理 guard |
 | 多專案 Task 13 | 已完成並推送 | legacy lock/copy/rollback、client merge/remote、一次性 backup、personal token 換發、verification script 與 E2E |
 | 多專案 Task 14 | 已完成並推送 | staging-ready CI、fresh clone／原生完整關卡、受限 token CLI 與 staging/token/reset runbooks |
-| staging 設定 | 基礎設定完成，尚無遠端資源 | Wrangler environment 與 scripts 可沿用；應用 schema/API 需先升級 |
+| staging 設定 | 已建立並部署 | staging Worker、D1、private R2、migration、owner 與 personal token 已完成；待 RC 多角色／多裝置驗收 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
 | Sites 關聯 | 已完成 beta 關聯 | `.openai/hosting.json` 已保存 beta `project_id`；Sites 本身不擁有同步 D1/R2 |
 | 客製 title | 已完成並推送，尚未發布新版 beta | `public/app-config.json` 控制畫面與 WebView title；目前 beta v1 尚未包含 |
-| staging Worker/D1/R2/token | **尚未建立** | 多專案實作與本機驗收完成後的下一個外部部署工作 |
+| staging Worker/D1/R2/token | 已建立 | 和 production 完全隔離；URL 與非敏感 inventory 見 staging runbook |
 | production Worker/D1 | 既有 3a 上線 | 尚未部署本次 3b Worker |
 | production R2 | **尚未建立** | 必須等 staging 驗收全數通過 |
 | iOS/Android | 可建置，未完成發行 | 尚缺實機、簽章、版本與內部分發／商店流程 |
@@ -89,10 +89,10 @@
   release tests、lint、typecheck、Web/mobile build、Worker types、production/staging
   dry-run、final mobile sync、Android debug 與未簽章 iOS simulator build。Artifact
   fixture-token 與 tracked secret-file scan 無命中。
-- `feature/multi-project-v1` 的 Task 1–14 本機候選功能基準是 `fb7c609`；private beta
-  v1 仍來自較早的 `bd17e5b`。下一步是 P0-3：依
-  `docs/runbooks/multi-project-staging.md` 建立完全隔離的 staging；目前尚未建立或部署
-  任何 staging Worker/D1/R2/token。
+- `feature/multi-project-v1` 的 Task 1–14 本機候選功能基準是 `fb7c609`；staging binding
+  已於 `463f303` 推送。隔離的 staging Worker、D1、private R2、migration、owner 與
+  personal token 已建立，authenticated smoke 已驗證。private beta v1 仍來自較早的
+  `bd17e5b`；下一步是 P0-4 staging Release Candidate 驗收與新版 beta 發布。
 
 ## P0-1：將客製 title 更新到 beta
 
@@ -152,7 +152,7 @@ App 在不更新版本的情況下取得新 title，需要另外設計公開且�
 
 在本節完成前，**不要建立 staging 遠端資源**。
 
-## P0-3：建立完全隔離的 staging
+## P0-3：建立完全隔離的 staging（已完成）
 
 正式資源不得拿來測試 3b。建立以下獨立資源：
 
@@ -163,17 +163,17 @@ App 在不更新版本的情況下取得新 title，需要另外設計公開且�
 | R2 | `kanban-attachments-staging` | `kanban-attachments` |
 | Token | staging 專用 | production 專用 |
 
-依序執行：
+已完成：
 
-1. 建立 `kanban-sync-staging` D1。
-2. 將實際 `database_id` 固定寫回 `worker-sync/wrangler.jsonc` 的 staging binding。
-3. 建立 private `kanban-attachments-staging` R2。
-4. 執行 `pnpm sync:migrate:staging`。
-5. 產生只供 staging 使用的高熵 token：
+1. [x] 建立 `kanban-sync-staging` D1。
+2. [x] 將實際 `database_id` 固定寫回 `worker-sync/wrangler.jsonc` 的 staging binding。
+3. [x] 建立 private `kanban-attachments-staging` R2，未設定公開網域。
+4. [x] 執行 `pnpm sync:migrate:staging`，`0001`、`0002` 均已套用。
+5. [x] 產生只供 staging 使用的高熵 personal token：
    - D1 只儲存 SHA-256 hash。
    - 明文不得進 repo、shell history、CI log、測試快照或前端 bundle。
-6. 執行 `pnpm sync:deploy:staging`。
-7. 以環境變數執行只讀 smoke test：
+6. [x] 執行 `pnpm sync:deploy:staging`。
+7. [x] 以安全注入的環境變數執行只讀 authenticated smoke test：
 
    ```bash
    KANBAN_SYNC_URL="https://<staging-worker>" \
@@ -181,14 +181,34 @@ App 在不更新版本的情況下取得新 title，需要另外設計公開且�
    pnpm sync:smoke
    ```
 
-8. 記錄 staging URL、資源 ID、token 建立日期與撤銷方式，但不記錄 token 明文。
+8. [x] 記錄 staging URL、資源 ID、token 建立日期與撤銷方式，但不記錄 token 明文。
+
+非敏感 inventory：
+
+| 類型 | 值 |
+| --- | --- |
+| Worker URL | `https://kanban-sync-staging.clerk-wong.workers.dev` |
+| Worker deployment | `2280664a-b7cc-4511-9096-d65a37f1096e` |
+| D1 | `kanban-sync-staging` / `bcae6724-352b-453d-92e4-28bcf229f76f` |
+| R2 | private `kanban-attachments-staging` |
+| Owner | `a14c7f5d-4c2e-8896-07652625d722` / `Staging Owner` |
+| Token | personal `owner-web`，建立日期 2026-07-27；明文只存本機 Keychain |
+
+驗收證據：
+
+- 無 token 與錯 token 都回 401；owner personal token 對 `/me` 回 200。
+- `/me` 回傳一個 owner Workspace；fresh staging 的 `/projects` 合法回傳空陣列。
+- smoke script 已改以 multi-project `/me`、`/projects` 與可選的第一個 Board 做只讀
+  驗證，不再把 fresh cutover 後不存在的 legacy `/board` 當成錯誤。
+- migration state 為 `complete`；D1 token inventory 只查非敏感 metadata。
+- production Worker、D1 與 R2 均未變更。
 
 完成條件：
 
-- staging board、token、D1 與 R2 和 production 完全隔離。
-- staging 失敗或清除資料不影響既有 production 3a。
-- 未帶 token、錯 token 與有效 token 分別得到預期結果。
-- Worker logs 沒有 Bearer token 或附件內容。
+- [x] staging Worker、token、D1 與 R2 和 production 完全隔離。
+- [x] staging 失敗或清除資料不影響既有 production 3a。
+- [x] 未帶 token、錯 token 與有效 token 分別得到預期結果。
+- [x] 維運命令與 Worker response 未輸出 Bearer token、token hash 或附件內容。
 
 ## P0-4：staging Release Candidate 驗收
 
