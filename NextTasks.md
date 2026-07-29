@@ -30,9 +30,9 @@
 | 多專案 Task 14 | 已完成並推送 | staging-ready CI、fresh clone／原生完整關卡、受限 token CLI 與 staging/token/reset runbooks |
 | staging 設定 | 已建立並部署 | staging Worker、D1、private R2、migration、owner 與 personal token 已完成；待 RC 多角色／多裝置驗收 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
-| Web/PWA | private beta 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site)，目前僅擁有者可存取 |
+| Web/PWA | private beta v2 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site) 已更新至 `0c408cd`，目前僅擁有者可存取 |
 | Sites 關聯 | 已完成 beta 關聯 | `.openai/hosting.json` 已保存 beta `project_id`；Sites 本身不擁有同步 D1/R2 |
-| 客製 title | 已完成並推送，尚未發布新版 beta | `public/app-config.json` 控制畫面與 WebView title；目前 beta v1 尚未包含 |
+| 客製 title | 已完成並發布 beta | `public/app-config.json` 控制畫面與 WebView title；beta v2 已提供目前 JSON 值 |
 | staging Worker/D1/R2/token | 已建立 | 和 production 完全隔離；URL 與非敏感 inventory 見 staging runbook |
 | production Worker/D1 | 既有 3a 上線 | 尚未部署本次 3b Worker |
 | production R2 | **尚未建立** | 必須等 staging 驗收全數通過 |
@@ -97,32 +97,18 @@
   均為 0 命中。
 - `feature/multi-project-v1` 的 staging 候選基準是 `de24a29`。隔離的 staging
   Worker、D1、private R2、migration、owner、personal token 與驗證 Project/Boards
-  已建立，authenticated smoke 與 R2 scope round-trip 已通過。private beta v1 仍來自
-  較早的 `bd17e5b`；下一步是 P0-4 多角色、雙裝置、實機驗收與新版 beta 發布。
+  已建立，authenticated smoke 與 R2 scope round-trip 已通過。private beta v2 已從
+  `0c408cd` 發布；下一步是 P0-4 多角色、雙裝置與實機驗收。
 
-## P0-1：將客製 title 更新到 beta
+## P0-1：將客製 title 更新到 beta（已完成）
 
-客製 title 已在 `62ba6ff` 推送，但 Sites beta 尚未更新。先完成：
+Sites beta v2 已從 `0c408cd` 發布，保留 owner-only custom access。驗證結果：
 
-1. 確認 `public/app-config.json` 是預期的 beta title，且為 1–80 個字元。
-2. 若 title 或其他來源再有修改，重跑最小品質關卡：
-
-   ```bash
-   pnpm test
-   pnpm lint
-   pnpm typecheck
-   pnpm build
-   pnpm mobile:sync
-   git diff --check
-   ```
-
-3. 從 `62ba6ff` 或更新且已推送的同一 commit 儲存新的 Sites version，發布到既有
-   private beta。
-4. 驗證：
-   - 看板主標題與瀏覽器分頁 title 使用 JSON 值。
-   - 線上重新整理會取得新設定。
-   - 離線時退回最後成功快取或內建預設。
-   - `/privacy`、`/support` 與 PWA 核心流程沒有回歸。
+- [x] `/`、`/privacy`、`/support` 都回 200。
+- [x] `/app-config.json` 回 200，提供目前客製 title `本機 Kanban 看板`。
+- [x] 發布後 10 分鐘內 Sites Worker error log 無事件。
+- [ ] 由瀏覽器人工確認主標題與分頁 title 使用 JSON 值。
+- [ ] 人工確認線上重新整理、離線 fallback 與 PWA service worker 升級。
 
 限制：iOS/Android 會把 JSON 包入 App，修改後仍需 `pnpm mobile:sync` 與新 build。
 手機桌面圖示下方的 App 名稱是原生 metadata，不能只靠 App 重啟變更。若未來要求已安裝
@@ -306,12 +292,12 @@ git diff --check
 
 ### Web/PWA 與客製設定
 
-- [ ] private beta 存取政策符合預期。
+- [x] private beta v2 仍是 owner-only custom access。
 - [ ] JSON title、metadata、分享預覽與頁面主標題一致。
 - [ ] HTTPS 安裝、離線冷啟動及 service worker 升級正常。
 - [ ] 新版設定線上立即取得，離線仍有可用 fallback。
 - [ ] 瀏覽器附件與麥克風權限拒絕／恢復流程正常。
-- [ ] `/privacy` 與 `/support` 可開啟。
+- [x] 線上 `/privacy` 與 `/support` 回 200。
 
 ### iOS / Android 實機
 
