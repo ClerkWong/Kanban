@@ -106,6 +106,10 @@ export function SyncSettingsModal({
             </label>
             <fieldset className="fieldGroup">
               <legend>首次同步資料來源</legend>
+              <p className="storageNote">
+                個人 token 會直接進入「我的專案」；以下選擇只用於仍採用 shared legacy
+                token 的舊版單一看板。
+              </p>
               <label className="syncModeChoice">
                 <input
                   type="radio"

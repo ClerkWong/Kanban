@@ -23,6 +23,7 @@ import {
   enqueueLegacyUpload,
   hasLegacyQueueBlocker,
 } from "./attachment-queue";
+import { prepareInitialConnection } from "./initial-connection";
 import {
   loadBoardRevisionWithLegacyMigration,
   loadSyncConfig,
@@ -257,11 +258,18 @@ export function useSync(
       setStatus("syncing");
       setErrorMessage("");
       try {
-        const identity = await fetchRuntimeSession(next);
-        if (!configIsCurrent(next)) return;
-        saveSyncConfig(next);
+        const connection = await prepareInitialConnection(next, {
+          isCurrent: () => configIsCurrent(next),
+        });
+        if (connection.kind === "stale") return;
+        const identity = connection.session;
         setConfig(next);
         setSession(identity);
+        if (connection.kind === "projects") {
+          setStatus("synced");
+          window.location.reload();
+          return;
+        }
         if (initialMode === "merge") {
           for (const attachment of Object.values(boardRef.current.cards)
             .flatMap((card) => card.attachments)) {
@@ -270,8 +278,7 @@ export function useSync(
             }
           }
         }
-        const remote = await fetchLegacyRemoteBoard(next);
-        if (!configIsCurrent(next)) return;
+        const remote = connection.remote;
         if (remote) {
           const base =
             initialMode === "download"
