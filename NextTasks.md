@@ -2,7 +2,7 @@
 
 - 最後更新：2026-07-27
 - 目前分支：`feature/multi-project-v1`
-- 已推送功能基準：`fb7c609`（Task 1–14）；staging resource binding：`463f303`
+- 已推送 staging 候選基準：`de24a29`（Task 1–14、staging resources 與 smoke）
 
 本文件整併先前兩份規劃，是後續工作、驗收與發布順序的單一依據。
 已完成的歷史實作只保留結果與證據；未完成項目依實際執行順序排列。
@@ -89,10 +89,16 @@
   release tests、lint、typecheck、Web/mobile build、Worker types、production/staging
   dry-run、final mobile sync、Android debug 與未簽章 iOS simulator build。Artifact
   fixture-token 與 tracked secret-file scan 無命中。
-- `feature/multi-project-v1` 的 Task 1–14 本機候選功能基準是 `fb7c609`；staging binding
-  已於 `463f303` 推送。隔離的 staging Worker、D1、private R2、migration、owner 與
-  personal token 已建立，authenticated smoke 已驗證。private beta v1 仍來自較早的
-  `bd17e5b`；下一步是 P0-4 staging Release Candidate 驗收與新版 beta 發布。
+- staging 候選 `de24a29` 已在 fresh clone 通過 frozen install、153 個單元測試、
+  48 個 Worker runtime tests、12 個 client migration 與 8 個 role/legacy alias
+  release tests、lint、typecheck、Web/mobile build、generated Worker types、
+  production/staging dry-run、final mobile sync、Android debug 與未簽章 iOS simulator
+  build。另掃描 362 個 tracked/log/build artifact files，staging token 與 token hash
+  均為 0 命中。
+- `feature/multi-project-v1` 的 staging 候選基準是 `de24a29`。隔離的 staging
+  Worker、D1、private R2、migration、owner、personal token 與驗證 Project/Boards
+  已建立，authenticated smoke 與 R2 scope round-trip 已通過。private beta v1 仍來自
+  較早的 `bd17e5b`；下一步是 P0-4 多角色、雙裝置、實機驗收與新版 beta 發布。
 
 ## P0-1：將客製 title 更新到 beta
 
@@ -197,7 +203,8 @@ App 在不更新版本的情況下取得新 title，需要另外設計公開且�
 驗收證據：
 
 - 無 token 與錯 token 都回 401；owner personal token 對 `/me` 回 200。
-- `/me` 回傳一個 owner Workspace；fresh staging 的 `/projects` 合法回傳空陣列。
+- `/me` 回傳一個 owner Workspace；fresh staging 起初可合法回傳空 Project list，P0-4
+  隨後建立一個驗證 Project 與兩個 Board。
 - smoke script 已改以 multi-project `/me`、`/projects` 與可選的第一個 Board 做只讀
   驗證，不再把 fresh cutover 後不存在的 legacy `/board` 當成錯誤。
 - migration state 為 `complete`；D1 token inventory 只查非敏感 metadata。
@@ -217,13 +224,24 @@ App 在不更新版本的情況下取得新 title，需要另外設計公開且�
 
 ### 自動化
 
-- [ ] 工作樹乾淨，`git diff --check` 通過。
-- [ ] `pnpm install --frozen-lockfile` 可從 fresh clone 完成。
-- [ ] `pnpm test`、`pnpm worker:test`、lint、typecheck 全綠。
-- [ ] Web build、mobile build、generated Worker types check 全綠。
-- [ ] production/staging Worker dry-run 全綠。
-- [ ] Android debug 與 iOS simulator build 全綠。
-- [ ] repo、bundle、CI artifacts 與 logs 都不含明文 token。
+- [x] `de24a29` fresh clone 在 final mobile sync 後工作樹乾淨，`git diff --check` 通過。
+- [x] `pnpm install --frozen-lockfile` 可從 fresh clone 完成。
+- [x] `pnpm test`（153）、`pnpm worker:test`（48）、lint、typecheck 全綠。
+- [x] Web build、mobile build、generated Worker types check 全綠。
+- [x] production/staging Worker dry-run 全綠，bindings 分別指向各自 D1/R2。
+- [x] Android debug 與未簽章 iOS simulator build 全綠。
+- [x] 362 個 tracked、Wrangler log 與 Web/mobile/native build artifact files 中，實際
+  staging token 與 SHA-256 hash 都是 0 命中。
+
+### Staging API 基線
+
+- Project：`449390b4-b03a-4e60-8873-991eece77f37` / `Staging 驗證專案`，owner 是
+  manager。
+- Board A：`655c1c1c-e54d-4006-9670-84959b26b58d` / `Web 驗證看板`，revision 1。
+- Board B：`20a59286-a61f-4cbf-a6dc-d14a0d4a0222` / `App 驗證看板`，revision 0。
+- 相同 attachment ID 在 A/B 寫入不同 bytes 後可各自讀回，證明 Board-scoped R2
+  隔離；測試物件已刪除，bucket 回到 0 objects / 0 B。
+- 建立資料後 authenticated smoke 通過：1 Workspace、1 Project、抽驗 1 Board。
 
 完整命令：
 
@@ -265,7 +283,8 @@ git diff --check
 ### 3b 附件同步
 
 - [ ] A 裝置新增照片或錄音，B 裝置可下載、顯示與播放。
-- [ ] Attachment endpoint 與 R2 key 都包含正確 Project/Board scope。
+- [x] Attachment endpoint 與 R2 key 都包含正確 Project/Board scope；同 attachment ID
+  的 A/B round-trip 不互相覆寫。
 - [ ] 無 membership 的 user 即使知道 attachment ID 仍無法下載。
 - [ ] 遠端 board 不會先發布尚未成功上傳的附件參照。
 - [ ] B 裝置先看到參照時，下載失敗可重試，不會永久卡住。
@@ -296,7 +315,7 @@ git diff --check
 
 ### iOS / Android 實機
 
-- [ ] 候選 commit 上執行過 final `pnpm mobile:sync`。
+- [x] 候選 commit 上執行過 final `pnpm mobile:sync`。
 - [ ] 相機、相簿、錄音、播放與繁中語音建卡正常。
 - [ ] 權限拒絕後不崩潰，重新授權可恢復。
 - [ ] 背景／前景、斷網、重啟與低儲存空間不遺失 board。

@@ -39,10 +39,17 @@ Cloudflare 參考：
 | Owner user | `a14c7f5d-4c2e-4be2-8896-07652625d722` |
 | Token inventory | personal label `owner-web`，建立日期 2026-07-27 |
 | 本機保管位置 | macOS Keychain service `com.wongchambers.kanban.staging.sync-token`、account `staging-owner` |
+| 驗證 Project | `449390b4-b03a-4e60-8873-991eece77f37` / `Staging 驗證專案` |
+| 驗證 Board A | `655c1c1c-e54d-4006-9670-84959b26b58d` / `Web 驗證看板` |
+| 驗證 Board B | `20a59286-a61f-4cbf-a6dc-d14a0d4a0222` / `App 驗證看板` |
 
 Token 明文與 hash 不得加入本表。撤銷時依
 [token-lifecycle.md](./token-lifecycle.md) 先建立替代 token、驗證，再以 token ID 撤銷；
 Keychain locator 只用於目前 staging operator 的本機 smoke test。
+
+`de24a29` 的 fresh-clone 自動化與 Android/iOS simulator builds 已通過。R2 scope
+驗證曾以相同 attachment ID 對 Board A/B 寫入不同測試 bytes，各自讀回後立即刪除；
+bucket 已確認回到 0 objects / 0 B。這些 baseline 資源可供雙瀏覽器與實機驗收沿用。
 
 ## 1. 固定 release candidate
 
