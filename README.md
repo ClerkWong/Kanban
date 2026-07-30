@@ -88,9 +88,13 @@ tests 使用 Cloudflare Vitest integration，在本機 D1/R2 模擬環境驗證�
 ## 行動版
 
 ```bash
+pnpm mobile:assets
 pnpm mobile:sync
 pnpm mobile:ios
 ```
+
+`mobile:assets` 會從 `assets/` 的 SVG 品牌來源重新產生 iOS/Android icon 與 splash；
+只有品牌來源變更時才需執行。
 
 CI 或只建單一平台時使用 `pnpm mobile:sync:android` / `pnpm mobile:sync:ios`，避免在
 不具備另一平台工具鏈的 runner 上執行不必要的同步。

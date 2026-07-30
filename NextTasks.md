@@ -37,7 +37,7 @@
 | staging Worker/D1/R2/token | 已建立 | 和 production 完全隔離；URL 與非敏感 inventory 見 staging runbook |
 | production Worker/D1 | 既有 3a 上線 | 尚未部署本次 3b Worker |
 | production R2 | **尚未建立** | 必須等 staging 驗收全數通過 |
-| iOS/Android | 可建置，未完成發行 | 尚缺實機、簽章、版本與內部分發／商店流程 |
+| iOS/Android | `1.1.0` 內測程式已建置，未完成發行 | 品牌 icon/splash、App 內支援／隱私入口與版本 `1.1.0 (2)` 已完成；Android debug 與 iOS simulator build 通過，尚缺實機與 release signing／分發 |
 
 ### 已完成的驗證
 
@@ -102,6 +102,9 @@
 - 任務多人指派 v1.1 已通過 159 個 client tests、49 個 Worker tests、8 個 release
   tests、lint、typecheck、Web/mobile build 與 staging Worker dry-run。Board schema
   v5 migration 保留 v4 `completedAt`，Worker 只允許新指派目前的 Project members。
+- `47f604f` 已執行完整 `pnpm mobile:sync`；iOS/Android bundle 均包含多人指派 UI，
+  Android debug APK 與未簽章 iOS simulator build 成功。詳細差距與下一批工作見
+  [Mobile 進度報告](./docs/reports/mobile-progress-2026-07-30.md)。
 - `feature/multi-project-v1` 的 staging 候選基準是 `de24a29`。隔離的 staging
   Worker、D1、private R2、migration、owner、personal token 與驗證 Project/Boards
   已建立，authenticated smoke 與 R2 scope round-trip 已通過。private beta v3 已從
@@ -324,11 +327,27 @@ git diff --check
 
 ### iOS / Android 實機
 
-- [x] 候選 commit 上執行過 final `pnpm mobile:sync`。
+- [x] `47f604f` 執行過完整 `pnpm mobile:sync`，四個 Capacitor plugins 均同步。
+- [x] Android `:app:assembleDebug` 成功並產出 debug APK。
+- [x] iOS `.xcworkspace` generic simulator 未簽章 build 成功。
+- [x] `1.1.0` 安裝並啟動於 iPhone 17 Pro / iOS 26.5 Simulator；確認原生 launch、
+  本機 Board 首畫面與 Mobile「說明」入口呈現，並補上 React 載入前靜態畫面。
+- [x] iOS/Android native bundle 都包含多人指派介面。
+- [x] 以 `assets/` Kanban 品牌來源取代 Capacitor 預設 icon/splash，並加入
+  `pnpm mobile:assets` 可重現產生流程。
+- [x] 設為 iOS `1.1.0 (2)`、Android `1.1.0 (versionCode 2)`。
+- [x] 補 Mobile bundle 內可離線讀取的支援／隱私面板，內容與 Web 共用。
+- [x] Android debug APK 已由 debug keystore 簽署，可供受控內部測試。
+- [ ] 匯入有效 iOS code-signing identity／provisioning profile；目前 Keychain 為
+  `0 valid identities found`。
+- [ ] 提供 Android release keystore 與 CI secret，再產生 release-signed AAB／APK。
+- [ ] 產生 TestFlight 或 internal track build。
+- [ ] personal token 改用 Keychain／Keystore-backed storage。
 - [ ] 相機、相簿、錄音、播放與繁中語音建卡正常。
 - [ ] 權限拒絕後不崩潰，重新授權可恢復。
 - [ ] 背景／前景、斷網、重啟與低儲存空間不遺失 board。
 - [ ] App 內 title 使用候選 JSON 值。
+- [ ] Web ↔ Mobile 多人指派、Board revision 與附件最終收斂。
 
 ## P0-5：production cutover
 

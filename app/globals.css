@@ -1445,6 +1445,63 @@ textarea {
   color: var(--muted);
 }
 
+.mobileInfoButton {
+  position: fixed;
+  z-index: 10;
+  right: calc(14px + var(--safe-right));
+  bottom: calc(14px + var(--safe-bottom));
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--paper-strong);
+  box-shadow: 0 8px 24px rgba(36, 45, 47, 0.16);
+  color: var(--teal-strong);
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
+.mobileInfoModal {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.mobileInfoModal .modalHeader {
+  align-items: flex-start;
+}
+
+.mobileInfoModal .modalHeader h2 {
+  margin-top: 4px;
+}
+
+.mobileInfoTabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobileInfoContent {
+  line-height: 1.7;
+}
+
+.mobileInfoContent section {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.mobileInfoContent h2 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+
+.mobileInfoContent p,
+.mobileInfoContent ol {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
 .reportContent {
   display: grid;
   gap: 20px;

@@ -8,9 +8,43 @@
     />
     <meta name="theme-color" content="#f7f5ef" />
     <title>本機 Kanban 看板</title>
+    <style>
+      html,
+      body,
+      #root {
+        min-height: 100%;
+        margin: 0;
+        background: #f7f5ef;
+      }
+
+      .mobileBootScreen {
+        display: grid;
+        min-height: 100vh;
+        place-content: center;
+        padding: 24px;
+        color: #1e2528;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        text-align: center;
+      }
+
+      .mobileBootScreen strong {
+        color: #0b5d58;
+        font-size: 1.4rem;
+      }
+
+      .mobileBootScreen span {
+        margin-top: 8px;
+        color: #697276;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main aria-busy="true" class="mobileBootScreen">
+        <strong>本機 Kanban</strong>
+        <span>正在載入看板…</span>
+      </main>
+    </div>
     <script type="module" src="/main.tsx"></script>
   </body>
 </html>
