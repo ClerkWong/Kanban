@@ -43,7 +43,7 @@ export type SyncHandle = {
   session: RuntimeSession | null;
   syncNow: () => void;
   enable: (config: SyncConfig, initialMode: "download" | "merge") => Promise<void>;
-  disable: () => void;
+  disable: () => Promise<void>;
   queueUploads: (attachments: AttachmentRef[]) => void;
   queueDeletes: (attachments: AttachmentRef[]) => void;
 };
@@ -212,26 +212,31 @@ export function useSync(
 
   useEffect(() => {
     if (!loaded) return;
-    const stored = loadSyncConfig();
-    if (!stored) return;
-    configRef.current = stored;
-    queueMicrotask(() => {
-      if (!configIsCurrent(stored)) return;
-      setConfig(stored);
-      setStatus("syncing");
-      void fetchRuntimeSession(stored)
-        .then((identity) => {
-          if (!configIsCurrent(stored)) return;
-          setSession(identity);
-          return runSync();
-        })
-        .catch(() => {
-          if (!configIsCurrent(stored)) return;
-          setStatus("error");
-          setErrorMessage("啟動同步失敗，將於手動重試時再試。");
-        });
+    let cancelled = false;
+    void loadSyncConfig(platform.syncCredentials).then((stored) => {
+      if (cancelled || !stored) return;
+      configRef.current = stored;
+      queueMicrotask(() => {
+        if (cancelled || !configIsCurrent(stored)) return;
+        setConfig(stored);
+        setStatus("syncing");
+        void fetchRuntimeSession(stored)
+          .then((identity) => {
+            if (cancelled || !configIsCurrent(stored)) return;
+            setSession(identity);
+            return runSync();
+          })
+          .catch(() => {
+            if (cancelled || !configIsCurrent(stored)) return;
+            setStatus("error");
+            setErrorMessage("啟動同步失敗，將於手動重試時再試。");
+          });
+      });
     });
-  }, [configIsCurrent, loaded, runSync]);
+    return () => {
+      cancelled = true;
+    };
+  }, [configIsCurrent, loaded, platform, runSync]);
 
   useEffect(() => {
     if (!config || !loaded) return;
@@ -260,6 +265,8 @@ export function useSync(
       try {
         const connection = await prepareInitialConnection(next, {
           isCurrent: () => configIsCurrent(next),
+          persistConfig: (config) =>
+            saveSyncConfig(config, platform.syncCredentials),
         });
         if (connection.kind === "stale") return;
         const identity = connection.session;
@@ -297,7 +304,7 @@ export function useSync(
         configRef.current = null;
         setConfig(null);
         setSession(null);
-        saveSyncConfig(null);
+        await saveSyncConfig(null, platform.syncCredentials);
         setStatus("error");
         setErrorMessage(
           error instanceof ApiClientError && error.status === 401
@@ -309,14 +316,14 @@ export function useSync(
     [cacheMissingAttachments, configIsCurrent, platform, runSync, setBoard],
   );
 
-  const disable = useCallback(() => {
-    saveSyncConfig(null);
+  const disable = useCallback(async () => {
+    await saveSyncConfig(null, platform.syncCredentials);
     setConfig(null);
     setSession(null);
     configRef.current = null;
     setStatus("disabled");
     setErrorMessage("");
-  }, []);
+  }, [platform]);
 
   const queueUploads = useCallback((attachments: AttachmentRef[]) => {
     const active = configRef.current;

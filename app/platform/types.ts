@@ -10,8 +10,17 @@ export type SavedFile = {
 
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
+export interface SyncCredentialStorage {
+  /** Native stores are Keychain/Keystore-backed and trigger one-time
+   * migration away from WebView localStorage. */
+  secure: boolean;
+  load(): Promise<string | null>;
+  save(value: string | null): Promise<void>;
+}
+
 export interface PlatformCapabilities {
   isNative: boolean;
+  syncCredentials: SyncCredentialStorage;
   takePhoto(): Promise<CaptureResult | null>;
   audio: {
     startRecording(): Promise<void>;

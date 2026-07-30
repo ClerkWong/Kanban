@@ -69,6 +69,11 @@ function installBrowser() {
 function platform(exists = true): PlatformCapabilities {
   return {
     isNative: false,
+    syncCredentials: {
+      secure: false,
+      load: async () => null,
+      save: async () => {},
+    },
     takePhoto: async () => null,
     audio: { startRecording: async () => {}, stopRecording: async () => null },
     speech: { available: async () => false, start: async () => "", stop: async () => {} },

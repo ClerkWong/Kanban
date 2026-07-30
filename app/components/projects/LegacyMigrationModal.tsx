@@ -15,6 +15,7 @@ import type { BoardContext } from "../../projects/types";
 import { saveSyncConfig, type SyncConfig } from "../../sync/config";
 import { pushRemoteBoard } from "../../sync/api";
 import { saveBoardRevision } from "../../projects/storage";
+import { usePlatform } from "../../platform/context";
 
 export function LegacyMigrationModal({
   config,
@@ -33,6 +34,7 @@ export function LegacyMigrationModal({
   needsBoardChoice: boolean;
   onComplete: () => void;
 }) {
+  const platform = usePlatform();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [boardDone, setBoardDone] = useState(!needsBoardChoice);
@@ -77,7 +79,10 @@ export function LegacyMigrationModal({
     setError("");
     try {
       await replaceLegacyToken(config, newToken);
-      saveSyncConfig({ baseUrl: config.baseUrl, token: newToken });
+      await saveSyncConfig(
+        { baseUrl: config.baseUrl, token: newToken },
+        platform.syncCredentials,
+      );
       if (boardDone) onComplete();
       window.location.reload();
     } catch (cause) {

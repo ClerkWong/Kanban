@@ -5,11 +5,47 @@ import {
   syncRevisionKey,
   type StorageLike,
 } from "../projects/storage";
+import type { SyncCredentialStorage } from "../platform/types";
 
 export type SyncConfig = { baseUrl: string; token: string };
 
 const LEGACY_CONFIG_KEY = "kanban-sync-config-v1";
 const REVISION_KEY = "kanban-sync-revision-v1";
+
+function browserStorage(): StorageLike {
+  if (typeof window === "undefined") {
+    throw new Error("同步設定只能在瀏覽器環境使用。");
+  }
+  return window.localStorage;
+}
+
+function loadBrowserRaw(storage: StorageLike): string | null {
+  return (
+    storage.getItem(SYNC_CONFIG_KEY_V2) ??
+    storage.getItem(LEGACY_CONFIG_KEY)
+  );
+}
+
+function clearBrowserCredentials(storage: StorageLike): void {
+  storage.removeItem(SYNC_CONFIG_KEY_V2);
+  storage.removeItem(LEGACY_CONFIG_KEY);
+}
+
+export const webSyncCredentialStorage: SyncCredentialStorage = {
+  secure: false,
+  async load() {
+    return loadBrowserRaw(browserStorage());
+  },
+  async save(value) {
+    const storage = browserStorage();
+    if (value === null) {
+      clearBrowserCredentials(storage);
+      return;
+    }
+    storage.setItem(SYNC_CONFIG_KEY_V2, value);
+    storage.removeItem(LEGACY_CONFIG_KEY);
+  },
+};
 
 export function normalizeBaseUrl(input: string): string {
   const trimmed = input.trim();
@@ -36,14 +72,8 @@ export function normalizeBaseUrl(input: string): string {
   return parsed.origin;
 }
 
-export function loadSyncConfig(): SyncConfig | null {
+function parseSyncConfig(raw: string): SyncConfig | null {
   try {
-    const raw =
-      window.localStorage.getItem(SYNC_CONFIG_KEY_V2) ??
-      window.localStorage.getItem(LEGACY_CONFIG_KEY);
-    if (!raw) {
-      return null;
-    }
     const value = JSON.parse(raw) as unknown;
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return null;
@@ -57,28 +87,63 @@ export function loadSyncConfig(): SyncConfig | null {
     ) {
       return null;
     }
-    const config = { baseUrl: normalizeBaseUrl(parsed.baseUrl), token: parsed.token };
-    if (!window.localStorage.getItem(SYNC_CONFIG_KEY_V2)) {
-      window.localStorage.setItem(SYNC_CONFIG_KEY_V2, JSON.stringify(config));
-      window.localStorage.removeItem(LEGACY_CONFIG_KEY);
-    }
-    return config;
+    return { baseUrl: normalizeBaseUrl(parsed.baseUrl), token: parsed.token };
   } catch {
     return null;
   }
 }
 
-export function saveSyncConfig(config: SyncConfig | null): void {
+export async function loadSyncConfig(
+  target: SyncCredentialStorage = webSyncCredentialStorage,
+): Promise<SyncConfig | null> {
+  try {
+    const storedRaw = await target.load();
+    const migrationStorage = target.secure ? browserStorage() : null;
+    const raw = storedRaw ?? (
+      migrationStorage ? loadBrowserRaw(migrationStorage) : null
+    );
+    if (!raw) {
+      return null;
+    }
+    const config = parseSyncConfig(raw);
+    if (!config) {
+      return null;
+    }
+    const normalized = JSON.stringify(config);
+    if (target.secure) {
+      if (storedRaw === null) {
+        // Delete the WebView token only after the secure native write succeeds.
+        await target.save(normalized);
+      }
+      clearBrowserCredentials(migrationStorage!);
+    } else if (storedRaw !== normalized || browserStorage().getItem(LEGACY_CONFIG_KEY)) {
+      await target.save(normalized);
+    }
+    return config;
+  } catch {
+    // A failed native migration deliberately leaves the old localStorage value
+    // untouched so a transient Keychain/Keystore error cannot lose credentials.
+    return null;
+  }
+}
+
+export async function saveSyncConfig(
+  config: SyncConfig | null,
+  target: SyncCredentialStorage = webSyncCredentialStorage,
+): Promise<void> {
   if (config) {
-    window.localStorage.setItem(SYNC_CONFIG_KEY_V2, JSON.stringify({
+    await target.save(JSON.stringify({
       baseUrl: normalizeBaseUrl(config.baseUrl),
       token: config.token,
     }));
-    window.localStorage.removeItem(LEGACY_CONFIG_KEY);
+    if (target.secure) {
+      clearBrowserCredentials(browserStorage());
+    }
   } else {
-    window.localStorage.removeItem(SYNC_CONFIG_KEY_V2);
-    window.localStorage.removeItem(LEGACY_CONFIG_KEY);
-    window.localStorage.removeItem(REVISION_KEY);
+    await target.save(null);
+    const storage = browserStorage();
+    clearBrowserCredentials(storage);
+    storage.removeItem(REVISION_KEY);
   }
 }
 

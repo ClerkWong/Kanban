@@ -37,7 +37,7 @@ export function AttachmentSection({
 
   const downloadFromCurrentSync = useCallback(
     async (attachment: AttachmentRef): Promise<boolean> => {
-      const config = loadSyncConfig();
+      const config = await loadSyncConfig(platform.syncCredentials);
       if (!config) {
         return false;
       }
@@ -50,8 +50,8 @@ export function AttachmentSection({
             platform,
             attachment.fileName,
             attachment.mimeType,
-            () => {
-              const current = loadSyncConfig();
+            async () => {
+              const current = await loadSyncConfig(platform.syncCredentials);
               return Boolean(
                 current && current.baseUrl === config.baseUrl && current.token === config.token,
               );
@@ -63,8 +63,8 @@ export function AttachmentSection({
           platform,
           attachment.fileName,
           attachment.mimeType,
-          () => {
-            const current = loadSyncConfig();
+          async () => {
+            const current = await loadSyncConfig(platform.syncCredentials);
             return Boolean(
               current && current.baseUrl === config.baseUrl && current.token === config.token,
             );

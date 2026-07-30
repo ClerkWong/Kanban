@@ -20,7 +20,7 @@ type InitialConnectionDependencies = {
   isCurrent: () => boolean;
   fetchSession?: (config: SyncConfig) => Promise<RuntimeSession>;
   fetchLegacyBoard?: (config: SyncConfig) => Promise<LegacyRemoteBoard>;
-  persistConfig?: (config: SyncConfig) => void;
+  persistConfig?: (config: SyncConfig) => void | Promise<void>;
 };
 
 /**
@@ -40,7 +40,8 @@ export async function prepareInitialConnection(
   const session = await fetchSession(config);
   if (!dependencies.isCurrent()) return { kind: "stale" };
 
-  persistConfig(config);
+  await persistConfig(config);
+  if (!dependencies.isCurrent()) return { kind: "stale" };
   if (session.user.tokenKind === "personal") {
     return { kind: "projects", session };
   }

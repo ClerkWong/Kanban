@@ -1,10 +1,11 @@
 # Mobile 進度與 Web 差距報告
 
 - 日期：2026-07-30
-- 基準 commit：`47f604f`
+- 基準 commit：`90e2677`（本次安全儲存與簽章變更尚待 commit）
 - 平台：Capacitor 8 / iOS / Android
 - 結論：核心產品功能已與 Web 共用，`1.1.0` 內測版的品牌資產、說明入口與雙平台
-  編譯已完成；目前主要缺口是實機驗收與 release signing。
+  編譯已完成；personal token 已移至 Keychain／Keystore-backed storage。現在主要
+  缺口是 Android release keystore、iOS distribution export 與雙平台實機驗收。
 
 ## 目前完成度
 
@@ -33,6 +34,11 @@ Mobile 入口直接掛載與 Web 相同的 `ProjectApp`，下列功能沒有另�
 - 附件：`@capacitor/filesystem`，寫入 App data directory。
 - 錄音：`capacitor-voice-recorder`。
 - 繁中語音建卡：`@capacitor-community/speech-recognition`，locale `zh-TW`。
+- personal token：iOS Keychain
+  (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`)；Android 以 Android Keystore
+  device-bound AES-GCM key 加密後存入 private SharedPreferences。
+- 原生 App 會把既有 WebView localStorage token 一次性遷移到安全儲存；安全寫入失敗
+  時不使用也不刪除舊 token，避免靜默遺失。
 
 ### 2026-07-30 驗證
 
@@ -49,8 +55,16 @@ Mobile 入口直接掛載與 Web 相同的 `ProjectApp`，下列功能沒有另�
   本機 Board 首畫面與 Mobile「說明」入口可呈現。另加入 bundle 載入中的靜態畫面，
   避免 splash 結束到 React 首次繪製間只顯示空白。
 - Android debug APK 約 9.5 MiB，可供受控內部裝置安裝測試。
-- 本機沒有有效 iOS code-signing identity；Android 也還沒有 release keystore，
-  因此本次沒有宣稱已產出 release-signed build。
+- 安全儲存變更再次通過 typecheck、lint、mobile build、完整 `pnpm mobile:sync`、
+  162 個 client tests、Android `:app:assembleDebug` 與 iOS generic simulator build。
+- 新 bundle 已安裝並啟動於 iPhone 17 Pro / iOS 26.5 Simulator，確認自訂 iOS
+  ViewController 與 SecureConfig plugin 註冊後 App 可正常啟動。
+- 本機目前有有效 Apple Development 與 Apple Distribution identity；iOS Release
+  generic device build、本機 archive 與 `codesign --verify --deep --strict` 成功。
+  Archive 目前使用 Apple Development + team provisioning profile，尚未執行
+  distribution export 或 TestFlight 上傳。
+- Android release signing 已接好環境變數與 fail-closed gate，但尚無 release
+  keystore，因此沒有產出或宣稱 release-signed AAB／APK。
 
 ## 與 Web/PWA 的差距
 
@@ -66,7 +80,7 @@ Mobile 入口直接掛載與 Web 相同的 `ProjectApp`，下列功能沒有另�
 | 品牌資產 | 網站已有 metadata / PWA assets | 已使用同一套 Kanban icon/splash | 已完成；仍待真機檢查各 launcher mask 與啟動畫面 |
 | 版本／發行 | Sites 有版本與回退 | iOS/Android 已設為 `1.1.0 (2)` | 版本已建立；安裝升級與回退仍待實機驗證 |
 | 發布管道 | private beta URL 已存在 | 尚無 TestFlight／signed APK／internal track | 需簽章、產物保存與內部分發 |
-| Token 儲存 | browser localStorage | WebView localStorage | 功能一致，但 Mobile 擴大使用前應改 Keychain／Keystore |
+| Token 儲存 | browser localStorage | iOS Keychain／Android Keystore-backed AES-GCM | 原生實作與一次性遷移已完成；仍需實機驗證升級、重啟與停用同步 |
 | 背景同步 | 開啟頁面或回前景時重試 | 啟動、上線、回前景時重試 | 沒有永久背景傳輸；大型附件需實機驗證 |
 
 ## Mobile 下一批工作
@@ -78,7 +92,8 @@ Mobile 入口直接掛載與 Web 相同的 `ProjectApp`，下列功能沒有另�
 3. 決定第一個實機平台與測試裝置。
 4. [x] 更換 Capacitor 預設 App icon 與 splash。
 5. [x] 設定 iOS `1.1.0 (2)`、Android `1.1.0 (versionCode 2)`。
-6. 匯入 iOS signing identity／provisioning profile，並提供 Android release keystore。
+6. [x] iOS 本機 identity、Release device build 與 archive 已驗證；仍需 distribution
+   export profile。另需提供 Android release keystore。
 7. 產生可安裝的 release-signed internal build。
 8. 完成以下實機 smoke：
    - personal token 登入與我的專案；
@@ -90,7 +105,7 @@ Mobile 入口直接掛載與 Web 相同的 `ProjectApp`，下列功能沒有另�
 
 ### M1：擴大內測前
 
-- 將 personal token 移到 iOS Keychain / Android Keystore-backed storage。
+- [x] 將 personal token 移到 iOS Keychain / Android Keystore-backed storage。
 - [x] 補 App 內隱私與支援入口。
 - 驗證安裝升級與上一版回退，不清除 local Board 或 Attachment queue。
 - 評估大型附件的背景傳輸策略。
@@ -100,10 +115,10 @@ Mobile 入口直接掛載與 Web 相同的 `ProjectApp`，下列功能沒有另�
 
 - 模擬器 build 成功不等於實機原生能力已通過。
 - debug APK 不等於可發行的 signed AAB／APK。
-- iOS 專案已有 development team 設定，但 Keychain 沒有有效 code-signing identity，
-  本次無法做 distribution Archive 或 TestFlight。
+- iOS 本機 Archive 已成功，但目前以 Apple Development + team provisioning profile
+  簽署；尚未驗證 distribution export、App Store Connect 或 TestFlight。
 - Android debug APK 由 debug keystore 簽署，可供內部除錯安裝；它不是 release-signed
-  AAB／APK。
+  AAB／APK。release task 已設為缺少 keystore secrets 即停止。
 - 本次環境沒有可連線的互動瀏覽器，因此未完成 mobile viewport 的自動點擊驗收；
   已改以 iOS Simulator 實際安裝／啟動與截圖補足首畫面驗證，但說明面板操作與完整
   使用流程仍待實機或互動式 UI 測試。

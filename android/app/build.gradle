@@ -1,5 +1,18 @@
 apply plugin: 'com.android.application'
 
+def releaseSigningValues = [
+    storePath: System.getenv('KANBAN_ANDROID_KEYSTORE_PATH'),
+    storePassword: System.getenv('KANBAN_ANDROID_KEYSTORE_PASSWORD'),
+    keyAlias: System.getenv('KANBAN_ANDROID_KEY_ALIAS'),
+    keyPassword: System.getenv('KANBAN_ANDROID_KEY_PASSWORD'),
+]
+def releaseSigningConfigured = releaseSigningValues.values().every {
+    it != null && !it.trim().isEmpty()
+}
+def releaseTaskRequested = gradle.startParameter.taskNames.any {
+    it.toLowerCase().contains('release')
+}
+
 android {
     namespace = "com.wongchambers.kanban"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,12 +29,33 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            release {
+                storeFile file(releaseSigningValues.storePath)
+                storePassword releaseSigningValues.storePassword
+                keyAlias releaseSigningValues.keyAlias
+                keyPassword releaseSigningValues.keyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+}
+
+if (releaseTaskRequested && !releaseSigningConfigured) {
+    throw new GradleException(
+        'Release signing is not configured. Set KANBAN_ANDROID_KEYSTORE_PATH, ' +
+        'KANBAN_ANDROID_KEYSTORE_PASSWORD, KANBAN_ANDROID_KEY_ALIAS, and ' +
+        'KANBAN_ANDROID_KEY_PASSWORD.'
+    )
 }
 
 repositories {

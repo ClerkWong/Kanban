@@ -338,11 +338,19 @@ git diff --check
 - [x] 設為 iOS `1.1.0 (2)`、Android `1.1.0 (versionCode 2)`。
 - [x] 補 Mobile bundle 內可離線讀取的支援／隱私面板，內容與 Web 共用。
 - [x] Android debug APK 已由 debug keystore 簽署，可供受控內部測試。
-- [ ] 匯入有效 iOS code-signing identity／provisioning profile；目前 Keychain 為
-  `0 valid identities found`。
+- [x] 本機已有有效 Apple Development／Distribution identity；iOS Release device
+  build 與本機 `.xcarchive` 成功，archive 目前以 Apple Development + team
+  provisioning profile 簽署，尚未做 distribution export／上傳。
 - [ ] 提供 Android release keystore 與 CI secret，再產生 release-signed AAB／APK。
+- [x] Android release signing 已改由四個 `KANBAN_ANDROID_*` 環境變數注入；缺少任一
+  secret 時 release task 會立即停止，keystore 類型亦加入 `.gitignore`。
 - [ ] 產生 TestFlight 或 internal track build。
-- [ ] personal token 改用 Keychain／Keystore-backed storage。
+- [x] personal token 改用 iOS Keychain 與 Android Keystore-backed AES-GCM storage；
+  原生 App 啟動時會一次性遷移 WebView localStorage，只有安全寫入成功才刪除舊 token。
+- [x] 安全儲存改為非同步平台能力；首次登入、legacy token 換發、停用同步、附件下載
+  重試與 Project/Board bootstrap 均使用同一安全儲存來源。
+- [x] 新增安全遷移／失敗保留／清除測試；`pnpm mobile:sync`、Android debug build、
+  iOS simulator build、Simulator 安裝啟動與 iOS signed Release archive 均成功。
 - [ ] 相機、相簿、錄音、播放與繁中語音建卡正常。
 - [ ] 權限拒絕後不崩潰，重新授權可恢復。
 - [ ] 背景／前景、斷網、重啟與低儲存空間不遺失 board。

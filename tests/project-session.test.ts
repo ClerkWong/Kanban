@@ -82,14 +82,14 @@ test("runtime session accepts only server identity and known workspace roles", (
 });
 
 test("SyncConfig v2 persists only base URL/token and migrates v1 without identity overrides", async () => {
-  await withWindowStorage((storage) => {
+  await withWindowStorage(async (storage) => {
     storage.setItem("kanban-sync-config-v1", JSON.stringify({
       baseUrl: "https://sync.example/",
       token: "legacy-token",
       userId: userB,
       workspaceRole: "owner",
     }));
-    assert.deepEqual(loadSyncConfig(), {
+    assert.deepEqual(await loadSyncConfig(), {
       baseUrl: "https://sync.example",
       token: "legacy-token",
     });
@@ -99,7 +99,7 @@ test("SyncConfig v2 persists only base URL/token and migrates v1 without identit
       token: "legacy-token",
     });
 
-    saveSyncConfig({
+    await saveSyncConfig({
       baseUrl: "https://next.example/",
       token: "next-token",
       userId: userA,

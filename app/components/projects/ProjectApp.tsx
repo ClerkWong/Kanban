@@ -34,6 +34,7 @@ import type {
   BoardMeta,
   ProjectSummary,
 } from "../../projects/types";
+import { usePlatform } from "../../platform/context";
 import { loadSyncConfig, type SyncConfig } from "../../sync/config";
 import { BoardNavigation } from "./BoardNavigation";
 import { MyProjectsView } from "./MyProjectsView";
@@ -60,6 +61,7 @@ export function ProjectApp({
   enableServiceWorker = false,
   appConfigUrl = "/app-config.json",
 }: ProjectAppProps) {
+  const platform = usePlatform();
   const [bootstrap, setBootstrap] = useState<BootstrapState>({ kind: "loading" });
   const [route, setRoute] = useState<ProjectRoute>({ kind: "projects" });
 
@@ -75,40 +77,40 @@ export function ProjectApp({
 
   useEffect(() => {
     let cancelled = false;
-    const config = loadSyncConfig();
-    if (!config) {
-      queueMicrotask(() => {
-        if (!cancelled) setBootstrap({ kind: "local" });
-      });
-      return;
-    }
-    void Promise.all([
-      fetchRuntimeSession(config),
-      listProjects(config, "active"),
-      listProjects(config, "archived"),
-    ])
-      .then(([session, active, archived]) => {
-        if (cancelled) return;
-        setBootstrap({
-          kind: "ready",
-          config,
-          session,
-          projects: [...active, ...archived],
+    void loadSyncConfig(platform.syncCredentials).then((config) => {
+      if (cancelled) return;
+      if (!config) {
+        setBootstrap({ kind: "local" });
+        return;
+      }
+      void Promise.all([
+        fetchRuntimeSession(config),
+        listProjects(config, "active"),
+        listProjects(config, "archived"),
+      ])
+        .then(([session, active, archived]) => {
+          if (cancelled) return;
+          setBootstrap({
+            kind: "ready",
+            config,
+            session,
+            projects: [...active, ...archived],
+          });
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setBootstrap({
+            kind: "error",
+            message: error instanceof Error
+              ? error.message
+              : "無法載入專案資料，請稍後再試。",
+          });
         });
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setBootstrap({
-          kind: "error",
-          message: error instanceof Error
-            ? error.message
-            : "無法載入專案資料，請稍後再試。",
-        });
-      });
+    });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [platform]);
 
   useEffect(() => {
     if (bootstrap.kind !== "ready") return;

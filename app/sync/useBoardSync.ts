@@ -442,30 +442,32 @@ export function useBoardSync(
     connectionStartedRef.current = true;
     queueMicrotask(() => {
       if (!mountedRef.current) return;
-      const stored = loadSyncConfig();
-      if (!stored) {
-        setStatus("disabled");
-        return;
-      }
-      const attempt = ++connectionAttemptRef.current;
-      setConfig(stored);
-      setStatus("syncing");
-      void fetchRuntimeSession(stored)
-        .then((nextSession) => {
-          if (!mountedRef.current || connectionAttemptRef.current !== attempt) return;
-          setSession(nextSession);
-        })
-        .catch((error: unknown) => {
-          if (!mountedRef.current || connectionAttemptRef.current !== attempt) return;
-          setStatus("error");
-          setErrorMessage(
-            error instanceof ApiClientError && error.status === 401
-              ? "同步憑證無效，請重新設定 token。"
+      void loadSyncConfig(platform.syncCredentials).then((stored) => {
+        if (!mountedRef.current) return;
+        if (!stored) {
+          setStatus("disabled");
+          return;
+        }
+        const attempt = ++connectionAttemptRef.current;
+        setConfig(stored);
+        setStatus("syncing");
+        void fetchRuntimeSession(stored)
+          .then((nextSession) => {
+            if (!mountedRef.current || connectionAttemptRef.current !== attempt) return;
+            setSession(nextSession);
+          })
+          .catch((error: unknown) => {
+            if (!mountedRef.current || connectionAttemptRef.current !== attempt) return;
+            setStatus("error");
+            setErrorMessage(
+              error instanceof ApiClientError && error.status === 401
+                ? "同步憑證無效，請重新設定 token。"
               : "無法建立同步 session；本機看板資料不受影響。",
-          );
-        });
+            );
+          });
+      });
     });
-  }, [loaded]);
+  }, [loaded, platform]);
 
   useEffect(() => {
     runSyncRef.current = (manual = false) => {
