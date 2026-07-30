@@ -9,6 +9,7 @@ export function CardItem({
   labels,
   today,
   movementDisabled,
+  assigneeNames,
   readOnly = false,
   onOpen,
   onMove,
@@ -22,6 +23,8 @@ export function CardItem({
   labels: Label[];
   today: string;
   movementDisabled: boolean;
+  /** Undefined for legacy boards; Project boards provide the current member directory. */
+  assigneeNames?: Record<string, string>;
   readOnly?: boolean;
   onOpen: () => void;
   onMove: (direction: "up" | "down" | "left" | "right") => void;
@@ -34,6 +37,11 @@ export function CardItem({
   const doneCount = card.checklist.filter((item) => item.done).length;
   const isOverdue = card.dueDate && card.dueDate < today;
   const cardLabels = labels.filter((label) => card.labelIds.includes(label.id));
+  const assignees = assigneeNames === undefined
+    ? []
+    : card.assigneeUserIds.map(
+        (userId) => assigneeNames[userId] ?? `已離開 (${userId.slice(0, 8)})`,
+      );
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (readOnly || !event.altKey) {
@@ -103,7 +111,13 @@ export function CardItem({
         {card.dueDate && (
           <span className={isOverdue ? "overdueText" : ""}>到期：{card.dueDate}</span>
         )}
-        {card.members.length > 0 && <span>成員：{card.members.join("、")}</span>}
+        {assigneeNames === undefined && card.members.length > 0 && (
+          <span>成員：{card.members.join("、")}</span>
+        )}
+        {assignees.length > 0 && <span>負責人：{assignees.join("、")}</span>}
+        {assigneeNames !== undefined && card.members.length > 0 && (
+          <span>舊版成員：{card.members.join("、")}</span>
+        )}
         {card.attachments.length > 0 && <span>附件：{card.attachments.length}</span>}
       </div>
 

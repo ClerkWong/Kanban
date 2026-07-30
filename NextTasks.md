@@ -1,6 +1,6 @@
 # Kanban 後續任務與發布 Runbook
 
-- 最後更新：2026-07-29
+- 最後更新：2026-07-30
 - 目前分支：`feature/multi-project-v1`
 - 已推送 staging 候選基準：`de24a29`（Task 1–14、staging resources 與 smoke）
 
@@ -28,6 +28,7 @@
 | 多專案 Client Task 12 | 已完成並推送 | manager Project／Board lifecycle、成員角色、archived views、summary filter、Activity Log cursor 與離線管理 guard |
 | 多專案 Task 13 | 已完成並推送 | legacy lock/copy/rollback、client merge/remote、一次性 backup、personal token 換發、verification script 與 E2E |
 | 多專案 Task 14 | 已完成並推送 | staging-ready CI、fresh clone／原生完整關卡、受限 token CLI 與 staging/token/reset runbooks |
+| 任務多人指派 v1.1 | 程式已完成，待發布 beta | Card schema v5、Project member 多選、Worker membership validation、離開成員保留與 assignment audit |
 | staging 設定 | 已建立並部署 | staging Worker、D1、private R2、migration、owner 與 personal token 已完成；待 RC 多角色／多裝置驗收 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
 | Web/PWA | private beta v3 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site) 已更新至 `d43eb3f`；修正 personal token 首次連線誤呼叫 legacy `/board`，目前僅擁有者可存取 |
@@ -98,6 +99,9 @@
 - personal token 首次連線修正 `d43eb3f` 已通過 156 個單元測試、lint、typecheck、
   Web build 與 mobile build；personal token 驗證 `/me` 後會直接重新載入
   ProjectApp，不再要求 fresh multi-project staging 提供 legacy `/board`。
+- 任務多人指派 v1.1 已通過 159 個 client tests、49 個 Worker tests、8 個 release
+  tests、lint、typecheck、Web/mobile build 與 staging Worker dry-run。Board schema
+  v5 migration 保留 v4 `completedAt`，Worker 只允許新指派目前的 Project members。
 - `feature/multi-project-v1` 的 staging 候選基準是 `de24a29`。隔離的 staging
   Worker、D1、private R2、migration、owner、personal token 與驗證 Project/Boards
   已建立，authenticated smoke 與 R2 scope round-trip 已通過。private beta v3 已從
@@ -150,6 +154,15 @@ App 在不更新版本的情況下取得新 title，需要另外設計公開且�
 - 單元、Worker runtime、Web/mobile build 與 local migration tests 全綠。
 
 在本節完成前，**不要建立 staging 遠端資源**。
+
+### v1.1：任務多人指派
+
+- [規格](./docs/superpowers/specs/2026-07-30-multi-assignee-tasks-design.md)
+- [實作計畫](./docs/superpowers/plans/2026-07-30-multi-assignee-tasks-v1.md)
+
+已完成 Card schema v5、Project member 多選、多人名稱顯示、離開成員保留、
+Worker membership validation 與 Activity Log changed fields。待部署 staging Worker 與
+private beta 後進行三角色、雙裝置人工驗收。
 
 ## P0-3：建立完全隔離的 staging（已完成）
 
@@ -259,6 +272,9 @@ git diff --check
 - [ ] workspace admin 未加入 Project 時只能看管理 metadata，不能讀工作內容。
 - [ ] contributor 可改 Card，但不能管理成員或封存 Board。
 - [ ] viewer 可讀 Board、Attachment、summary 與 Log，但不能 mutation。
+- [ ] manager/contributor 可指派多位 Project members；viewer 只能查看負責人。
+- [ ] 非 Project member 不能被新指派；成員離開後既有指派保留且可移除。
+- [ ] 多人任務移到完成欄時仍只有一個 Card-level `completedAt`。
 - [ ] Project 與 Board 名稱可不同，改名互不影響。
 - [ ] 同一 Project 的多個 Board revision、離線 cache 與 queue 彼此隔離。
 - [ ] Project summary 不混入其他 Project，預設排除 archived Board。

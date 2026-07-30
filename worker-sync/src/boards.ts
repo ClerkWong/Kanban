@@ -14,12 +14,78 @@ import {
 } from "./validation";
 
 const MAX_BOARD_BYTES = 1_000_000;
+const MAX_ASSIGNEES_PER_CARD = 20;
+const MAX_ASSIGNEES_PER_BOARD = 100;
 
 type BoardListRow = Omit<BoardRow, "data">;
 type LegacyBoardRow = {
   revision: number;
   data: string;
 };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function collectAssigneeUserIds(value: unknown, strict: boolean): Set<string> {
+  const cards = asRecord(asRecord(value)?.cards);
+  const result = new Set<string>();
+  if (!cards) return result;
+
+  for (const card of Object.values(cards)) {
+    const raw = asRecord(card)?.assigneeUserIds;
+    if (raw === undefined) continue;
+    if (!Array.isArray(raw) || raw.length > MAX_ASSIGNEES_PER_CARD) {
+      if (strict) throw new RequestError(400, "invalid_assignees");
+      continue;
+    }
+    const perCard = new Set<string>();
+    for (const candidate of raw) {
+      let userId: string;
+      try {
+        userId = parseUuid(candidate, "assignee_user_id");
+      } catch {
+        if (strict) throw new RequestError(400, "invalid_assignees");
+        continue;
+      }
+      if (perCard.has(userId)) {
+        if (strict) throw new RequestError(400, "invalid_assignees");
+        continue;
+      }
+      perCard.add(userId);
+      result.add(userId);
+      if (result.size > MAX_ASSIGNEES_PER_BOARD) {
+        if (strict) throw new RequestError(400, "invalid_assignees");
+        return result;
+      }
+    }
+  }
+  return result;
+}
+
+async function requireNewAssigneesAreProjectMembers(
+  database: D1Database,
+  projectId: string,
+  previousBoard: unknown,
+  nextBoard: unknown,
+): Promise<void> {
+  const previous = collectAssigneeUserIds(previousBoard, false);
+  const added = [...collectAssigneeUserIds(nextBoard, true)]
+    .filter((userId) => !previous.has(userId));
+  if (!added.length) return;
+
+  const placeholders = added.map(() => "?").join(", ");
+  const current = await database.prepare(
+    `SELECT user_id FROM project_members
+     WHERE project_id = ? AND user_id IN (${placeholders})`,
+  ).bind(projectId, ...added).all<{ user_id: string }>();
+  const currentIds = new Set(current.results.map((row) => row.user_id));
+  if (added.some((userId) => !currentIds.has(userId))) {
+    throw new RequestError(400, "assignee_not_project_member");
+  }
+}
 
 function boardMetadata(row: BoardListRow) {
   return {
@@ -126,6 +192,12 @@ async function createBoard(context: ApiContext, projectId: string): Promise<Resp
   if (!parseBoardPutPayload({ baseRevision: 0, board: body.board })) {
     throw new RequestError(400, "invalid_payload");
   }
+  await requireNewAssigneesAreProjectMembers(
+    context.env.DB,
+    projectId,
+    null,
+    body.board,
+  );
   const data = JSON.stringify(body.board);
   const existing = await context.env.DB.prepare("SELECT * FROM boards WHERE id = ?")
     .bind(id).first<BoardRow>();
@@ -398,6 +470,12 @@ async function putBoardContent(
   if (payload.baseRevision !== row.revision) {
     return boardConflict(row, context.requestId);
   }
+  await requireNewAssigneesAreProjectMembers(
+    context.env.DB,
+    projectId,
+    JSON.parse(row.data) as unknown,
+    payload.board,
+  );
   const project = await getProject(context.env.DB, projectId);
   const nextRevision = row.revision + 1;
   const now = new Date().toISOString();

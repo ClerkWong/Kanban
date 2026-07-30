@@ -20,6 +20,7 @@ export type CardField =
   | "labelIds"
   | "dueDate"
   | "checklist"
+  | "assigneeUserIds"
   | "members"
   | "completedAt";
 
@@ -36,6 +37,7 @@ export type CardSnapshot = {
   labelIds: unknown[];
   dueDate: string;
   checklist: unknown[];
+  assigneeUserIds: unknown[];
   members: unknown[];
   attachments: AttachmentSnapshot[];
   completedAt: string | null;
@@ -122,6 +124,7 @@ export function parseBoardSnapshot(value: unknown): BoardSnapshot | null {
       labelIds: safeArray(card.labelIds),
       dueDate: typeof card.dueDate === "string" ? card.dueDate : "",
       checklist: safeArray(card.checklist),
+      assigneeUserIds: safeArray(card.assigneeUserIds),
       members: safeArray(card.members),
       attachments: parseAttachments(card.attachments),
       completedAt: typeof card.completedAt === "string" ? card.completedAt : null,
@@ -163,6 +166,9 @@ function changedFields(before: CardSnapshot, after: CardSnapshot): CardField[] {
   if (!sameValue(before.labelIds, after.labelIds)) fields.push("labelIds");
   if (before.dueDate !== after.dueDate) fields.push("dueDate");
   if (!sameValue(before.checklist, after.checklist)) fields.push("checklist");
+  if (!sameValue(before.assigneeUserIds, after.assigneeUserIds)) {
+    fields.push("assigneeUserIds");
+  }
   if (!sameValue(before.members, after.members)) fields.push("members");
   if (
     before.completedAt !== after.completedAt &&

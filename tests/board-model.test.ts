@@ -99,6 +99,48 @@ test("serialized board reloads without changing card membership", () => {
   assert.deepEqual(Object.keys(parsed.board.cards).sort(), Object.keys(board.cards).sort());
 });
 
+test("multiple canonical Project assignees are deduplicated and survive reload", () => {
+  const board = addCard(createDemoBoard(new Date(2026, 6, 10)), "todo", {
+    id: "card-assigned",
+    title: "多人共同任務",
+    assigneeUserIds: ["user-a", "user-b", "user-a"],
+  });
+  const updated = updateCard(board, "card-assigned", {
+    assigneeUserIds: ["user-b", "user-c", "user-b"],
+  });
+  const parsed = parsePersistedBoard(serializeBoard(updated));
+
+  assert.deepEqual(board.cards["card-assigned"].assigneeUserIds, ["user-a", "user-b"]);
+  assert.deepEqual(parsed.board.cards["card-assigned"].assigneeUserIds, ["user-b", "user-c"]);
+});
+
+test("v4 boards gain an empty assignee list without rewriting completion history", () => {
+  const board = createDemoBoard(new Date(2026, 6, 10));
+  const completed = board.cards["card-done"];
+  completed.completedAt = "2026-06-15T10:00:00.000Z";
+  completed.updatedAt = "2026-07-20T10:00:00.000Z";
+  const legacy = JSON.stringify({
+    ...board,
+    version: 4,
+    cards: Object.fromEntries(
+      Object.entries(board.cards).map(([id, card]) => {
+        const withoutAssignees = { ...card } as Partial<Card>;
+        delete withoutAssignees.assigneeUserIds;
+        return [id, withoutAssignees];
+      }),
+    ),
+  });
+
+  const parsed = parsePersistedBoard(legacy);
+
+  assert.equal(parsed.board.version, 5);
+  assert.deepEqual(parsed.board.cards["card-done"].assigneeUserIds, []);
+  assert.equal(
+    parsed.board.cards["card-done"].completedAt,
+    "2026-06-15T10:00:00.000Z",
+  );
+});
+
 test("malformed persisted state is recovered instead of crashing", () => {
   const parsed = parsePersistedBoard("{not-json");
 
@@ -167,6 +209,7 @@ describe("getMonthlyCompletionStats", () => {
       labelIds: [],
       dueDate: "",
       checklist: [],
+      assigneeUserIds: [],
       members: [],
       attachments: [],
       createdAt: updatedAt,

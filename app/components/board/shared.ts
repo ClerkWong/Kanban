@@ -18,6 +18,7 @@ export type CardDraft = {
   priority: Priority;
   labelIds: string[];
   dueDate: string;
+  assigneeUserIds: string[];
   members: string;
   checklist: ChecklistItem[];
   attachments: AttachmentRef[];
@@ -52,6 +53,7 @@ export function createDraft(): CardDraft {
     priority: "medium",
     labelIds: [],
     dueDate: "",
+    assigneeUserIds: [],
     members: "",
     checklist: [],
     attachments: [],
@@ -65,6 +67,7 @@ export function draftFromCard(card: Card): CardDraft {
     priority: card.priority,
     labelIds: [...card.labelIds],
     dueDate: card.dueDate,
+    assigneeUserIds: [...card.assigneeUserIds],
     members: card.members.join(", "),
     checklist: card.checklist.map((item) => ({ ...item })),
     attachments: card.attachments.map((ref) => ({ ...ref })),
@@ -78,6 +81,7 @@ export function draftToCardInput(draft: CardDraft) {
     priority: draft.priority,
     labelIds: draft.labelIds,
     dueDate: draft.dueDate,
+    assigneeUserIds: [...new Set(draft.assigneeUserIds)],
     members: draft.members
       .split(",")
       .map((member) => member.trim())

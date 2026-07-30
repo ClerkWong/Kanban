@@ -31,6 +31,23 @@ function board(version = 3, marker = "default"): Record<string, unknown> {
   return { version, columns: [], cards: {}, marker };
 }
 
+function assignedBoard(
+  assigneeUserIds: string[],
+  marker = "assigned",
+): Record<string, unknown> {
+  return {
+    version: 5,
+    marker,
+    columns: [{ id: "todo", cardIds: ["task-1"] }],
+    cards: {
+      "task-1": {
+        title: "Shared task",
+        assigneeUserIds,
+      },
+    },
+  };
+}
+
 async function dispatch(
   token: string,
   path: string,
@@ -200,6 +217,97 @@ describe("Multi-board content APIs", () => {
       await env.DB.prepare("SELECT revision FROM boards WHERE id = ?")
         .bind(boardB).first<number>("revision"),
     ).toBe(0);
+  });
+
+  it("allows multiple Project assignees, rejects outsiders, and preserves departed assignments", async () => {
+    const created = await createBoard(
+      managerToken,
+      projectA,
+      boardA,
+      "Assigned",
+      assignedBoard([managerId, contributorId]),
+    );
+    expect(created.status).toBe(201);
+
+    const expanded = await dispatch(
+      contributorToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          baseRevision: 0,
+          board: assignedBoard([managerId, contributorId, viewerId], "expanded"),
+        }),
+      },
+    );
+    expect(expanded.status).toBe(200);
+
+    const outsider = await dispatch(
+      contributorToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          baseRevision: 1,
+          board: assignedBoard(
+            [managerId, contributorId, viewerId, outsiderId],
+            "invalid",
+          ),
+        }),
+      },
+    );
+    expect(outsider.status).toBe(400);
+    expect(await outsider.json()).toMatchObject({
+      error: "assignee_not_project_member",
+    });
+
+    const duplicate = await dispatch(
+      contributorToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          baseRevision: 1,
+          board: assignedBoard([managerId, managerId], "duplicate"),
+        }),
+      },
+    );
+    expect(duplicate.status).toBe(400);
+    expect(await duplicate.json()).toMatchObject({ error: "invalid_assignees" });
+
+    const tooMany = await dispatch(
+      contributorToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          baseRevision: 1,
+          board: assignedBoard(
+            Array.from({ length: 21 }, (_, index) =>
+              `60000000-0000-4000-8000-${String(index).padStart(12, "0")}`),
+            "too-many",
+          ),
+        }),
+      },
+    );
+    expect(tooMany.status).toBe(400);
+    expect(await tooMany.json()).toMatchObject({ error: "invalid_assignees" });
+
+    await env.DB.prepare(
+      "DELETE FROM project_members WHERE project_id = ? AND user_id = ?",
+    ).bind(projectA, contributorId).run();
+    const preserved = await dispatch(
+      managerToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          baseRevision: 1,
+          board: assignedBoard([managerId, contributorId, viewerId], "preserved"),
+        }),
+      },
+    );
+    expect(preserved.status).toBe(200);
   });
 
   it("converges concurrent base revision zero writes to one success and one conflict", async () => {

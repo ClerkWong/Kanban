@@ -4,6 +4,7 @@ import { type AttachmentRef, type Label, type Priority, makeId } from "../../boa
 import { type CardDraft, type DetailState, type StyleWithVars } from "./shared";
 import { AttachmentSection } from "./AttachmentSection";
 import type { BoardContext } from "../../projects/types";
+import type { ProjectMember } from "../../projects/api";
 import type { FormEvent, KeyboardEvent, RefObject } from "react";
 
 export function DetailModal({
@@ -19,6 +20,7 @@ export function DetailModal({
   readOnly = false,
   attachmentsReadOnly = false,
   attachmentContext,
+  projectMembers,
 }: {
   detail: DetailState;
   labels: Label[];
@@ -32,8 +34,16 @@ export function DetailModal({
   readOnly?: boolean;
   attachmentsReadOnly?: boolean;
   attachmentContext?: BoardContext;
+  /** Undefined for a legacy local board; an array (including empty) for a Project board. */
+  projectMembers?: ProjectMember[];
 }) {
   const draft = detail.draft;
+  const currentProjectMemberIds = new Set(
+    projectMembers?.map((member) => member.userId) ?? [],
+  );
+  const departedAssigneeIds = draft.assigneeUserIds.filter(
+    (userId) => !currentProjectMemberIds.has(userId),
+  );
 
   function setDraft(patch: Partial<CardDraft>) {
     onDraftChange({ ...draft, ...patch });
@@ -128,14 +138,77 @@ export function DetailModal({
             </div>
           </fieldset>
 
-          <label className="formField">
-            <span>成員（以逗號分隔）</span>
-            <input
-              value={draft.members}
-              onChange={(event) => setDraft({ members: event.target.value })}
-              placeholder="雅婷, Kai"
-            />
-          </label>
+          {projectMembers === undefined ? (
+            <label className="formField">
+              <span>成員（以逗號分隔）</span>
+              <input
+                value={draft.members}
+                onChange={(event) => setDraft({ members: event.target.value })}
+                placeholder="雅婷, Kai"
+              />
+            </label>
+          ) : (
+            <>
+              <fieldset className="fieldGroup">
+                <legend>任務負責人（可複選）</legend>
+                {projectMembers.length > 0 ? (
+                  <div className="assigneeGrid">
+                    {projectMembers.map((member) => (
+                      <label className="assigneeChoice" key={member.userId}>
+                        <input
+                          type="checkbox"
+                          checked={draft.assigneeUserIds.includes(member.userId)}
+                          onChange={(event) =>
+                            setDraft({
+                              assigneeUserIds: event.target.checked
+                                ? [...draft.assigneeUserIds, member.userId]
+                                : draft.assigneeUserIds.filter(
+                                    (userId) => userId !== member.userId,
+                                  ),
+                            })
+                          }
+                        />
+                        <span>
+                          <strong>{member.displayName}</strong>
+                          <small>{projectRoleText(member.role)}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="fieldHint">目前沒有可指派的專案成員。</p>
+                )}
+                {departedAssigneeIds.map((userId) => (
+                  <label className="assigneeChoice departed" key={userId}>
+                    <input
+                      type="checkbox"
+                      checked
+                      onChange={() =>
+                        setDraft({
+                          assigneeUserIds: draft.assigneeUserIds.filter(
+                            (candidate) => candidate !== userId,
+                          ),
+                        })
+                      }
+                    />
+                    <span>
+                      <strong>已離開專案的成員</strong>
+                      <small>{userId}</small>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              {draft.members && (
+                <label className="formField">
+                  <span>舊版成員文字（不具指派功能）</span>
+                  <input
+                    value={draft.members}
+                    onChange={(event) => setDraft({ members: event.target.value })}
+                  />
+                </label>
+              )}
+            </>
+          )}
           </fieldset>
 
           <AttachmentSection
@@ -225,4 +298,10 @@ export function DetailModal({
       </div>
     </div>
   );
+}
+
+function projectRoleText(role: ProjectMember["role"]): string {
+  if (role === "manager") return "管理者";
+  if (role === "contributor") return "協作者";
+  return "檢視者";
 }

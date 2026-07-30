@@ -624,6 +624,54 @@ textarea {
   padding: 7px 10px;
 }
 
+.assigneeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.assigneeChoice {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.assigneeChoice input {
+  width: 18px;
+  min-height: 18px;
+}
+
+.assigneeChoice span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.assigneeChoice small,
+.fieldHint {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.assigneeChoice.departed {
+  border-style: dashed;
+  background: #fff9e8;
+}
+
+.assigneeChoice.departed small {
+  overflow-wrap: anywhere;
+}
+
+.fieldHint {
+  margin: 0;
+}
+
 .checklistEditor {
   display: grid;
   gap: 8px;

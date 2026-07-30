@@ -10,6 +10,7 @@ type TestCard = {
   labelIds: string[];
   dueDate: string;
   checklist: Array<{ id: string; text: string; done: boolean }>;
+  assigneeUserIds: string[];
   members: string[];
   attachments: Array<Record<string, unknown>>;
   completedAt: string | null;
@@ -23,6 +24,7 @@ function card(overrides: Partial<TestCard> = {}): TestCard {
     labelIds: [],
     dueDate: "",
     checklist: [],
+    assigneeUserIds: [],
     members: [],
     attachments: [],
     completedAt: null,
@@ -36,7 +38,7 @@ function board(
   done: string[],
 ): Record<string, unknown> {
   return {
-    version: 4,
+    version: 5,
     columns: [
       { id: "todo", cardIds: todo },
       { id: "done", cardIds: done },
@@ -127,4 +129,22 @@ test("caps details at 200 while preserving complete counts", () => {
   assert.equal(diff.changes.length, 200);
   assert.equal(diff.counts["card.created"], 205);
   assert.equal(diff.truncated, true);
+});
+
+test("records canonical multi-assignee changes without logging display names", () => {
+  const before = board({
+    assigned: card({ assigneeUserIds: ["user-a"] }),
+  }, ["assigned"], []);
+  const after = board({
+    assigned: card({ assigneeUserIds: ["user-a", "user-b"] }),
+  }, ["assigned"], []);
+
+  const diff = diffBoardStates(before, after);
+
+  assert.deepEqual(diff.changes, [{
+    kind: "card.updated",
+    cardId: "assigned",
+    title: "Card",
+    fields: ["assigneeUserIds"],
+  }]);
 });

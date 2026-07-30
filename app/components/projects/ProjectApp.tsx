@@ -9,8 +9,10 @@ import {
   getProject,
   getProjectSummary,
   listBoards,
+  listProjectMembers,
   listProjects,
   type ProjectDetail,
+  type ProjectMember,
   type ProjectReport,
 } from "../../projects/api";
 import {
@@ -210,12 +212,14 @@ function ProjectRouteView({
   const [state, setState] = useState<{
     detail: ProjectDetail | null;
     report: ProjectReport | null;
+    members: ProjectMember[];
     activeBoards: BoardMeta[];
     allBoards: BoardMeta[];
     error: string;
   }>({
     detail: null,
     report: null,
+    members: [],
     activeBoards: [],
     allBoards: [],
     error: "",
@@ -228,6 +232,7 @@ function ProjectRouteView({
       setState({
         detail: null,
         report: null,
+        members: [],
         activeBoards: [],
         allBoards: [],
         error: "",
@@ -236,10 +241,11 @@ function ProjectRouteView({
     void Promise.all([
       getProject(config, route.projectId),
       getProjectSummary(config, route.projectId),
+      listProjectMembers(config, route.projectId),
       listBoards(config, route.projectId, "active"),
       listBoards(config, route.projectId, "archived"),
     ])
-      .then(([detail, report, activeBoards, archivedBoards]) => {
+      .then(([detail, report, members, activeBoards, archivedBoards]) => {
         if (cancelled) return;
         const allBoards = [...activeBoards, ...archivedBoards];
         if (route.kind === "board" && !boardBelongsToRoute(route, allBoards)) {
@@ -252,6 +258,7 @@ function ProjectRouteView({
         setState({
           detail,
           report,
+          members,
           activeBoards,
           allBoards,
           error: "",
@@ -322,6 +329,7 @@ function ProjectRouteView({
     <ActiveBoard
       context={context}
       access={access}
+      projectMembers={state.members}
       navigation={(
           <BoardNavigation
             project={state.detail.project}
@@ -339,12 +347,14 @@ function ProjectRouteView({
 function ActiveBoard({
   context,
   access,
+  projectMembers,
   navigation,
   enableServiceWorker,
   appConfigUrl,
 }: {
   context: BoardContext;
   access: BoardAccess;
+  projectMembers: ProjectMember[];
   navigation: ReactNode;
   enableServiceWorker: boolean;
   appConfigUrl: string;
@@ -357,6 +367,7 @@ function ActiveBoard({
     <BoardApp
       context={context}
       access={access}
+      projectMembers={projectMembers}
       navigation={navigation}
       enableServiceWorker={enableServiceWorker}
       appConfigUrl={appConfigUrl}

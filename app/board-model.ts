@@ -1,4 +1,4 @@
-export const BOARD_SCHEMA_VERSION = 4;
+export const BOARD_SCHEMA_VERSION = 5;
 
 export type Priority = "low" | "medium" | "high";
 export type DueFilter = "all" | "overdue" | "today" | "upcoming" | "none";
@@ -28,6 +28,9 @@ export type Card = {
   labelIds: string[];
   dueDate: string;
   checklist: ChecklistItem[];
+  /** Canonical Project user IDs assigned to this task. Multiple assignees are allowed. */
+  assigneeUserIds: string[];
+  /** Legacy free-text labels retained for v1–v4 compatibility; never used for authorization. */
   members: string[];
   attachments: AttachmentRef[];
   createdAt: string;
@@ -329,6 +332,7 @@ export function addCard(
     labelIds: uniqueStrings(input.labelIds ?? []),
     dueDate: normalizeDateOnly(input.dueDate ?? ""),
     checklist: normalizeChecklist(input.checklist ?? []),
+    assigneeUserIds: uniqueStrings(input.assigneeUserIds ?? []),
     members: uniqueStrings(input.members ?? []),
     attachments: normalizeAttachments(input.attachments ?? []),
     createdAt: input.createdAt ?? now,
@@ -381,6 +385,9 @@ export function updateCard(
     labelIds: uniqueStrings(patch.labelIds ?? existing.labelIds),
     dueDate: normalizeDateOnly(patch.dueDate ?? existing.dueDate),
     checklist: normalizeChecklist(patch.checklist ?? existing.checklist),
+    assigneeUserIds: uniqueStrings(
+      patch.assigneeUserIds ?? existing.assigneeUserIds,
+    ),
     members: uniqueStrings(patch.members ?? existing.members),
     attachments: normalizeAttachments(patch.attachments ?? existing.attachments),
     updatedAt: new Date().toISOString(),
@@ -533,7 +540,11 @@ export function parsePersistedBoard(raw: string | null): {
     const version = (parsed as { version?: unknown }).version;
     if (
       !isBoardLike(parsed) ||
-      (version !== 1 && version !== 2 && version !== 3 && version !== BOARD_SCHEMA_VERSION)
+      (version !== 1 &&
+        version !== 2 &&
+        version !== 3 &&
+        version !== 4 &&
+        version !== BOARD_SCHEMA_VERSION)
     ) {
       return {
         board: createDemoBoard(),
@@ -561,9 +572,9 @@ export function normalizeBoard(board: BoardState): BoardState {
   const cards = normalizeCards(board.cards);
   const columns = normalizeColumns(board.columns, cards);
   const sourceVersion = Number(board.version);
-  const isLegacyBoard = sourceVersion >= 1 && sourceVersion < BOARD_SCHEMA_VERSION;
+  const needsCompletionMigration = sourceVersion >= 1 && sourceVersion <= 3;
 
-  if (isLegacyBoard) {
+  if (needsCompletionMigration) {
     const doneCardIds = new Set(
       columns.find((column) => column.id === DONE_COLUMN_ID)?.cardIds ?? [],
     );
@@ -694,6 +705,7 @@ function createSeedCard(input: {
     priority: input.priority,
     labelIds: input.labelIds,
     dueDate: input.dueDate,
+    assigneeUserIds: [],
     members: input.members,
     attachments: [],
     checklist: input.checklist.map(([text, done], index) => ({
@@ -788,6 +800,11 @@ function normalizeCards(cards: Record<string, Card>): Record<string, Card> {
       labelIds: uniqueStrings(Array.isArray(raw.labelIds) ? raw.labelIds : []),
       dueDate: normalizeDateOnly(raw.dueDate),
       checklist: normalizeChecklist(Array.isArray(raw.checklist) ? raw.checklist : []),
+      assigneeUserIds: uniqueStrings(
+        Array.isArray((raw as { assigneeUserIds?: unknown }).assigneeUserIds)
+          ? (raw as { assigneeUserIds: string[] }).assigneeUserIds
+          : [],
+      ),
       members: uniqueStrings(Array.isArray(raw.members) ? raw.members : []),
       attachments: normalizeAttachments((raw as { attachments?: unknown }).attachments),
       createdAt:
@@ -915,6 +932,7 @@ function cloneBoard(board: BoardState): BoardState {
         {
           ...card,
           labelIds: [...card.labelIds],
+          assigneeUserIds: [...card.assigneeUserIds],
           members: [...card.members],
           checklist: card.checklist.map((item) => ({ ...item })),
           attachments: card.attachments.map((ref) => ({ ...ref })),

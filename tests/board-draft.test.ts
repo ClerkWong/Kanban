@@ -14,6 +14,7 @@ test("createDraft 以空白欄位與中優先級起始", () => {
   assert.equal(draft.title, "");
   assert.equal(draft.priority, "medium");
   assert.deepEqual(draft.labelIds, []);
+  assert.deepEqual(draft.assigneeUserIds, []);
   assert.deepEqual(draft.checklist, []);
   assert.deepEqual(draft.attachments, []);
 });
@@ -24,6 +25,8 @@ test("draftFromCard 複製欄位並以逗號串接成員、深拷貝清單", () 
   const draft = draftFromCard(card);
   assert.equal(draft.title, card.title);
   assert.equal(draft.members, card.members.join(", "));
+  assert.deepEqual(draft.assigneeUserIds, card.assigneeUserIds);
+  assert.notEqual(draft.assigneeUserIds, card.assigneeUserIds);
   assert.notEqual(draft.checklist, card.checklist);
   assert.notEqual(draft.checklist[0], card.checklist[0]);
 
@@ -39,8 +42,13 @@ test("draftFromCard 複製欄位並以逗號串接成員、深拷貝清單", () 
 });
 
 test("draftToCardInput 修剪成員字串並剔除空項", () => {
-  const draft = { ...createDraft(), members: " 雅婷 , , Kai " };
+  const draft = {
+    ...createDraft(),
+    assigneeUserIds: ["user-a", "user-b", "user-a"],
+    members: " 雅婷 , , Kai ",
+  };
   const input = draftToCardInput(draft);
+  assert.deepEqual(input.assigneeUserIds, ["user-a", "user-b"]);
   assert.deepEqual(input.members, ["雅婷", "Kai"]);
 });
 

@@ -205,8 +205,9 @@ Board metadata 與既有 `BoardState` 分開。Project 名稱不會複製成 Boa
 在任一方改名時連動。
 
 既有 `Card.members: string[]` 在 v1 保留為卡片上的顯示文字，不是 Project membership
-或授權依據，也不會因成員移除而自動改寫。將卡片指派升級為 `assigneeUserIds` 屬後續
-版本，避免本次同時擴張 Card schema 與權限模型。
+或授權依據，也不會因成員移除而自動改寫。卡片正式多人指派已由
+`2026-07-30-multi-assignee-tasks-design.md` 的 v1.1 規格新增為 `assigneeUserIds`；
+Project membership 仍是唯一授權來源。
 
 ```ts
 type BoardRecord = {

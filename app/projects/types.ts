@@ -45,9 +45,8 @@ export type Project = {
 
 /** A single user's role within a single Project (design spec §8.3). A user
  * may hold a different role in each Project they belong to. This is
- * completely separate from the legacy `Card.members: string[]` display
- * text on a card -- that field is not a membership record and never
- * participates in authorization (see design spec §8.4). */
+ * referenced by `Card.assigneeUserIds`. The legacy `Card.members: string[]`
+ * field remains display-only and never participates in authorization. */
 export type ProjectMembership = {
   projectId: string;
   userId: string;

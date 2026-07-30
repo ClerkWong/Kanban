@@ -44,6 +44,7 @@ import type { SyncHandle } from "../../sync/useSync";
 import { useBoardSync, type BoardSyncHandle } from "../../sync/useBoardSync";
 import { useBoardStore } from "../../projects/useBoardStore";
 import type { BoardContext } from "../../projects/types";
+import type { ProjectMember } from "../../projects/api";
 import type { BoardAccess } from "../../projects/navigation";
 import {
   type ConfirmState,
@@ -63,18 +64,21 @@ export function BoardApp({
   context,
   access,
   navigation,
+  projectMembers,
 }: {
   enableServiceWorker?: boolean;
   appConfigUrl?: string;
   context?: BoardContext;
   access?: BoardAccess;
   navigation?: ReactNode;
+  projectMembers?: ProjectMember[];
 }) {
   return context ? (
     <ScopedBoardApp
       context={context}
       access={access}
       navigation={navigation}
+      projectMembers={projectMembers ?? []}
       enableServiceWorker={enableServiceWorker}
       appConfigUrl={appConfigUrl}
     />
@@ -136,12 +140,14 @@ function ScopedBoardApp({
   context,
   access = { canEdit: false, canWriteAttachments: false, readOnlyReason: "唯讀模式。" },
   navigation,
+  projectMembers,
   enableServiceWorker,
   appConfigUrl,
 }: {
   context: BoardContext;
   access?: BoardAccess;
   navigation?: ReactNode;
+  projectMembers: ProjectMember[];
   enableServiceWorker: boolean;
   appConfigUrl: string;
 }) {
@@ -161,6 +167,7 @@ function ScopedBoardApp({
       storageMessage={store.errorMessage}
       access={access}
       context={context}
+      projectMembers={projectMembers}
       navigation={navigation}
       enableServiceWorker={enableServiceWorker}
       appConfigUrl={appConfigUrl}
@@ -175,6 +182,7 @@ function BoardSurface({
   storageMessage,
   access,
   context,
+  projectMembers,
   navigation,
   enableServiceWorker,
   appConfigUrl,
@@ -186,6 +194,7 @@ function BoardSurface({
   storageMessage: string;
   access: BoardAccess;
   context?: BoardContext;
+  projectMembers?: ProjectMember[];
   navigation?: ReactNode;
   enableServiceWorker: boolean;
   appConfigUrl: string;
@@ -279,6 +288,14 @@ function BoardSurface({
     [board, filters, today],
   );
   const stats = useMemo(() => getBoardStats(board, today), [board, today]);
+  const assigneeNames = useMemo(
+    () => projectMembers === undefined
+      ? undefined
+      : Object.fromEntries(
+          projectMembers.map((member) => [member.userId, member.displayName]),
+        ),
+    [projectMembers],
+  );
 
   useEffect(() => {
     if (!enableServiceWorker) {
@@ -654,6 +671,7 @@ function BoardSurface({
                       labels={board.labels}
                       today={today}
                       movementDisabled={filtersActive}
+                      assigneeNames={assigneeNames}
                       readOnly={!access.canEdit}
                       onOpen={() => openEdit(card.id)}
                       onMove={(direction) => moveWithButtons(card.id, direction)}
@@ -714,6 +732,7 @@ function BoardSurface({
           readOnly={!access.canEdit}
           attachmentsReadOnly={!access.canWriteAttachments}
           attachmentContext={context}
+          projectMembers={projectMembers}
         />
       )}
 
