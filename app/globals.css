@@ -965,17 +965,222 @@ textarea {
   flex-wrap: wrap;
 }
 
+.syncSettingsModal {
+  display: flex;
+  width: min(640px, 100%);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.syncSettingsHeader {
+  flex: 0 0 auto;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.syncSettingsHeader > div {
+  min-width: 0;
+}
+
+.modalEyebrow {
+  margin: 0 0 3px;
+  color: var(--teal-strong);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.syncSettingsContent {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px 20px;
+}
+
+.syncStatusPanel {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f7f5ef;
+}
+
+.syncStatusIndicator {
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.syncStatus-synced .syncStatusIndicator {
+  background: var(--green);
+}
+
+.syncStatus-pending .syncStatusIndicator,
+.syncStatus-syncing .syncStatusIndicator {
+  background: var(--amber);
+}
+
+.syncStatus-error .syncStatusIndicator {
+  background: var(--rose);
+}
+
+.syncStatusCopy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.syncStatusCopy > span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.syncStatusCopy > strong {
+  color: var(--ink);
+  font-size: 0.98rem;
+}
+
+.syncStatusCopy > small {
+  margin-top: 2px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.syncConfiguredPanel {
+  display: grid;
+  gap: 18px;
+}
+
+.syncConfiguredPanel h3,
+.syncConfiguredPanel p {
+  margin: 0;
+}
+
+.syncConfiguredPanel h3 {
+  margin-bottom: 5px;
+  font-size: 1rem;
+}
+
+.syncConfiguredPanel p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .syncForm {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 18px;
+}
+
+.syncSettingsModal .syncForm {
+  padding: 0;
+}
+
+.syncFieldSection {
+  display: grid;
+  gap: 14px;
+}
+
+.syncPrivacyNote,
+.syncModeIntro {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.syncPrivacyNote {
+  padding-left: 22px;
+  background:
+    radial-gradient(circle at 7px 0.72em, var(--teal) 0 3px, transparent 3.5px);
+}
+
+.syncModeGroup {
+  gap: 8px;
+  padding: 14px;
+  background: rgba(247, 245, 239, 0.72);
+}
+
+.syncModeGroup legend {
+  padding: 0 4px;
+}
+
+.syncModeIntro {
+  margin-bottom: 3px;
 }
 
 .syncModeChoice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-height: 64px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-strong);
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.syncModeChoice:hover {
+  border-color: #8ab3ad;
+  background: #f5fbf9;
+}
+
+.syncModeChoice:has(input:checked) {
+  border-color: var(--teal);
+  background: #eef8f5;
+  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.12);
+}
+
+.syncModeChoice:focus-within {
+  outline: 3px solid rgba(63, 90, 200, 0.35);
+  outline-offset: 1px;
+}
+
+.syncModeChoice input {
+  width: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--teal);
+}
+
+.syncModeText {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.syncModeText strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.syncModeText small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.syncFormError {
+  margin: -4px 0 0;
+}
+
+.syncModalActions {
+  padding-top: 2px;
+  border-top: 1px solid var(--line);
 }
 
 /* Project and Board navigation */
