@@ -3,6 +3,8 @@
 import { type AttachmentRef, type Label, type Priority, makeId } from "../../board-model";
 import { type CardDraft, type DetailState, type StyleWithVars } from "./shared";
 import { AttachmentSection } from "./AttachmentSection";
+import type { BoardContext } from "../../projects/types";
+import type { ProjectMember } from "../../projects/api";
 import type { FormEvent, KeyboardEvent, RefObject } from "react";
 
 export function DetailModal({
@@ -15,6 +17,10 @@ export function DetailModal({
   onDraftChange,
   onAttachmentsChange,
   onCapabilityError,
+  readOnly = false,
+  attachmentsReadOnly = false,
+  attachmentContext,
+  projectMembers,
 }: {
   detail: DetailState;
   labels: Label[];
@@ -25,8 +31,19 @@ export function DetailModal({
   onDraftChange: (draft: CardDraft) => void;
   onAttachmentsChange: (next: AttachmentRef[]) => void;
   onCapabilityError: (error: unknown) => void;
+  readOnly?: boolean;
+  attachmentsReadOnly?: boolean;
+  attachmentContext?: BoardContext;
+  /** Undefined for a legacy local board; an array (including empty) for a Project board. */
+  projectMembers?: ProjectMember[];
 }) {
   const draft = detail.draft;
+  const currentProjectMemberIds = new Set(
+    projectMembers?.map((member) => member.userId) ?? [],
+  );
+  const departedAssigneeIds = draft.assigneeUserIds.filter(
+    (userId) => !currentProjectMemberIds.has(userId),
+  );
 
   function setDraft(patch: Partial<CardDraft>) {
     onDraftChange({ ...draft, ...patch });
@@ -57,6 +74,7 @@ export function DetailModal({
             </button>
           </header>
 
+          <fieldset className="modalReadOnlyFields" disabled={readOnly}>
           <label className="formField">
             <span>標題</span>
             <input
@@ -120,22 +138,88 @@ export function DetailModal({
             </div>
           </fieldset>
 
-          <label className="formField">
-            <span>成員（以逗號分隔）</span>
-            <input
-              value={draft.members}
-              onChange={(event) => setDraft({ members: event.target.value })}
-              placeholder="雅婷, Kai"
-            />
-          </label>
+          {projectMembers === undefined ? (
+            <label className="formField">
+              <span>成員（以逗號分隔）</span>
+              <input
+                value={draft.members}
+                onChange={(event) => setDraft({ members: event.target.value })}
+                placeholder="雅婷, Kai"
+              />
+            </label>
+          ) : (
+            <>
+              <fieldset className="fieldGroup">
+                <legend>任務負責人（可複選）</legend>
+                {projectMembers.length > 0 ? (
+                  <div className="assigneeGrid">
+                    {projectMembers.map((member) => (
+                      <label className="assigneeChoice" key={member.userId}>
+                        <input
+                          type="checkbox"
+                          checked={draft.assigneeUserIds.includes(member.userId)}
+                          onChange={(event) =>
+                            setDraft({
+                              assigneeUserIds: event.target.checked
+                                ? [...draft.assigneeUserIds, member.userId]
+                                : draft.assigneeUserIds.filter(
+                                    (userId) => userId !== member.userId,
+                                  ),
+                            })
+                          }
+                        />
+                        <span>
+                          <strong>{member.displayName}</strong>
+                          <small>{projectRoleText(member.role)}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="fieldHint">目前沒有可指派的專案成員。</p>
+                )}
+                {departedAssigneeIds.map((userId) => (
+                  <label className="assigneeChoice departed" key={userId}>
+                    <input
+                      type="checkbox"
+                      checked
+                      onChange={() =>
+                        setDraft({
+                          assigneeUserIds: draft.assigneeUserIds.filter(
+                            (candidate) => candidate !== userId,
+                          ),
+                        })
+                      }
+                    />
+                    <span>
+                      <strong>已離開專案的成員</strong>
+                      <small>{userId}</small>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              {draft.members && (
+                <label className="formField">
+                  <span>舊版成員文字（不具指派功能）</span>
+                  <input
+                    value={draft.members}
+                    onChange={(event) => setDraft({ members: event.target.value })}
+                  />
+                </label>
+              )}
+            </>
+          )}
+          </fieldset>
 
           <AttachmentSection
             attachments={draft.attachments}
             onChange={onAttachmentsChange}
             onError={onCapabilityError}
+            readOnly={attachmentsReadOnly}
+            context={attachmentContext}
           />
 
-          <fieldset className="fieldGroup">
+          <fieldset className="fieldGroup" disabled={readOnly}>
             <legend>清單</legend>
             <div className="checklistEditor">
               {draft.checklist.map((item, index) => (
@@ -195,21 +279,29 @@ export function DetailModal({
           </fieldset>
 
           <footer className="modalActions">
-            {onDelete && (
+            {!readOnly && onDelete && (
               <button type="button" className="dangerButton" onClick={onDelete}>
                 永久刪除
               </button>
             )}
             <span className="actionSpacer" />
             <button type="button" className="secondaryButton" onClick={onClose}>
-              取消
+              {readOnly ? "關閉" : "取消"}
             </button>
-            <button type="submit" className="primaryButton">
-              儲存
-            </button>
+            {!readOnly && (
+              <button type="submit" className="primaryButton">
+                儲存
+              </button>
+            )}
           </footer>
         </form>
       </div>
     </div>
   );
+}
+
+function projectRoleText(role: ProjectMember["role"]): string {
+  if (role === "manager") return "管理者";
+  if (role === "contributor") return "協作者";
+  return "檢視者";
 }

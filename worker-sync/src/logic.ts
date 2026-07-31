@@ -17,7 +17,13 @@ export function decideBoardPut(current: number | null, baseRevision: number): Pu
     : { kind: "conflict" };
 }
 
-export function isBoardPayload(value: unknown): boolean {
+export type BoardPayload = Record<string, unknown> & {
+  columns: unknown[];
+  cards: Record<string, unknown>;
+  version: number;
+};
+
+export function isBoardPayload(value: unknown): value is BoardPayload {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -26,8 +32,24 @@ export function isBoardPayload(value: unknown): boolean {
     Array.isArray(board.columns) &&
     typeof board.cards === "object" &&
     board.cards !== null &&
+    !Array.isArray(board.cards) &&
     typeof board.version === "number" &&
     Number.isInteger(board.version) &&
     board.version >= 1
   );
+}
+
+export function parseBoardPutPayload(
+  value: Record<string, unknown>,
+): { baseRevision: number; board: BoardPayload } | null {
+  const baseRevision = value.baseRevision;
+  if (
+    typeof baseRevision !== "number" ||
+    !Number.isInteger(baseRevision) ||
+    baseRevision < 0 ||
+    !isBoardPayload(value.board)
+  ) {
+    return null;
+  }
+  return { baseRevision, board: value.board };
 }

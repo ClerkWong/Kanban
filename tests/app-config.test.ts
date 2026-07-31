@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_APP_CONFIG,
+  bundledAppConfig,
   loadAppConfig,
   parseAppConfig,
 } from "../app/app-config";
@@ -45,6 +46,6 @@ test("loadAppConfig falls back when JSON cannot be loaded", async () => {
 
   assert.deepEqual(
     await loadAppConfig("/app-config.json", fetcher),
-    DEFAULT_APP_CONFIG,
+    bundledAppConfig,
   );
 });

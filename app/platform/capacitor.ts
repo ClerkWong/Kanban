@@ -1,4 +1,5 @@
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import { registerPlugin } from "@capacitor/core";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { VoiceRecorder } from "capacitor-voice-recorder";
@@ -11,6 +12,14 @@ import {
 } from "./types";
 
 const ATTACHMENT_DIR = "attachments";
+
+type SecureConfigPlugin = {
+  load(): Promise<{ value?: string }>;
+  save(options: { value: string }): Promise<void>;
+  clear(): Promise<void>;
+};
+
+const SecureConfig = registerPlugin<SecureConfigPlugin>("SecureConfig");
 
 type SpeechSession = {
   lastText: string;
@@ -63,6 +72,20 @@ function blobToBase64(blob: Blob): Promise<string> {
 
 export const capacitorCapabilities: PlatformCapabilities = {
   isNative: true,
+  syncCredentials: {
+    secure: true,
+    async load() {
+      const result = await SecureConfig.load();
+      return result.value ?? null;
+    },
+    async save(value) {
+      if (value === null) {
+        await SecureConfig.clear();
+      } else {
+        await SecureConfig.save({ value });
+      }
+    },
+  },
 
   async takePhoto() {
     try {

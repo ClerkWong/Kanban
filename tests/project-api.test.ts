@@ -1,0 +1,360 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { createDemoBoard } from "../app/board-model";
+import {
+  ApiClientError,
+  archiveBoard,
+  getBoard,
+  getProject,
+  getProjectSummary,
+  listBoards,
+  listBoardLogs,
+  listProjectLogs,
+  listProjectMembers,
+  listProjects,
+  requestJson,
+  restoreBoard,
+} from "../app/projects/api";
+import type { BoardContext } from "../app/projects/types";
+import { fetchRemoteBoard, pushRemoteBoard } from "../app/sync/api";
+
+const config = { baseUrl: "https://sync.example", token: "client-test-token" };
+const context: BoardContext = {
+  workspaceId: "a0000000-0000-4000-8000-000000000001",
+  projectId: "a0000000-0000-4000-8000-000000000002",
+  boardId: "a0000000-0000-4000-8000-000000000003",
+};
+const userId = "a0000000-0000-4000-8000-000000000004";
+const logId = "a0000000-0000-4000-8000-000000000005";
+const board = createDemoBoard(new Date("2026-07-27T00:00:00.000Z"));
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function project(overrides: Record<string, unknown> = {}) {
+  return {
+    id: context.projectId,
+    workspaceId: context.workspaceId,
+    name: "Alpha",
+    status: "active",
+    myRole: "manager",
+    createdBy: userId,
+    createdAt: "2026-07-27T00:00:00.000Z",
+    updatedAt: "2026-07-27T00:00:00.000Z",
+    archivedAt: null,
+    archivedBy: null,
+    ...overrides,
+  };
+}
+
+function boardMeta(overrides: Record<string, unknown> = {}) {
+  return {
+    id: context.boardId,
+    projectId: context.projectId,
+    name: "Roadmap",
+    status: "active",
+    revision: 3,
+    createdBy: userId,
+    createdAt: "2026-07-27T00:00:00.000Z",
+    updatedAt: "2026-07-27T00:00:00.000Z",
+    archivedAt: null,
+    archivedBy: null,
+    ...overrides,
+  };
+}
+
+test("Board v2 fetch/push requires context and uses the nested content path", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; method: string; body: unknown }> = [];
+  globalThis.fetch = async (input, init) => {
+    const method = init?.method ?? "GET";
+    const requestBody = typeof init?.body === "string" ? JSON.parse(init.body) as unknown : null;
+    requests.push({ url: String(input), method, body: requestBody });
+    if (method === "PUT") {
+      return json({ revision: 4, board }, 409);
+    }
+    return json({
+      board: {
+        ...boardMeta(),
+        content: { revision: 3, board },
+      },
+    });
+  };
+  try {
+    const remote = await fetchRemoteBoard(config, context);
+    assert.equal(remote.revision, 3);
+    assert.equal(remote.board.version, 5);
+
+    const conflict = await pushRemoteBoard(config, context, 3, board);
+    assert.equal(conflict.kind, "conflict");
+    assert.equal(conflict.revision, 4);
+    assert.deepEqual(requests.map(({ url, method }) => ({ url, method })), [
+      {
+        url: `https://sync.example/projects/${context.projectId}/boards/${context.boardId}`,
+        method: "GET",
+      },
+      {
+        url: `https://sync.example/projects/${context.projectId}/boards/${context.boardId}/content`,
+        method: "PUT",
+      },
+    ]);
+    assert.deepEqual(requests[1].body, { baseRevision: 3, board });
+
+    await assert.rejects(
+      () => getBoard(config, { ...context, boardId: "local:legacy-board" }),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.code === "invalid_board_id",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Project, member, summary, and Board Log clients strictly parse server responses", async () => {
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    urls.push(url.toString());
+    if (url.pathname === "/projects") {
+      return json({
+        projects: [{
+          id: context.projectId,
+          name: "Alpha",
+          status: "active",
+          myRole: "manager",
+          activeBoardCount: 1,
+          lastActivityAt: null,
+        }],
+      });
+    }
+    if (url.pathname.endsWith("/members")) {
+      return json({
+        members: [{
+          userId,
+          displayName: "Manager",
+          role: "manager",
+          createdAt: "2026-07-27T00:00:00.000Z",
+          updatedAt: "2026-07-27T00:00:00.000Z",
+        }],
+      });
+    }
+    if (url.pathname.endsWith("/summary")) {
+      return json({
+        projectId: context.projectId,
+        summary: {
+          includeArchived: true,
+          boardCount: 1,
+          stats: { total: 2, active: 1, completed: 1, overdue: 0 },
+          monthlyCompletions: [{ month: "2026-07", monthLabel: "2026 年 7 月", count: 1 }],
+          boards: [{
+            id: context.boardId,
+            name: "Roadmap",
+            status: "active",
+            revision: 3,
+            stats: { total: 2, active: 1, completed: 1, overdue: 0 },
+          }],
+          generatedAt: "2026-07-27T00:00:00.000Z",
+          timeZone: "Asia/Taipei",
+        },
+      });
+    }
+    if (url.pathname.endsWith("/logs")) {
+      return json({
+        logs: [{
+          id: logId,
+          workspaceId: context.workspaceId,
+          projectId: context.projectId,
+          boardId: context.boardId,
+          actorUserId: userId,
+          action: "board.content_updated",
+          entityType: "board",
+          entityId: context.boardId,
+          revision: 3,
+          metadata: {},
+          occurredAt: "2026-07-27T00:00:00.000Z",
+        }],
+        nextCursor: "next/cursor+value=",
+      });
+    }
+    return json({ project: project() });
+  };
+  try {
+    assert.equal((await listProjects(config))[0].id, context.projectId);
+    assert.equal((await getProject(config, context.projectId)).myRole, "manager");
+    assert.equal((await listProjectMembers(config, context.projectId))[0].displayName, "Manager");
+    assert.equal((await getProjectSummary(config, context.projectId, true)).stats.total, 2);
+    const logs = await listBoardLogs(config, context, {
+      limit: 50,
+      cursor: "cursor/with+symbols=",
+    });
+    assert.equal(logs.logs[0].boardId, context.boardId);
+    assert.match(
+      urls.at(-1) ?? "",
+      /limit=50&cursor=cursor%2Fwith%2Bsymbols%3D$/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("maps 401, 403, 404, conflict, and archived conflict consistently", async () => {
+  const originalFetch = globalThis.fetch;
+  const cases = [
+    [401, "unauthorized", "unauthorized"],
+    [403, "forbidden", "forbidden"],
+    [404, "not_found", "not_found"],
+    [409, "name_conflict", "conflict"],
+    [409, "resource_archived", "resource_archived"],
+  ] as const;
+  try {
+    for (const [status, code, kind] of cases) {
+      globalThis.fetch = async () => json({ error: code }, status);
+      await assert.rejects(
+        () => requestJson(config, "/test", "測試操作"),
+        (error: unknown) =>
+          error instanceof ApiClientError &&
+          error.status === status &&
+          error.kind === kind &&
+          error.code === code,
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Board list/archive/restore and Project Log use their exact nested methods and paths", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; method: string }> = [];
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    requests.push({ url: url.toString(), method: init?.method ?? "GET" });
+    if (url.pathname.endsWith("/logs")) {
+      return json({ logs: [], nextCursor: null });
+    }
+    if (url.pathname.endsWith("/boards")) {
+      return json({ boards: [boardMeta()] });
+    }
+    const archived = url.pathname.endsWith("/archive");
+    return json({
+      board: boardMeta(archived ? {
+        status: "archived",
+        archivedAt: "2026-07-27T01:00:00.000Z",
+        archivedBy: userId,
+      } : {}),
+    });
+  };
+  try {
+    assert.equal((await listBoards(config, context.projectId))[0].id, context.boardId);
+    assert.equal((await archiveBoard(config, context)).status, "archived");
+    assert.equal((await restoreBoard(config, context)).status, "active");
+    assert.deepEqual(await listProjectLogs(config, context.projectId), {
+      logs: [],
+      nextCursor: null,
+    });
+    assert.deepEqual(requests, [
+      {
+        url: `https://sync.example/projects/${context.projectId}/boards?status=active`,
+        method: "GET",
+      },
+      {
+        url: `https://sync.example/projects/${context.projectId}/boards/${context.boardId}/archive`,
+        method: "POST",
+      },
+      {
+        url: `https://sync.example/projects/${context.projectId}/boards/${context.boardId}/restore`,
+        method: "POST",
+      },
+      {
+        url: `https://sync.example/projects/${context.projectId}/logs`,
+        method: "GET",
+      },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects malformed Project, Board, conflict, and list payloads", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => json({ project: project({ id: "not-a-uuid" }) });
+    await assert.rejects(
+      () => getProject(config, context.projectId),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+
+    globalThis.fetch = async () => json({
+      board: {
+        ...boardMeta(),
+        content: { revision: 3, board: { version: 999, columns: [], cards: {} } },
+      },
+    });
+    await assert.rejects(
+      () => getBoard(config, context),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+
+    globalThis.fetch = async () => json({ revision: "4", board }, 409);
+    await assert.rejects(
+      () => pushRemoteBoard(config, context, 3, board),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+
+    globalThis.fetch = async () => json({ error: "resource_archived" }, 409);
+    await assert.rejects(
+      () => pushRemoteBoard(config, context, 3, board),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "resource_archived",
+    );
+
+    globalThis.fetch = async () => json({
+      projects: [{
+        id: "invalid",
+        name: "Bad",
+        status: "active",
+        myRole: "viewer",
+        activeBoardCount: 0,
+        lastActivityAt: null,
+      }],
+    });
+    await assert.rejects(
+      () => listProjects(config),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+
+    globalThis.fetch = async () => json({
+      projectId: context.projectId,
+      summary: {
+        includeArchived: false,
+        boardCount: 0,
+        stats: { total: 0, active: 0, completed: 0, overdue: 0 },
+        monthlyCompletions: [{
+          month: 202607,
+          monthLabel: "2026 年 7 月",
+          count: 0,
+        }],
+        boards: [],
+        generatedAt: "2026-07-27T00:00:00.000Z",
+        timeZone: "Asia/Taipei",
+      },
+    });
+    await assert.rejects(
+      () => getProjectSummary(config, context.projectId),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

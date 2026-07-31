@@ -10,7 +10,6 @@ declare module "cloudflare:workers" {
 const token = "worker-runtime-test-token";
 const tokenHash = "3e8e0d7c0481d3805f19d9269f96965d4bc7848fa6d7e10291eb63115842ff87";
 const endpoint = "https://sync.test";
-const maxAttachmentBytes = 10 * 1024 * 1024;
 
 function authorizationHeaders(headers: HeadersInit = {}): Headers {
   const result = new Headers(headers);
@@ -33,14 +32,46 @@ beforeAll(async () => {
   await env.DB
     .prepare("CREATE TABLE IF NOT EXISTS board (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL)")
     .run();
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS user_accounts (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+  ).run();
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS access_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, label TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, token_kind TEXT NOT NULL, legacy_user_id TEXT, created_at TEXT NOT NULL, last_used_at TEXT, revoked_at TEXT)",
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS migration_state (
+       id INTEGER PRIMARY KEY, status TEXT NOT NULL, default_workspace_id TEXT NOT NULL,
+       legacy_project_id TEXT NOT NULL, legacy_board_id TEXT NOT NULL,
+       locked_at TEXT, completed_at TEXT, updated_at TEXT NOT NULL, error TEXT
+     )`,
+  ).run();
 });
 
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM board").run();
+  await env.DB.prepare("DELETE FROM migration_state").run();
+  await env.DB.prepare("DELETE FROM access_tokens").run();
+  await env.DB.prepare("DELETE FROM user_accounts").run();
   await env.DB.prepare("DELETE FROM users").run();
   await env.DB.prepare("INSERT INTO users (id, name, token_hash) VALUES (?, ?, ?)")
     .bind("runtime-test-user", "Runtime test", tokenHash)
     .run();
+  await env.DB.prepare(
+    "INSERT INTO user_accounts (id, display_name, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)",
+  ).bind("runtime-test-user", "Runtime test", "2026-07-26T00:00:00.000Z", "2026-07-26T00:00:00.000Z").run();
+  await env.DB.prepare(
+    "INSERT INTO access_tokens (id, user_id, label, token_hash, token_kind, created_at) VALUES (?, ?, ?, ?, 'personal', ?)",
+  ).bind("runtime-test-token", "runtime-test-user", "Runtime", tokenHash, "2026-07-26T00:00:00.000Z").run();
+  await env.DB.prepare(
+    `INSERT INTO migration_state (
+       id, status, default_workspace_id, legacy_project_id, legacy_board_id, updated_at
+     ) VALUES (1, 'pending', ?, ?, ?, ?)`,
+  ).bind(
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000003",
+    "00000000-0000-4000-8000-000000000004",
+    "2026-07-26T00:00:00.000Z",
+  ).run();
 });
 
 afterEach(() => {
@@ -98,90 +129,36 @@ describe("Worker runtime integration", () => {
     expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
   });
 
-  it("uploads, returns metadata for, deletes, and then misses an attachment", async () => {
-    const content = new Uint8Array([1, 2, 3, 4]);
-    const put = await dispatch("/attachments/runtime-test.jpeg", {
+  it("keeps legacy reads available but returns a retryable error for PUT while migration is locked", async () => {
+    await env.DB.prepare(
+      "INSERT INTO board (id, revision, data, updated_at) VALUES (1, 4, ?, ?)",
+    ).bind(JSON.stringify(board()), "2026-07-26T00:00:00.000Z").run();
+    await env.DB.prepare(
+      "UPDATE migration_state SET status = 'locked' WHERE id = 1",
+    ).run();
+
+    expect((await dispatch("/board", { headers: authorizationHeaders() })).status).toBe(200);
+    const put = await dispatch("/board", {
       method: "PUT",
-      headers: authorizationHeaders({ "Content-Type": "image/jpeg" }),
-      body: content,
+      headers: authorizationHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ baseRevision: 4, board: board(4) }),
     });
-    expect(put.status).toBe(200);
-
-    const get = await dispatch("/attachments/runtime-test.jpeg", { headers: authorizationHeaders() });
-    expect(get.status).toBe(200);
-    expect(get.headers.get("Content-Type")).toBe("image/jpeg");
-    expect(get.headers.get("Content-Length")).toBe(String(content.byteLength));
-    expect(get.headers.get("ETag")).toBeTruthy();
-    expect(get.headers.get("X-Content-Type-Options")).toBe("nosniff");
-    expect(get.headers.get("Cache-Control")).toBe("private, max-age=3600");
-    expect(new Uint8Array(await get.arrayBuffer())).toEqual(content);
-
+    expect(put.status).toBe(503);
+    expect(await put.json()).toMatchObject({ error: "migration_locked" });
     expect(
-      (
-        await dispatch("/attachments/runtime-test.jpeg", {
-          method: "DELETE",
-          headers: authorizationHeaders(),
-        })
-      ).status,
-    ).toBe(200);
-    expect((await dispatch("/attachments/runtime-test.jpeg", { headers: authorizationHeaders() })).status).toBe(404);
+      await env.DB.prepare("SELECT revision FROM board WHERE id = 1").first<number>("revision"),
+    ).toBe(4);
   });
 
-  it("rejects invalid keys, MIME types, and empty uploads", async () => {
+  it("keeps the legacy file-name attachment route disabled", async () => {
     expect(
-      (
-        await dispatch("/attachments/%2F", {
-          method: "PUT",
-          headers: authorizationHeaders({ "Content-Type": "image/jpeg" }),
-          body: new Uint8Array([1]),
-        })
-      ).status,
-    ).toBe(400);
-    expect(
-      (
-        await dispatch("/attachments/nope.txt", {
-          method: "PUT",
-          headers: authorizationHeaders({ "Content-Type": "text/plain" }),
-          body: "x",
-        })
-      ).status,
-    ).toBe(415);
-    expect(
-      (
-        await dispatch("/attachments/empty.jpeg", {
-          method: "PUT",
-          headers: authorizationHeaders({ "Content-Type": "image/jpeg" }),
-          body: "",
-        })
-      ).status,
-    ).toBe(400);
+      (await dispatch("/attachments/runtime-test.jpeg", {
+        headers: authorizationHeaders(),
+      })).status,
+    ).toBe(404);
   });
 
-  it("rejects declared and streamed uploads above 10 MiB", async () => {
-    const declaredTooLarge = await dispatch("/attachments/declared.jpeg", {
-      method: "PUT",
-      headers: authorizationHeaders({
-        "Content-Type": "image/jpeg",
-        "Content-Length": String(maxAttachmentBytes + 1),
-      }),
-      body: new Uint8Array([1]),
-    });
-    expect(declaredTooLarge.status).toBe(413);
-
-    const streamedTooLarge = await dispatch("/attachments/streamed.jpeg", {
-      method: "PUT",
-      headers: authorizationHeaders({ "Content-Type": "image/jpeg" }),
-      body: new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(new Uint8Array(maxAttachmentBytes + 1));
-          controller.close();
-        },
-      }),
-    });
-    expect(streamedTooLarge.status).toBe(413);
-  });
-
-  it("turns D1 and R2 failures into the same JSON, CORS, request-id error envelope", async () => {
+  it("turns D1 failures into the JSON, CORS, request-id error envelope", async () => {
     vi.spyOn(env.DB, "prepare").mockImplementationOnce(() => {
       throw new Error("D1 is unavailable");
     });
@@ -190,12 +167,5 @@ describe("Worker runtime integration", () => {
     expect(await d1Failure.json()).toMatchObject({ error: "internal error" });
     expect(d1Failure.headers.get("Access-Control-Allow-Origin")).toBe("*");
     expect(d1Failure.headers.get("X-Request-Id")).toMatch(/^[0-9a-f-]{36}$/);
-
-    vi.spyOn(env.ATTACHMENTS, "get").mockRejectedValueOnce(new Error("R2 is unavailable"));
-    const r2Failure = await dispatch("/attachments/error.jpeg", { headers: authorizationHeaders() });
-    expect(r2Failure.status).toBe(500);
-    expect(await r2Failure.json()).toMatchObject({ error: "internal error" });
-    expect(r2Failure.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(r2Failure.headers.get("X-Request-Id")).toMatch(/^[0-9a-f-]{36}$/);
   });
 });

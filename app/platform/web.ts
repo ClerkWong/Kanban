@@ -5,6 +5,7 @@ import {
   type SavedFile,
   extFromMime,
 } from "./types";
+import { webSyncCredentialStorage } from "../sync/config";
 
 const DB_NAME = "kanban-attachments";
 const STORE_NAME = "files";
@@ -85,6 +86,7 @@ let activeChunks: Blob[] = [];
 
 export const webCapabilities: PlatformCapabilities = {
   isNative: false,
+  syncCredentials: webSyncCredentialStorage,
 
   async takePhoto() {
     const file = await pickPhotoFile();
