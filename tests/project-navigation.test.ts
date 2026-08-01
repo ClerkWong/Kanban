@@ -41,6 +41,7 @@ const board: BoardMeta = {
 test("project hash routes parse and serialize as canonical round trips", () => {
   const routes = [
     { kind: "projects" } as const,
+    { kind: "admin" } as const,
     { kind: "project", projectId } as const,
     { kind: "board", projectId, boardId } as const,
   ];
@@ -51,6 +52,17 @@ test("project hash routes parse and serialize as canonical round trips", () => {
   assert.equal(parseProjectHash("#/projects/not-a-uuid"), null);
   assert.equal(parseProjectHash(`#/projects/${projectId}/boards/local:legacy-board`), null);
   assert.equal(parseProjectHash(`#/projects/${projectId}/unknown/${boardId}`), null);
+});
+
+test("platform administration route requires an explicit workspace capability", () => {
+  assert.deepEqual(
+    resolveAuthorizedRoute({ kind: "admin" }, projects, null, true),
+    { kind: "admin" },
+  );
+  assert.deepEqual(
+    resolveAuthorizedRoute({ kind: "admin" }, projects, null, false),
+    { kind: "projects" },
+  );
 });
 
 test("unauthorized or malformed routes fall back to a valid recent context, then projects", () => {

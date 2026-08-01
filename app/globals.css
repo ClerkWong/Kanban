@@ -1195,6 +1195,66 @@ textarea {
     calc(20px + var(--safe-left));
 }
 
+.workspaceEntryNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) * 1.5);
+  background: rgba(255, 253, 248, 0.88);
+  box-shadow: 0 10px 28px rgba(36, 45, 47, 0.06);
+  backdrop-filter: blur(16px);
+}
+
+.workspaceEntryLinks {
+  display: flex;
+  gap: 8px;
+}
+
+.workspaceEntryLinks a {
+  display: grid;
+  gap: 2px;
+  min-width: 150px;
+  padding: 10px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.workspaceEntryLinks a:hover {
+  border-color: var(--line);
+  background: #f7f5ef;
+}
+
+.workspaceEntryLinks a.active {
+  border-color: #9bc1bb;
+  background: #eaf5f2;
+  color: var(--teal-strong);
+}
+
+.workspaceEntryLinks small,
+.workspaceIdentity span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.workspaceIdentity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 10px;
+  text-align: right;
+}
+
+.workspaceIdentity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .projectHero {
   display: flex;
   align-items: flex-end;
@@ -1342,6 +1402,119 @@ textarea {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 28px;
+}
+
+.adminHero {
+  align-items: center;
+}
+
+.adminStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.adminScopeNotice {
+  margin: 0 0 22px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--indigo);
+  background: rgba(63, 90, 200, 0.07);
+  color: #4d575b;
+  line-height: 1.55;
+}
+
+.successNotice {
+  border-color: #9bc1bb;
+  background: #eef8f5;
+  color: var(--green);
+}
+
+.successNotice a {
+  color: var(--teal-strong);
+  font-weight: 800;
+}
+
+.adminProjectList {
+  display: grid;
+  gap: 12px;
+}
+
+.adminProjectRow {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(300px, 1.2fr) minmax(180px, 0.55fr);
+  gap: 20px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) * 1.25);
+  background: rgba(255, 253, 248, 0.9);
+}
+
+.adminProjectHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.adminProjectHeading h2 {
+  margin: 0 0 7px;
+  font-size: 1.15rem;
+}
+
+.adminProjectHeading code,
+.adminProjectFacts code {
+  color: var(--muted);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.adminProjectFacts {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.adminProjectFacts div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.adminProjectFacts dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.adminProjectFacts dd {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.adminProjectActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.adminProjectActions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.adminProjectActions span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  text-align: right;
 }
 
 .boardDirectory {
@@ -1872,12 +2045,52 @@ textarea {
     flex-direction: column;
   }
 
+  .workspaceEntryNav {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .workspaceEntryLinks {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspaceEntryLinks a {
+    min-width: 0;
+  }
+
+  .workspaceIdentity {
+    padding: 4px 6px;
+    text-align: left;
+  }
+
   .projectHero h1 {
     font-size: 3rem;
   }
 
   .projectStats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .adminStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .adminProjectRow {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .adminProjectActions {
+    justify-content: stretch;
+  }
+
+  .adminProjectActions a {
+    width: 100%;
+  }
+
+  .adminProjectActions span {
+    text-align: left;
   }
 
   .boardSwitcher {

@@ -120,6 +120,7 @@ describe("Project and membership APIs", () => {
     expect(registry.status).toBe(200);
     const body = await registry.json() as { projects: Array<Record<string, unknown>> };
     expect(body.projects.map((row) => row.id).sort()).toEqual([projectA, projectB]);
+    expect(body.projects.every((row) => row.workspaceId === workspaceId)).toBe(true);
     expect(body.projects.every((row) => !("boards" in row) && !("activeBoardCount" in row))).toBe(true);
   });
 

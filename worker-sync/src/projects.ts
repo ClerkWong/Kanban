@@ -98,7 +98,7 @@ async function listProjects(context: ApiContext): Promise<Response> {
 
 async function listAdminProjects(context: ApiContext): Promise<Response> {
   const result = await context.env.DB.prepare(
-    `SELECT projects.id, projects.name, projects.status,
+    `SELECT projects.id, projects.workspace_id, projects.name, projects.status,
             projects.created_at, projects.updated_at,
             (
               SELECT group_concat(project_members.user_id)
@@ -114,6 +114,7 @@ async function listAdminProjects(context: ApiContext): Promise<Response> {
      ORDER BY projects.updated_at DESC, projects.id DESC`,
   ).bind(context.user.id).all<{
     id: string;
+    workspace_id: string;
     name: string;
     status: string;
     created_at: string;
@@ -123,6 +124,7 @@ async function listAdminProjects(context: ApiContext): Promise<Response> {
   return json(200, {
     projects: result.results.map((row) => ({
       id: row.id,
+      workspaceId: row.workspace_id,
       name: row.name,
       status: row.status,
       managerIds: row.manager_ids ? row.manager_ids.split(",") : [],

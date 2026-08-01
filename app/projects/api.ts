@@ -10,6 +10,7 @@ import {
   parseProjectList,
 } from "./model";
 import type {
+  AdminProjectSummary,
   ActivityLogEntry,
   BoardContext,
   BoardMeta,
@@ -227,6 +228,42 @@ function parseProjectListResponse(value: unknown): ProjectSummary[] {
   return projects;
 }
 
+function parseAdminProject(value: unknown): AdminProjectSummary | null {
+  const raw = asRecord(value);
+  if (
+    !raw ||
+    !isUuid(raw.id) ||
+    !isUuid(raw.workspaceId) ||
+    !nonEmptyString(raw.name) ||
+    !isResourceStatus(raw.status) ||
+    !Array.isArray(raw.managerIds) ||
+    !raw.managerIds.every(isUuid) ||
+    !nonEmptyString(raw.createdAt) ||
+    !nonEmptyString(raw.updatedAt)
+  ) {
+    return null;
+  }
+  return {
+    id: raw.id,
+    workspaceId: raw.workspaceId,
+    name: raw.name,
+    status: raw.status,
+    managerIds: raw.managerIds,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+  };
+}
+
+function parseAdminProjectListResponse(value: unknown): AdminProjectSummary[] {
+  const raw = asRecord(value);
+  if (!raw || !Array.isArray(raw.projects)) throw invalidResponse("讀取平台專案列表");
+  const projects = raw.projects.map(parseAdminProject);
+  if (projects.some((project) => project === null)) {
+    throw invalidResponse("讀取平台專案列表");
+  }
+  return projects as AdminProjectSummary[];
+}
+
 function parseMember(value: unknown): ProjectMember | null {
   const raw = asRecord(value);
   if (
@@ -427,6 +464,14 @@ export async function listProjects(
   const query = new URLSearchParams({ status });
   return parseProjectListResponse(
     await requestJson(config, `/projects?${query}`, "讀取專案列表"),
+  );
+}
+
+export async function listAdminProjects(
+  config: SyncConfig,
+): Promise<AdminProjectSummary[]> {
+  return parseAdminProjectListResponse(
+    await requestJson(config, "/admin/projects", "讀取平台專案列表"),
   );
 }
 

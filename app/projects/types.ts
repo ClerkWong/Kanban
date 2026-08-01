@@ -85,6 +85,18 @@ export type ProjectSummary = {
   lastActivityAt: string | null;
 };
 
+/** Workspace-administration registry row. This intentionally exposes only
+ * Project metadata and manager ids; it never contains Board or Card data. */
+export type AdminProjectSummary = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  status: ResourceStatus;
+  managerIds: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 /** Append-only activity log entry (design spec §8.5). Produced by the
  * Worker only; clients never create, edit, or delete these. */
 export type ActivityLogEntry = {

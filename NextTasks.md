@@ -1,8 +1,8 @@
 # Kanban 後續任務與發布 Runbook
 
-- 最後更新：2026-07-30
-- 目前分支：`feature/multi-project-v1`
-- 已推送 staging 候選基準：`de24a29`（Task 1–14、staging resources 與 smoke）
+- 最後更新：2026-07-31
+- 目前分支：`codex/platform-admin-user-entry`
+- `main` 已整合多專案 v1：`d54e0ec`
 
 本文件整併先前兩份規劃，是後續工作、驗收與發布順序的單一依據。
 已完成的歷史實作只保留結果與證據；未完成項目依實際執行順序排列。
@@ -11,6 +11,8 @@
 
 | 項目 | 狀態 | 說明 |
 | --- | --- | --- |
+| 多專案 v1 合併 main | 已完成並推送 | `feature/multi-project-v1` 已於 `d54e0ec` 合併至 `main` |
+| 平台管理者／一般使用者入口 | 第一階段實作中 | 一般使用者預設進「我的專案」；Workspace owner/admin 才可見平台管理入口、metadata registry 與建立專案功能 |
 | 月報資料模型 | 已完成 | 以 `completedAt` 計算最近六個日曆月；schema v4 可遷移 v1/v2/v3 |
 | 3b 附件用戶端 | 多看板同步層與 UI 已完成 | queue v2、下載與 R2 endpoint 已按 user/Project/Board/Attachment 隔離 |
 | Worker 3b | 多專案後端已部署 staging | identity、ACL、Project/Board API、summary、Activity Log 與 scoped R2 API 已部署到隔離 staging；production 尚未部署 |

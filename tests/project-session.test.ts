@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ProjectRepository } from "../app/projects/repository";
-import { parseRuntimeSession, type RuntimeSession } from "../app/projects/session";
+import {
+  administrativeWorkspaces,
+  hasPlatformAdminAccess,
+  parseRuntimeSession,
+  type RuntimeSession,
+} from "../app/projects/session";
 import { SYNC_CONFIG_KEY_V2 } from "../app/projects/storage";
 import { loadSyncConfig, saveSyncConfig, type SyncConfig } from "../app/sync/config";
 
@@ -79,6 +84,24 @@ test("runtime session accepts only server identity and known workspace roles", (
     user: { id: userA, displayName: "Alice", tokenKind: "personal" },
     workspaces: [{ workspaceId, role: "manager" }],
   }), null);
+});
+
+test("only owner and admin workspace roles expose the platform entry", () => {
+  const memberSession = session(userA, "Alice");
+  assert.equal(hasPlatformAdminAccess(memberSession), false);
+  assert.deepEqual(administrativeWorkspaces(memberSession), []);
+
+  const adminSession: RuntimeSession = {
+    ...memberSession,
+    workspaces: [
+      { workspaceId, role: "member" },
+      { workspaceId: userB, role: "admin" },
+    ],
+  };
+  assert.equal(hasPlatformAdminAccess(adminSession), true);
+  assert.deepEqual(administrativeWorkspaces(adminSession), [
+    { workspaceId: userB, role: "admin" },
+  ]);
 });
 
 test("SyncConfig v2 persists only base URL/token and migrates v1 without identity overrides", async () => {

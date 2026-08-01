@@ -9,6 +9,7 @@ import type {
 
 export type ProjectRoute =
   | { kind: "projects" }
+  | { kind: "admin" }
   | { kind: "project"; projectId: string }
   | { kind: "board"; projectId: string; boardId: string };
 
@@ -21,6 +22,7 @@ export type BoardAccess = {
 export function parseProjectHash(hash: string): ProjectRoute | null {
   const path = hash.replace(/^#/, "").replace(/^\/+|\/+$/g, "");
   if (!path || path === "projects") return { kind: "projects" };
+  if (path === "admin") return { kind: "admin" };
 
   const segments = path.split("/");
   if (
@@ -48,6 +50,7 @@ export function parseProjectHash(hash: string): ProjectRoute | null {
 
 export function serializeProjectRoute(route: ProjectRoute): string {
   if (route.kind === "projects") return "#/projects";
+  if (route.kind === "admin") return "#/admin";
   if (route.kind === "project") return `#/projects/${route.projectId}`;
   return `#/projects/${route.projectId}/boards/${route.boardId}`;
 }
@@ -56,8 +59,12 @@ export function resolveAuthorizedRoute(
   route: ProjectRoute | null,
   projects: ProjectSummary[],
   lastContext: BoardContext | null = null,
+  allowAdmin = false,
 ): ProjectRoute {
   if (route?.kind === "projects") return route;
+  if (route?.kind === "admin") {
+    return allowAdmin ? route : { kind: "projects" };
+  }
   if (
     route &&
     projects.some((project) => project.id === route.projectId)

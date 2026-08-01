@@ -12,6 +12,7 @@ import {
   listBoardLogs,
   listProjectLogs,
   listProjectMembers,
+  listAdminProjects,
   listProjects,
   requestJson,
   restoreBoard,
@@ -197,6 +198,37 @@ test("Project, member, summary, and Board Log clients strictly parse server resp
     assert.match(
       urls.at(-1) ?? "",
       /limit=50&cursor=cursor%2Fwith%2Bsymbols%3D$/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("platform registry client accepts metadata only and rejects malformed manager ids", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => json({
+    projects: [{
+      id: context.projectId,
+      workspaceId: context.workspaceId,
+      name: "Alpha",
+      status: "active",
+      managerIds: [userId],
+      createdAt: "2026-07-27T00:00:00.000Z",
+      updatedAt: "2026-07-27T00:00:00.000Z",
+    }],
+  });
+  try {
+    const projects = await listAdminProjects(config);
+    assert.equal(projects[0].workspaceId, context.workspaceId);
+    assert.deepEqual(projects[0].managerIds, [userId]);
+
+    globalThis.fetch = async () => json({
+      projects: [{ ...projects[0], managerIds: ["invalid"] }],
+    });
+    await assert.rejects(
+      () => listAdminProjects(config),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
     );
   } finally {
     globalThis.fetch = originalFetch;

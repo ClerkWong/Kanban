@@ -1,15 +1,19 @@
 import type { ProjectSummary } from "../../projects/types";
 import { projectRoleLabel, serializeProjectRoute } from "../../projects/navigation";
+import { WorkspaceEntryNav } from "./WorkspaceEntryNav";
 
 export function MyProjectsView({
   projects,
   userName,
+  showAdmin,
 }: {
   projects: ProjectSummary[];
   userName: string;
+  showAdmin: boolean;
 }) {
   return (
     <main className="projectShell">
+      <WorkspaceEntryNav current="projects" userName={userName} showAdmin={showAdmin} />
       <header className="projectHero">
         <div>
           <p className="eyebrow">Kanban workspace</p>

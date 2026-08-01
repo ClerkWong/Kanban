@@ -24,7 +24,11 @@ import {
   type BoardAccess,
   type ProjectRoute,
 } from "../../projects/navigation";
-import { fetchRuntimeSession, type RuntimeSession } from "../../projects/session";
+import {
+  fetchRuntimeSession,
+  hasPlatformAdminAccess,
+  type RuntimeSession,
+} from "../../projects/session";
 import {
   loadActiveContext,
   saveActiveContext,
@@ -40,6 +44,7 @@ import { BoardNavigation } from "./BoardNavigation";
 import { MyProjectsView } from "./MyProjectsView";
 import { ProjectOverview } from "./ProjectOverview";
 import { LegacyMigrationGate } from "./LegacyMigrationGate";
+import { AdminProjectsView } from "./AdminProjectsView";
 
 type ProjectAppProps = {
   enableServiceWorker?: boolean;
@@ -120,6 +125,7 @@ export function ProjectApp({
         parseProjectHash(window.location.hash),
         bootstrap.projects,
         lastContext,
+        hasPlatformAdminAccess(bootstrap.session),
       );
       setRoute(next);
       const canonical = serializeProjectRoute(next);
@@ -167,6 +173,31 @@ export function ProjectApp({
         <MyProjectsView
           projects={bootstrap.projects}
           userName={bootstrap.session.user.displayName}
+          showAdmin={hasPlatformAdminAccess(bootstrap.session)}
+        />
+      </LegacyMigrationGate>
+    );
+  }
+  if (route.kind === "admin") {
+    return (
+      <LegacyMigrationGate
+        config={bootstrap.config}
+        session={bootstrap.session}
+        projects={bootstrap.projects}
+      >
+        <AdminProjectsView
+          config={bootstrap.config}
+          session={bootstrap.session}
+          memberProjects={bootstrap.projects}
+          onProjectsChanged={async () => {
+            const [active, archived] = await Promise.all([
+              listProjects(bootstrap.config, "active"),
+              listProjects(bootstrap.config, "archived"),
+            ]);
+            setBootstrap((current) => current.kind === "ready"
+              ? { ...current, projects: [...active, ...archived] }
+              : current);
+          }}
         />
       </LegacyMigrationGate>
     );
@@ -205,7 +236,7 @@ function ProjectRouteView({
   onProjectsChanged,
 }: {
   config: SyncConfig;
-  route: Exclude<ProjectRoute, { kind: "projects" }>;
+  route: Exclude<ProjectRoute, { kind: "projects" } | { kind: "admin" }>;
   enableServiceWorker: boolean;
   appConfigUrl: string;
   onProjectsChanged: () => void;

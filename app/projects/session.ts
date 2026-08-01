@@ -61,6 +61,18 @@ export async function fetchRuntimeSession(config: SyncConfig): Promise<RuntimeSe
   return session;
 }
 
+export function administrativeWorkspaces(
+  session: RuntimeSession,
+): RuntimeSession["workspaces"] {
+  return session.workspaces.filter(
+    (workspace) => workspace.role === "owner" || workspace.role === "admin",
+  );
+}
+
+export function hasPlatformAdminAccess(session: RuntimeSession): boolean {
+  return administrativeWorkspaces(session).length > 0;
+}
+
 /** Validates the replacement as a live personal token before asking the
  * server to revoke the currently authenticated legacy shared token. */
 export async function replaceLegacyToken(
