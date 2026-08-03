@@ -14,8 +14,17 @@
 6. [x] Board API 阻止建立第二個 active Board及封存唯一 active Board。
 7. [x] Admin 建立表單加入 Board 名稱與初始 owner；owner/member 管理 UI 移除新 viewer。
 8. [x] 「我的專案」直接進入 Board，owner 保留專案／成員管理入口。
-9. [ ] 完整 client／Worker／migration／lint／typecheck／build 驗證。
-10. [ ] 套用 staging migration、部署 staging Worker 與 private Beta smoke test。
+9. [x] 完整 client／Worker／migration／lint／typecheck／build 驗證。
+10. [x] 套用 staging migration、部署 staging Worker 與 private Beta smoke test。
+
+## 完成證據
+
+- 168 個 client／domain tests、51 個 Worker runtime tests 全數通過。
+- lint、TypeScript、Web build、Mobile build、Worker generated types 與 staging dry-run 通過。
+- staging migration `0003_single_board_projects.sql` 已套用；跨 Project 查詢確認沒有任何
+  Project 擁有多於一個 active Board。
+- staging Worker authenticated smoke：1 Workspace、1 Project、抽驗 1 Board。
+- private Sites Beta v7 已發布；production Worker／D1／R2 未變更。
 
 ## 驗收條件
 
