@@ -145,7 +145,7 @@ beforeEach(async () => {
   ).bind(workspaceId, projectA, boardA, now).run();
 });
 
-describe("Multi-board content APIs", () => {
+describe("Single-board Project content APIs", () => {
   it("lists only boards in an accessible project and hides cross-project guesses", async () => {
     expect((await createBoard(managerToken, projectA, boardA, "Roadmap")).status).toBe(201);
     expect((await createBoard(outsiderToken, projectB, boardB, "Private")).status).toBe(201);
@@ -182,9 +182,11 @@ describe("Multi-board content APIs", () => {
     ).toBe(403);
   });
 
-  it("enforces role capabilities and keeps Board A/B revisions and conflicts isolated", async () => {
+  it("enforces role capabilities, one active Board, and revision conflicts", async () => {
     await createBoard(managerToken, projectA, boardA, "A", board(3, "A0"));
-    await createBoard(managerToken, projectA, boardB, "B", board(3, "B0"));
+    const duplicateBoard = await createBoard(managerToken, projectA, boardB, "B", board(3, "B0"));
+    expect(duplicateBoard.status).toBe(409);
+    expect(await duplicateBoard.json()).toMatchObject({ error: "project_board_exists" });
 
     const viewerGet = await dispatch(viewerToken, `/projects/${projectA}/boards/${boardA}`);
     expect(viewerGet.status).toBe(200);
@@ -214,9 +216,9 @@ describe("Multi-board content APIs", () => {
       board: { marker: "A1" },
     });
     expect(
-      await env.DB.prepare("SELECT revision FROM boards WHERE id = ?")
-        .bind(boardB).first<number>("revision"),
-    ).toBe(0);
+      await env.DB.prepare("SELECT COUNT(*) AS count FROM boards WHERE project_id = ? AND status = 'active'")
+        .bind(projectA).first<number>("count"),
+    ).toBe(1);
   });
 
   it("allows multiple Project assignees, rejects outsiders, and preserves departed assignments", async () => {
@@ -328,18 +330,22 @@ describe("Multi-board content APIs", () => {
     ).toBe(1);
   });
 
-  it("archives read-only without resetting content and resolves restore name conflicts by rename", async () => {
+  it("keeps the sole active Board and only restores history when no active Board exists", async () => {
     await createBoard(managerToken, projectA, boardA, "Roadmap", board(3, "before"));
     await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}/content`, {
       method: "PUT",
       body: JSON.stringify({ baseRevision: 0, board: board(4, "saved") }),
     });
-    expect((await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/archive`, {
+    const archive = await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/archive`, {
       method: "POST",
-    })).status).toBe(200);
-    expect((await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/archive`, {
-      method: "POST",
-    })).status).toBe(200);
+    });
+    expect(archive.status).toBe(409);
+    expect(await archive.json()).toMatchObject({ error: "single_board_required" });
+
+    const archivedAt = "2026-07-27T01:00:00.000Z";
+    await env.DB.prepare(
+      "UPDATE boards SET status = 'archived', archived_at = ?, archived_by = ? WHERE id = ?",
+    ).bind(archivedAt, managerId, boardA).run();
 
     const archived = await dispatch(viewerToken, `/projects/${projectA}/boards/${boardA}`);
     expect(archived.status).toBe(200);
@@ -364,10 +370,9 @@ describe("Multi-board content APIs", () => {
     expect((await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/restore`, {
       method: "POST",
     })).status).toBe(409);
-    expect((await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}`, {
-      method: "PATCH",
-      body: JSON.stringify({ name: "Historical Roadmap" }),
-    })).status).toBe(200);
+    await env.DB.prepare(
+      "UPDATE boards SET status = 'archived', archived_at = ?, archived_by = ? WHERE id = ?",
+    ).bind(archivedAt, managerId, boardB).run();
     expect((await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/restore`, {
       method: "POST",
     })).status).toBe(200);
@@ -378,7 +383,7 @@ describe("Multi-board content APIs", () => {
     expect(
       await env.DB.prepare("SELECT COUNT(*) AS count FROM activity_logs WHERE board_id = ?")
         .bind(boardA).first<number>("count"),
-    ).toBe(5);
+    ).toBe(3);
 
     await env.DB.prepare(
       "UPDATE projects SET status = 'archived', archived_at = ?, archived_by = ? WHERE id = ?",

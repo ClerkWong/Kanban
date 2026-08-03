@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { createEmptyBoard } from "../../board-model";
 import { createProject } from "../../projects/api";
 import type { RuntimeSession } from "../../projects/session";
 import { managementErrorMessage } from "../../projects/view-model";
@@ -9,15 +10,19 @@ type AdministrativeWorkspace = RuntimeSession["workspaces"][number];
 export function CreateProjectModal({
   config,
   workspaces,
+  currentUserId,
   onClose,
   onCreated,
 }: {
   config: SyncConfig;
   workspaces: AdministrativeWorkspace[];
+  currentUserId: string;
   onClose: () => void;
   onCreated: (projectId: string) => void;
 }) {
   const [name, setName] = useState("");
+  const [boardName, setBoardName] = useState("");
+  const [ownerUserId, setOwnerUserId] = useState(currentUserId);
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.workspaceId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -40,6 +45,10 @@ export function CreateProjectModal({
         id: crypto.randomUUID(),
         workspaceId,
         name,
+        boardId: crypto.randomUUID(),
+        boardName,
+        board: createEmptyBoard(),
+        ownerUserId,
       });
       onCreated(detail.project.id);
       onClose();
@@ -86,8 +95,27 @@ export function CreateProjectModal({
               ))}
             </select>
           </label>
+          <label className="formField">
+            <span>看板名稱</span>
+            <input
+              value={boardName}
+              maxLength={80}
+              required
+              placeholder="例如：產品開發看板"
+              onChange={(event) => setBoardName(event.target.value)}
+            />
+          </label>
+          <label className="formField">
+            <span>初始 Project Owner UUID</span>
+            <input
+              value={ownerUserId}
+              required
+              placeholder={currentUserId}
+              onChange={(event) => setOwnerUserId(event.target.value.trim())}
+            />
+          </label>
           <p className="storageNote">
-            建立後你會自動成為此專案的管理者，再由專案內加入協作者與檢視者。
+            送出後會同時建立專案、唯一看板與第一位 owner。之後可由 owner 加入其他 owner 或 member。
           </p>
           {error && <p className="notice warning" role="alert">{error}</p>}
           <footer className="modalActions">

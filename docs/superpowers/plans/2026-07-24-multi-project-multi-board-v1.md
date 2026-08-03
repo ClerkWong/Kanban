@@ -7,6 +7,10 @@
 - 目前 production：既有單一看板 3a
 - 目前 Web：private beta v1，固定於 `bd17e5b`
 
+> 2026-08-03 補充：後續單一看板與 `admin / owner / member` 實作改由
+> [`2026-08-03-project-admin-owner-member-plan.md`](./2026-08-03-project-admin-owner-member-plan.md)
+> 接續；本計畫保留為 v1 建置與 migration 歷史。
+
 ## Goal
 
 把目前單一共用 Board 升級為：

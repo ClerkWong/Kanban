@@ -2,7 +2,6 @@ import type { ActivityLogEntry, ProjectRole, ResourceStatus } from "./types";
 
 export type ProjectManagementActions = {
   showManagement: boolean;
-  canCreateBoard: boolean;
   canEditProject: boolean;
 };
 
@@ -10,22 +9,21 @@ export function projectManagementActions(
   role: ProjectRole,
   status: ResourceStatus,
 ): ProjectManagementActions {
-  const manager = role === "manager";
+  const owner = role === "owner";
   return {
-    showManagement: manager,
-    canCreateBoard: manager && status === "active",
-    canEditProject: manager,
+    showManagement: owner,
+    canEditProject: owner && status === "active",
   };
 }
 
-export function isLastManagerChangeBlocked(
+export function isLastOwnerChangeBlocked(
   members: Array<{ userId: string; role: ProjectRole }>,
   userId: string,
   nextRole: ProjectRole | null,
 ): boolean {
   const target = members.find((member) => member.userId === userId);
-  if (target?.role !== "manager" || nextRole === "manager") return false;
-  return members.filter((member) => member.role === "manager").length <= 1;
+  if (target?.role !== "owner" || nextRole === "owner") return false;
+  return members.filter((member) => member.role === "owner").length <= 1;
 }
 
 const actionLabels: Record<string, string> = {

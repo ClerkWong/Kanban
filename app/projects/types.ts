@@ -18,7 +18,9 @@ export type WorkspaceRole = "owner" | "admin" | "member";
 
 /** Project-level role. This is the only axis that grants Project/Board
  * content capabilities (see app/projects/model.ts capability functions). */
-export type ProjectRole = "manager" | "contributor" | "viewer";
+/** User-facing Project roles. `viewer` is retained only for legacy read-only
+ * memberships and cannot be assigned to new members from the UI. */
+export type ProjectRole = "owner" | "member" | "viewer";
 
 export type ResourceStatus = "active" | "archived";
 
@@ -82,17 +84,21 @@ export type ProjectSummary = {
   status: ResourceStatus;
   myRole: ProjectRole;
   activeBoardCount: number;
+  boardId: string | null;
+  boardName: string | null;
   lastActivityAt: string | null;
 };
 
 /** Workspace-administration registry row. This intentionally exposes only
- * Project metadata and manager ids; it never contains Board or Card data. */
+ * Project and single-Board metadata plus owner ids; it never contains Card data. */
 export type AdminProjectSummary = {
   id: string;
   workspaceId: string;
   name: string;
   status: ResourceStatus;
-  managerIds: string[];
+  ownerIds: string[];
+  boardId: string | null;
+  boardName: string | null;
   createdAt: string;
   updatedAt: string;
 };

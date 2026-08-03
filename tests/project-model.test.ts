@@ -70,8 +70,10 @@ function validProjectSummary(overrides: Record<string, unknown> = {}) {
     id: VALID_UUID_A,
     name: "行銷網站改版",
     status: "active",
-    myRole: "manager",
-    activeBoardCount: 2,
+    myRole: "owner",
+    activeBoardCount: 1,
+    boardId: VALID_UUID_B,
+    boardName: "產品看板",
     lastActivityAt: "2026-07-10T00:00:00.000Z",
     ...overrides,
   };
@@ -93,40 +95,40 @@ test("role matrix: viewer has no mutation capability anywhere", () => {
   assert.equal(canManageProject("viewer"), false);
 });
 
-test("role matrix: contributor can edit content but has no membership/archive capability", () => {
-  assert.equal(canReadProject("contributor"), true);
-  assert.equal(canEditBoard("contributor"), true);
-  assert.equal(canWriteAttachment("contributor"), true);
-  assert.equal(canDownloadAttachment("contributor"), true);
-  assert.equal(canCreateBoard("contributor"), false);
-  assert.equal(canRenameBoard("contributor"), false);
-  assert.equal(canArchiveBoard("contributor"), false);
-  assert.equal(canRestoreBoard("contributor"), false);
-  assert.equal(canRenameProject("contributor"), false);
-  assert.equal(canManageMembers("contributor"), false);
-  assert.equal(canArchiveProject("contributor"), false);
-  assert.equal(canRestoreProject("contributor"), false);
-  assert.equal(canManageProject("contributor"), false);
+test("role matrix: member can edit content but has no membership/archive capability", () => {
+  assert.equal(canReadProject("member"), true);
+  assert.equal(canEditBoard("member"), true);
+  assert.equal(canWriteAttachment("member"), true);
+  assert.equal(canDownloadAttachment("member"), true);
+  assert.equal(canCreateBoard("member"), false);
+  assert.equal(canRenameBoard("member"), false);
+  assert.equal(canArchiveBoard("member"), false);
+  assert.equal(canRestoreBoard("member"), false);
+  assert.equal(canRenameProject("member"), false);
+  assert.equal(canManageMembers("member"), false);
+  assert.equal(canArchiveProject("member"), false);
+  assert.equal(canRestoreProject("member"), false);
+  assert.equal(canManageProject("member"), false);
 });
 
-test("role matrix: manager can manage members, boards, and the project itself", () => {
-  assert.equal(canReadProject("manager"), true);
-  assert.equal(canEditBoard("manager"), true);
-  assert.equal(canWriteAttachment("manager"), true);
-  assert.equal(canDownloadAttachment("manager"), true);
-  assert.equal(canCreateBoard("manager"), true);
-  assert.equal(canRenameBoard("manager"), true);
-  assert.equal(canArchiveBoard("manager"), true);
-  assert.equal(canRestoreBoard("manager"), true);
-  assert.equal(canRenameProject("manager"), true);
-  assert.equal(canManageMembers("manager"), true);
-  assert.equal(canArchiveProject("manager"), true);
-  assert.equal(canRestoreProject("manager"), true);
-  assert.equal(canManageProject("manager"), true);
+test("role matrix: owner can manage members, boards, and the project itself", () => {
+  assert.equal(canReadProject("owner"), true);
+  assert.equal(canEditBoard("owner"), true);
+  assert.equal(canWriteAttachment("owner"), true);
+  assert.equal(canDownloadAttachment("owner"), true);
+  assert.equal(canCreateBoard("owner"), true);
+  assert.equal(canRenameBoard("owner"), true);
+  assert.equal(canArchiveBoard("owner"), true);
+  assert.equal(canRestoreBoard("owner"), true);
+  assert.equal(canRenameProject("owner"), true);
+  assert.equal(canManageMembers("owner"), true);
+  assert.equal(canArchiveProject("owner"), true);
+  assert.equal(canRestoreProject("owner"), true);
+  assert.equal(canManageProject("owner"), true);
 });
 
 test("role matrix: an unrecognized role string is denied every capability by default", () => {
-  const bogus = "owner" as unknown as ProjectRole; // a WorkspaceRole value, never a ProjectRole
+  const bogus = "admin" as unknown as ProjectRole;
   assert.equal(canReadProject(bogus), false);
   assert.equal(canEditBoard(bogus), false);
   assert.equal(canManageProject(bogus), false);
@@ -144,10 +146,10 @@ test("workspace role never auto-grants project content permission", () => {
 });
 
 test("isProjectRole / isWorkspaceRole / isResourceStatus narrow only known values", () => {
-  assert.equal(isProjectRole("manager"), true);
-  assert.equal(isProjectRole("contributor"), true);
+  assert.equal(isProjectRole("owner"), true);
+  assert.equal(isProjectRole("member"), true);
   assert.equal(isProjectRole("viewer"), true);
-  assert.equal(isProjectRole("owner"), false);
+  assert.equal(isProjectRole("manager"), false);
   assert.equal(isProjectRole(""), false);
   assert.equal(isProjectRole(undefined), false);
 
@@ -362,7 +364,7 @@ test("parseProjectList keeps only well-formed entries and drops the rest", () =>
     validProjectSummary(),
     { bogus: true },
     validProjectSummary({ id: VALID_UUID_B, name: "另一個專案", myRole: "viewer" }),
-    validProjectSummary({ myRole: "owner" }), // workspace role leaking in -- reject
+    validProjectSummary({ myRole: "admin" }), // workspace-only role leaking in -- reject
     validProjectSummary({ activeBoardCount: -1 }),
     validProjectSummary({ name: "" }),
     null,

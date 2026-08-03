@@ -106,7 +106,7 @@ describe("Project and membership APIs", () => {
       projects: Array<{ id: string; myRole: string }>;
     };
     expect(new Map(body.projects.map((row) => [row.id, row.myRole]))).toEqual(
-      new Map([[projectA, "viewer"], [projectB, "contributor"]]),
+      new Map([[projectA, "viewer"], [projectB, "member"]]),
     );
   });
 
@@ -122,6 +122,20 @@ describe("Project and membership APIs", () => {
     expect(body.projects.map((row) => row.id).sort()).toEqual([projectA, projectB]);
     expect(body.projects.every((row) => row.workspaceId === workspaceId)).toBe(true);
     expect(body.projects.every((row) => !("boards" in row) && !("activeBoardCount" in row))).toBe(true);
+  });
+
+  it("lets platform admins archive metadata without gaining Project content access", async () => {
+    expect((await dispatch(managerToken, `/admin/projects/${projectB}/archive`, {
+      method: "POST",
+    })).status).toBe(200);
+    expect(
+      await env.DB.prepare("SELECT status FROM projects WHERE id = ?")
+        .bind(projectB).first<string>("status"),
+    ).toBe("archived");
+    expect((await dispatch(managerToken, `/projects/${projectB}`)).status).toBe(404);
+    expect((await dispatch(managerToken, `/admin/projects/${projectB}/restore`, {
+      method: "POST",
+    })).status).toBe(200);
   });
 
   it("validates a personal replacement before revoking a shared legacy token", async () => {
@@ -162,21 +176,46 @@ describe("Project and membership APIs", () => {
     });
   });
 
-  it("creates idempotently, makes the creator manager, and rejects active name conflicts", async () => {
+  it("atomically creates a Project, its sole Board, and initial owner", async () => {
     const id = "20000000-0000-4000-8000-000000000010";
+    const boardId = "20000000-0000-4000-8000-000000000012";
+    const initialBoard = {
+      version: 5,
+      columns: [],
+      cards: {},
+      labels: [],
+      deletedCards: {},
+      lastSavedAt: "2026-07-27T00:00:00.000Z",
+    };
     const create = () => dispatch(managerToken, "/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, workspaceId, name: "New Project" }),
+      body: JSON.stringify({
+        id,
+        workspaceId,
+        name: "New Project",
+        boardId,
+        boardName: "Delivery Board",
+        board: initialBoard,
+        ownerUserId: secondManagerId,
+      }),
     });
     expect((await create()).status).toBe(201);
     expect((await create()).status).toBe(200);
     expect(
       await env.DB.prepare("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?")
-        .bind(id, managerId).first<string>("role"),
+        .bind(id, secondManagerId).first<string>("role"),
     ).toBe("manager");
     expect(
+      await env.DB.prepare("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?")
+        .bind(id, managerId).first<string>("role"),
+    ).toBeNull();
+    expect(
       await env.DB.prepare("SELECT COUNT(*) AS count FROM activity_logs WHERE project_id = ?")
+        .bind(id).first<number>("count"),
+    ).toBe(2);
+    expect(
+      await env.DB.prepare("SELECT COUNT(*) AS count FROM boards WHERE project_id = ? AND status = 'active'")
         .bind(id).first<number>("count"),
     ).toBe(1);
 
@@ -187,9 +226,54 @@ describe("Project and membership APIs", () => {
         id: "20000000-0000-4000-8000-000000000011",
         workspaceId,
         name: "new project",
+        boardId: "20000000-0000-4000-8000-000000000013",
+        boardName: "Other Board",
+        board: initialBoard,
+        ownerUserId: secondManagerId,
       }),
     });
     expect(conflict.status).toBe(409);
+  });
+
+  it("rolls back Project, Board, and owner when creation audit fails", async () => {
+    const id = "20000000-0000-4000-8000-000000000014";
+    await env.DB.prepare(
+      `CREATE TRIGGER task_create_reject_board_audit
+       BEFORE INSERT ON activity_logs
+       WHEN NEW.action = 'board.created'
+       BEGIN
+         SELECT RAISE(ABORT, 'audit unavailable');
+       END`,
+    ).run();
+    try {
+      const response = await dispatch(managerToken, "/projects", {
+        method: "POST",
+        body: JSON.stringify({
+          id,
+          workspaceId,
+          name: "Must Roll Back",
+          boardId: "20000000-0000-4000-8000-000000000015",
+          boardName: "Must Roll Back Board",
+          board: { version: 5, columns: [], cards: {} },
+          ownerUserId: secondManagerId,
+        }),
+      });
+      expect(response.status).toBe(500);
+      expect(
+        await env.DB.prepare("SELECT COUNT(*) AS count FROM projects WHERE id = ?")
+          .bind(id).first<number>("count"),
+      ).toBe(0);
+      expect(
+        await env.DB.prepare("SELECT COUNT(*) AS count FROM boards WHERE project_id = ?")
+          .bind(id).first<number>("count"),
+      ).toBe(0);
+      expect(
+        await env.DB.prepare("SELECT COUNT(*) AS count FROM project_members WHERE project_id = ?")
+          .bind(id).first<number>("count"),
+      ).toBe(0);
+    } finally {
+      await env.DB.prepare("DROP TRIGGER task_create_reject_board_audit").run();
+    }
   });
 
   it("enforces viewer/manager capabilities and rename/archive/restore conflicts", async () => {
@@ -250,33 +334,33 @@ describe("Project and membership APIs", () => {
     }
   });
 
-  it("prevents removing or downgrading the last manager and audits successful changes", async () => {
-    const putViewer = await dispatch(managerToken, `/projects/${projectA}/members/${managerId}`, {
+  it("prevents removing or downgrading the last owner and audits successful changes", async () => {
+    const putMember = await dispatch(managerToken, `/projects/${projectA}/members/${managerId}`, {
       method: "PUT",
-      body: JSON.stringify({ role: "viewer" }),
+      body: JSON.stringify({ role: "member" }),
     });
-    expect(putViewer.status).toBe(409);
+    expect(putMember.status).toBe(409);
     expect((await dispatch(managerToken, `/projects/${projectA}/members/${managerId}`, {
       method: "DELETE",
     })).status).toBe(409);
 
     expect((await dispatch(managerToken, `/projects/${projectA}/members/${secondManagerId}`, {
       method: "PUT",
-      body: JSON.stringify({ role: "manager" }),
+      body: JSON.stringify({ role: "owner" }),
     })).status).toBe(200);
     await env.DB.prepare(
       "UPDATE user_accounts SET status = 'disabled' WHERE id = ?",
     ).bind(secondManagerId).run();
     expect((await dispatch(managerToken, `/projects/${projectA}/members/${managerId}`, {
       method: "PUT",
-      body: JSON.stringify({ role: "contributor" }),
+      body: JSON.stringify({ role: "member" }),
     })).status).toBe(409);
     await env.DB.prepare(
       "UPDATE user_accounts SET status = 'active' WHERE id = ?",
     ).bind(secondManagerId).run();
     expect((await dispatch(managerToken, `/projects/${projectA}/members/${managerId}`, {
       method: "PUT",
-      body: JSON.stringify({ role: "contributor" }),
+      body: JSON.stringify({ role: "member" }),
     })).status).toBe(200);
     expect(
       await env.DB.prepare(
@@ -289,7 +373,7 @@ describe("Project and membership APIs", () => {
     await dispatch(managerToken, `/projects/${projectA}/archive`, { method: "POST" });
     const response = await dispatch(managerToken, `/projects/${projectA}/members/${secondManagerId}`, {
       method: "PUT",
-      body: JSON.stringify({ role: "viewer" }),
+      body: JSON.stringify({ role: "member" }),
     });
     expect(response.status).toBe(200);
   });

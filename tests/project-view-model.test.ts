@@ -3,29 +3,28 @@ import test from "node:test";
 import {
   activityActionLabel,
   filterActivityLogs,
-  isLastManagerChangeBlocked,
+  isLastOwnerChangeBlocked,
   managementErrorMessage,
   projectManagementActions,
 } from "../app/projects/view-model";
 import type { ActivityLogEntry } from "../app/projects/types";
 
-test("only an active Project manager sees create and management actions", () => {
-  assert.deepEqual(projectManagementActions("manager", "active"), {
+test("only an active Project owner sees management actions", () => {
+  assert.deepEqual(projectManagementActions("owner", "active"), {
     showManagement: true,
-    canCreateBoard: true,
     canEditProject: true,
   });
-  assert.equal(projectManagementActions("manager", "archived").canCreateBoard, false);
-  assert.equal(projectManagementActions("contributor", "active").showManagement, false);
+  assert.equal(projectManagementActions("owner", "archived").canEditProject, false);
+  assert.equal(projectManagementActions("member", "active").showManagement, false);
   assert.equal(projectManagementActions("viewer", "active").showManagement, false);
 });
 
-test("last manager guard blocks removal and downgrade until another manager exists", () => {
-  const one = [{ userId: "one", role: "manager" as const }];
-  assert.equal(isLastManagerChangeBlocked(one, "one", null), true);
-  assert.equal(isLastManagerChangeBlocked(one, "one", "viewer"), true);
-  assert.equal(isLastManagerChangeBlocked(one, "one", "manager"), false);
-  assert.equal(isLastManagerChangeBlocked([...one, { userId: "two", role: "manager" }], "one", null), false);
+test("last owner guard blocks removal and downgrade until another owner exists", () => {
+  const one = [{ userId: "one", role: "owner" as const }];
+  assert.equal(isLastOwnerChangeBlocked(one, "one", null), true);
+  assert.equal(isLastOwnerChangeBlocked(one, "one", "member"), true);
+  assert.equal(isLastOwnerChangeBlocked(one, "one", "owner"), false);
+  assert.equal(isLastOwnerChangeBlocked([...one, { userId: "two", role: "owner" }], "one", null), false);
 });
 
 test("activity view model labels known actions, filters boards, and explains offline mutations", () => {

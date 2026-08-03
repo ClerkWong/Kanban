@@ -127,7 +127,7 @@ export function deriveBoardAccess(
 }
 
 export function projectRoleLabel(role: ProjectRole): string {
-  if (role === "manager") return "管理者";
-  if (role === "contributor") return "協作者";
-  return "檢視者";
+  if (role === "owner") return "專案 Owner";
+  if (role === "member") return "專案 Member";
+  return "唯讀成員（舊版）";
 }

@@ -1,7 +1,13 @@
 import type { AuthenticatedUser } from "./auth";
 import { prepareAuditEvent } from "./audit";
 import { AuthorizationError, authorizeProject } from "./authorization";
-import { DEFAULT_WORKSPACE_ID, type ProjectRole, type ProjectRow } from "./db-types";
+import {
+  DEFAULT_WORKSPACE_ID,
+  toPublicProjectRole,
+  type BoardRow,
+  type ProjectRole,
+  type ProjectRow,
+} from "./db-types";
 import { json } from "./http";
 import {
   RequestError,
@@ -10,7 +16,7 @@ import {
   parseUuid,
   readJsonObject,
 } from "./validation";
-import { sha256Hex } from "./logic";
+import { parseBoardPutPayload, sha256Hex } from "./logic";
 
 export type ApiContext = {
   request: Request;
@@ -22,6 +28,8 @@ export type ApiContext = {
 type ProjectListRow = ProjectRow & {
   my_role: ProjectRole;
   active_board_count: number;
+  board_id: string | null;
+  board_name: string | null;
   last_activity_at: string | null;
 };
 
@@ -31,7 +39,22 @@ function projectJson(row: ProjectRow, myRole?: ProjectRole) {
     workspaceId: row.workspace_id,
     name: row.name,
     status: row.status,
-    ...(myRole ? { myRole } : {}),
+    ...(myRole ? { myRole: toPublicProjectRole(myRole) } : {}),
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at,
+    archivedBy: row.archived_by,
+  };
+}
+
+function boardMetadata(row: BoardRow) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    name: row.name,
+    status: row.status,
+    revision: row.revision,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -76,6 +99,14 @@ async function listProjects(context: ApiContext): Promise<Response> {
     `SELECT projects.*, project_members.role AS my_role,
             (SELECT COUNT(*) FROM boards
              WHERE boards.project_id = projects.id AND boards.status = 'active') AS active_board_count,
+            (SELECT boards.id FROM boards
+             WHERE boards.project_id = projects.id
+             ORDER BY CASE boards.status WHEN 'active' THEN 0 ELSE 1 END,
+                      boards.updated_at DESC, boards.id DESC LIMIT 1) AS board_id,
+            (SELECT boards.name FROM boards
+             WHERE boards.project_id = projects.id
+             ORDER BY CASE boards.status WHEN 'active' THEN 0 ELSE 1 END,
+                      boards.updated_at DESC, boards.id DESC LIMIT 1) AS board_name,
             (SELECT MAX(activity_logs.occurred_at) FROM activity_logs
              WHERE activity_logs.project_id = projects.id) AS last_activity_at
      FROM project_members
@@ -88,8 +119,10 @@ async function listProjects(context: ApiContext): Promise<Response> {
       id: row.id,
       name: row.name,
       status: row.status,
-      myRole: row.my_role,
+      myRole: toPublicProjectRole(row.my_role),
       activeBoardCount: Number(row.active_board_count),
+      boardId: row.board_id,
+      boardName: row.board_name,
       lastActivityAt: row.last_activity_at,
     })),
     requestId: context.requestId,
@@ -105,7 +138,15 @@ async function listAdminProjects(context: ApiContext): Promise<Response> {
               FROM project_members
               WHERE project_members.project_id = projects.id
                 AND project_members.role = 'manager'
-            ) AS manager_ids
+            ) AS owner_ids,
+            (SELECT boards.id FROM boards
+             WHERE boards.project_id = projects.id
+             ORDER BY CASE boards.status WHEN 'active' THEN 0 ELSE 1 END,
+                      boards.updated_at DESC, boards.id DESC LIMIT 1) AS board_id,
+            (SELECT boards.name FROM boards
+             WHERE boards.project_id = projects.id
+             ORDER BY CASE boards.status WHEN 'active' THEN 0 ELSE 1 END,
+                      boards.updated_at DESC, boards.id DESC LIMIT 1) AS board_name
      FROM projects
      INNER JOIN workspace_members
        ON workspace_members.workspace_id = projects.workspace_id
@@ -119,7 +160,9 @@ async function listAdminProjects(context: ApiContext): Promise<Response> {
     status: string;
     created_at: string;
     updated_at: string;
-    manager_ids: string | null;
+    owner_ids: string | null;
+    board_id: string | null;
+    board_name: string | null;
   }>();
   return json(200, {
     projects: result.results.map((row) => ({
@@ -127,7 +170,9 @@ async function listAdminProjects(context: ApiContext): Promise<Response> {
       workspaceId: row.workspace_id,
       name: row.name,
       status: row.status,
-      managerIds: row.manager_ids ? row.manager_ids.split(",") : [],
+      ownerIds: row.owner_ids ? row.owner_ids.split(",") : [],
+      boardId: row.board_id,
+      boardName: row.board_name,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     })),
@@ -135,30 +180,109 @@ async function listAdminProjects(context: ApiContext): Promise<Response> {
   }, context.requestId);
 }
 
+async function updateAdminProjectStatus(
+  context: ApiContext,
+  projectId: string,
+  action: "archive" | "restore",
+): Promise<Response> {
+  const row = await getProjectRow(context.env.DB, projectId);
+  const workspaceRole = await context.env.DB.prepare(
+    "SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?",
+  ).bind(row.workspace_id, context.user.id).first<string>("role");
+  if (workspaceRole !== "owner" && workspaceRole !== "admin") {
+    throw new AuthorizationError(404, "not_found");
+  }
+  const target = action === "archive" ? "archived" : "active";
+  if (row.status === target) {
+    return json(200, { ok: true, requestId: context.requestId }, context.requestId);
+  }
+  const now = new Date().toISOString();
+  const next: ProjectRow = {
+    ...row,
+    status: target,
+    updated_at: now,
+    archived_at: target === "archived" ? now : null,
+    archived_by: target === "archived" ? context.user.id : null,
+  };
+  try {
+    await context.env.DB.batch([
+      context.env.DB.prepare(
+        "UPDATE projects SET status = ?, updated_at = ?, archived_at = ?, archived_by = ? WHERE id = ?",
+      ).bind(target, now, next.archived_at, next.archived_by, projectId),
+      prepareAuditEvent(context.env.DB, audit(
+        next,
+        context.user.id,
+        action === "archive" ? "project.archived" : "project.restored",
+        { via: "platform_admin" },
+      ), true),
+    ]);
+  } catch (error) {
+    if (isConstraintConflict(error)) throw new RequestError(409, "name_conflict");
+    throw error;
+  }
+  return json(200, { ok: true, requestId: context.requestId }, context.requestId);
+}
+
 async function createProject(context: ApiContext): Promise<Response> {
-  const body = await readJsonObject(context.request, ["id", "workspaceId", "name"]);
+  const body = await readJsonObject(
+    context.request,
+    ["id", "workspaceId", "name", "boardId", "boardName", "board", "ownerUserId"],
+    1_000_000,
+    "board_too_large",
+  );
   const id = parseUuid(body.id, "project_id");
   const workspaceId = parseUuid(body.workspaceId ?? DEFAULT_WORKSPACE_ID, "workspace_id");
   const { name, normalizedName } = normalizeName(body.name);
+  const boardId = parseUuid(body.boardId, "board_id");
+  const boardName = normalizeName(body.boardName);
+  const ownerUserId = parseUuid(body.ownerUserId, "owner_user_id");
+  if (!parseBoardPutPayload({ baseRevision: 0, board: body.board })) {
+    throw new RequestError(400, "invalid_payload");
+  }
+  const initialBoard = body.board as Record<string, unknown>;
+  if (
+    !initialBoard.cards ||
+    typeof initialBoard.cards !== "object" ||
+    Array.isArray(initialBoard.cards) ||
+    Object.keys(initialBoard.cards as Record<string, unknown>).length > 0
+  ) {
+    throw new RequestError(400, "initial_board_must_be_empty");
+  }
+  const boardData = JSON.stringify(body.board);
   const workspaceRole = await context.env.DB.prepare(
     "SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?",
   ).bind(workspaceId, context.user.id).first<string>("role");
   if (workspaceRole !== "owner" && workspaceRole !== "admin") {
     throw new AuthorizationError(403, "forbidden");
   }
+  const ownerExists = await context.env.DB.prepare(
+    "SELECT id FROM user_accounts WHERE id = ? AND status = 'active'",
+  ).bind(ownerUserId).first<string>("id");
+  if (!ownerExists) throw new RequestError(404, "user_not_found");
   const existing = await context.env.DB.prepare("SELECT * FROM projects WHERE id = ?")
     .bind(id).first<ProjectRow>();
   if (existing) {
-    const role = await context.env.DB.prepare(
+    const [role, existingBoard, ownerRole] = await Promise.all([
+      context.env.DB.prepare(
       "SELECT role FROM project_members WHERE project_id = ? AND user_id = ?",
-    ).bind(id, context.user.id).first<ProjectRole>("role");
+      ).bind(id, context.user.id).first<ProjectRole>("role"),
+      context.env.DB.prepare("SELECT * FROM boards WHERE id = ? AND project_id = ?")
+        .bind(boardId, id).first<BoardRow>(),
+      context.env.DB.prepare(
+        "SELECT role FROM project_members WHERE project_id = ? AND user_id = ?",
+      ).bind(id, ownerUserId).first<ProjectRole>("role"),
+    ]);
     if (
       existing.workspace_id === workspaceId &&
       existing.name === name &&
-      role
+      existingBoard?.name === boardName.name &&
+      existingBoard.data === boardData &&
+      ownerRole === "manager"
     ) {
       return json(200, {
-        project: projectJson(existing, role),
+        project: projectJson(existing),
+        board: boardMetadata(existingBoard),
+        myRole: role ? toPublicProjectRole(role) : null,
         requestId: context.requestId,
       }, context.requestId);
     }
@@ -169,6 +293,39 @@ async function createProject(context: ApiContext): Promise<Response> {
     id, workspace_id: workspaceId, name, normalized_name: normalizedName,
     status: "active", created_by: context.user.id, created_at: now, updated_at: now,
     archived_at: null, archived_by: null,
+  };
+  const boardRow: BoardRow = {
+    id: boardId,
+    project_id: id,
+    name: boardName.name,
+    normalized_name: boardName.normalizedName,
+    status: "active",
+    revision: 0,
+    data: boardData,
+    created_by: context.user.id,
+    created_at: now,
+    updated_at: now,
+    archived_at: null,
+    archived_by: null,
+  };
+  const projectCreated = audit(row, context.user.id, "project.created", {
+    name,
+    boardId,
+    boardName: boardRow.name,
+    ownerUserId,
+  });
+  const boardCreated = {
+    id: crypto.randomUUID(),
+    workspaceId,
+    projectId: id,
+    boardId,
+    actorUserId: context.user.id,
+    action: "board.created",
+    entityType: "board" as const,
+    entityId: boardId,
+    revision: 0,
+    metadata: { name: boardRow.name },
+    occurredAt: now,
   };
   try {
     await context.env.DB.batch([
@@ -182,14 +339,35 @@ async function createProject(context: ApiContext): Promise<Response> {
         `INSERT INTO project_members (
           project_id, user_id, role, created_at, updated_at
         ) VALUES (?, ?, 'manager', ?, ?)`,
-      ).bind(id, context.user.id, now, now),
-      prepareAuditEvent(context.env.DB, audit(row, context.user.id, "project.created", { name })),
+      ).bind(id, ownerUserId, now, now),
+      context.env.DB.prepare(
+        `INSERT INTO boards (
+          id, project_id, name, normalized_name, status, revision, data,
+          created_by, created_at, updated_at, archived_at, archived_by
+        ) VALUES (?, ?, ?, ?, 'active', 0, ?, ?, ?, ?, NULL, NULL)`,
+      ).bind(
+        boardId,
+        id,
+        boardRow.name,
+        boardRow.normalized_name,
+        boardData,
+        context.user.id,
+        now,
+        now,
+      ),
+      prepareAuditEvent(context.env.DB, projectCreated),
+      prepareAuditEvent(context.env.DB, boardCreated),
     ]);
   } catch (error) {
     if (isConstraintConflict(error)) throw new RequestError(409, "name_conflict");
     throw error;
   }
-  return json(201, { project: projectJson(row, "manager"), requestId: context.requestId }, context.requestId);
+  return json(201, {
+    project: projectJson(row),
+    board: boardMetadata(boardRow),
+    myRole: ownerUserId === context.user.id ? "owner" : null,
+    requestId: context.requestId,
+  }, context.requestId);
 }
 
 async function getProject(context: ApiContext, projectId: string): Promise<Response> {
@@ -257,7 +435,11 @@ async function updateProject(
 
 export async function handleProjectRequest(context: ApiContext): Promise<Response | null> {
   const url = new URL(context.request.url);
-  if (!url.pathname.startsWith("/me") && !url.pathname.startsWith("/projects") && url.pathname !== "/admin/projects") {
+  if (
+    !url.pathname.startsWith("/me") &&
+    !url.pathname.startsWith("/projects") &&
+    !url.pathname.startsWith("/admin/projects")
+  ) {
     return null;
   }
   await requireMigrationComplete(context.env.DB);
@@ -321,6 +503,16 @@ export async function handleProjectRequest(context: ApiContext): Promise<Respons
   }
   if (url.pathname === "/admin/projects" && context.request.method === "GET") {
     return listAdminProjects(context);
+  }
+  const adminProjectMatch = url.pathname.match(
+    /^\/admin\/projects\/([0-9a-f-]+)\/(archive|restore)$/i,
+  );
+  if (adminProjectMatch && context.request.method === "POST") {
+    return updateAdminProjectStatus(
+      context,
+      parseUuid(adminProjectMatch[1], "project_id"),
+      adminProjectMatch[2] as "archive" | "restore",
+    );
   }
   const match = url.pathname.match(/^\/projects\/([0-9a-f-]+)(?:\/(archive|restore))?$/i);
   if (!match) return null;

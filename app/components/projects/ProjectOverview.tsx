@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import {
-  archiveBoard,
   getProjectSummary,
   renameBoard,
   type ProjectDetail,
@@ -20,7 +19,6 @@ import {
 import type { SyncConfig } from "../../sync/config";
 import { ActivityLogPanel } from "./ActivityLogPanel";
 import { ArchivedBoardsPanel } from "./ArchivedBoardsPanel";
-import { CreateBoardModal } from "./CreateBoardModal";
 import { ProjectMembersPanel } from "./ProjectMembersPanel";
 import { ProjectSettingsModal } from "./ProjectSettingsModal";
 
@@ -42,7 +40,6 @@ export function ProjectOverview({
   const actions = projectManagementActions(detail.myRole, detail.project.status);
   const archivedBoards = allBoards.filter((board) => board.status === "archived");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [archivedReport, setArchivedReport] = useState<ProjectReport | null>(null);
   const [error, setError] = useState("");
@@ -63,7 +60,7 @@ export function ProjectOverview({
     }
   }
 
-  async function manageBoard(board: BoardMeta, action: "rename" | "archive") {
+  async function renameProjectBoard(board: BoardMeta) {
     if (!navigator.onLine) {
       setError(managementErrorMessage(null, false));
       return;
@@ -74,13 +71,9 @@ export function ProjectOverview({
       boardId: board.id,
     };
     try {
-      if (action === "archive") {
-        await archiveBoard(config, context);
-      } else {
-        const nextName = window.prompt("新的看板名稱", board.name)?.trim();
-        if (!nextName || nextName === board.name) return;
-        await renameBoard(config, context, nextName);
-      }
+      const nextName = window.prompt("新的看板名稱", board.name)?.trim();
+      if (!nextName || nextName === board.name) return;
+      await renameBoard(config, context, nextName);
       setError("");
       onRefresh();
     } catch (cause) {
@@ -99,7 +92,7 @@ export function ProjectOverview({
         <div>
           <p className="eyebrow">{projectRoleLabel(detail.myRole)}</p>
           <h1>{detail.project.name}</h1>
-          <p className="storageNote">選擇一個看板進行工作。專案與看板名稱彼此獨立。</p>
+          <p className="storageNote">每個專案對應一個使用中看板；專案與看板名稱彼此獨立。</p>
         </div>
         <div className="projectHeroActions">
           <span className={`statusBadge ${detail.project.status}`}>
@@ -134,11 +127,10 @@ export function ProjectOverview({
           <div><p className="eyebrow">Boards</p><h2>使用中看板</h2></div>
           <div className="sectionActions">
             <span>{activeBoards.length} 個</span>
-            {actions.canCreateBoard && <button className="primaryButton" type="button" onClick={() => setCreateOpen(true)}>＋ 建立看板</button>}
           </div>
         </div>
         {activeBoards.length === 0 ? (
-          <div className="projectEmpty"><h3>目前沒有使用中看板</h3><p>{actions.canCreateBoard ? "建立第一個看板開始工作。" : "請聯絡專案管理者。"}</p></div>
+          <div className="projectEmpty"><h3>目前沒有使用中看板</h3><p>這是舊資料狀態，請聯絡平台管理者修復。</p></div>
         ) : (
           <div className="boardDirectoryGrid">
             {activeBoards.map((board) => (
@@ -147,10 +139,9 @@ export function ProjectOverview({
                   <h3>{board.name}</h3><p>Revision {board.revision}</p>
                 </a>
                 <span className="statusBadge active">使用中</span>
-                {actions.canCreateBoard && (
+                {actions.showManagement && (
                   <div className="boardCardActions">
-                    <button className="secondaryButton" type="button" onClick={() => void manageBoard(board, "rename")}>改名</button>
-                    <button className="dangerGhost" type="button" onClick={() => void manageBoard(board, "archive")}>封存</button>
+                    <button className="secondaryButton" type="button" onClick={() => void renameProjectBoard(board)}>改名</button>
                   </div>
                 )}
               </article>
@@ -159,12 +150,11 @@ export function ProjectOverview({
         )}
       </section>
 
-      <ArchivedBoardsPanel config={config} detail={detail} boards={archivedBoards} canManage={actions.canCreateBoard} onChanged={onRefresh} />
+      <ArchivedBoardsPanel config={config} detail={detail} boards={archivedBoards} canManage={false} onChanged={onRefresh} />
       {actions.showManagement && <ProjectMembersPanel config={config} projectId={detail.project.id} />}
       <ActivityLogPanel config={config} project={detail.project} boards={allBoards} />
 
       {settingsOpen && <ProjectSettingsModal config={config} detail={detail} onClose={() => setSettingsOpen(false)} onChanged={onRefresh} />}
-      {createOpen && <CreateBoardModal config={config} detail={detail} onClose={() => setCreateOpen(false)} onCreated={onRefresh} />}
     </main>
   );
 }

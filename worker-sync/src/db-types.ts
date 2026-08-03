@@ -5,10 +5,23 @@ export const LEGACY_BOARD_ID = "00000000-0000-4000-8000-000000000004";
 
 export type WorkspaceRole = "owner" | "admin" | "member";
 export type ProjectRole = "manager" | "contributor" | "viewer";
+export type PublicProjectRole = "owner" | "member" | "viewer";
 export type ResourceStatus = "active" | "archived";
 export type UserStatus = "active" | "disabled";
 export type TokenKind = "personal" | "legacy";
 export type MigrationStatus = "pending" | "locked" | "complete";
+
+export function toPublicProjectRole(role: ProjectRole): PublicProjectRole {
+  if (role === "manager") return "owner";
+  if (role === "contributor") return "member";
+  return "viewer";
+}
+
+export function toStoredProjectRole(role: PublicProjectRole): ProjectRole {
+  if (role === "owner") return "manager";
+  if (role === "member") return "contributor";
+  return "viewer";
+}
 
 export type WorkspaceRow = {
   id: string;

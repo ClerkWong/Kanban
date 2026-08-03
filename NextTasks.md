@@ -1,6 +1,6 @@
 # Kanban 後續任務與發布 Runbook
 
-- 最後更新：2026-07-31
+- 最後更新：2026-08-03
 - 目前分支：`codex/platform-admin-user-entry`
 - `main` 已整合多專案 v1：`d54e0ec`
 
@@ -11,6 +11,7 @@
 
 | 項目 | 狀態 | 說明 |
 | --- | --- | --- |
+| 單一專案看板與 admin/owner/member | 實作驗證中 | 規格已核准；Project 建立會同時建立唯一 Board 與初始 owner，member 可編輯任務，legacy viewer 僅唯讀 |
 | 多專案 v1 合併 main | 已完成並推送 | `feature/multi-project-v1` 已於 `d54e0ec` 合併至 `main` |
 | 平台管理者／一般使用者入口 | 第一階段實作中 | 一般使用者預設進「我的專案」；Workspace owner/admin 才可見平台管理入口、metadata registry 與建立專案功能 |
 | 月報資料模型 | 已完成 | 以 `completedAt` 計算最近六個日曆月；schema v4 可遷移 v1/v2/v3 |

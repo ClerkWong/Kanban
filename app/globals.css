@@ -1305,6 +1305,28 @@ textarea {
   transition: transform 140ms ease, border-color 140ms ease;
 }
 
+.projectCardMainLink {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  color: inherit;
+  text-decoration: none;
+}
+
+.projectManageLink {
+  align-self: end;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.projectManageLink:hover {
+  color: var(--teal-strong);
+}
+
 .projectCard:hover,
 .boardDirectoryCard:hover {
   transform: translateY(-2px);

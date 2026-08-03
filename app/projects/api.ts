@@ -46,6 +46,12 @@ export type ProjectDetail = {
   myRole: ProjectRole;
 };
 
+export type CreatedProject = {
+  project: Project;
+  board: BoardMeta;
+  myRole: ProjectRole | null;
+};
+
 export type ProjectMember = {
   userId: string;
   displayName: string;
@@ -236,8 +242,10 @@ function parseAdminProject(value: unknown): AdminProjectSummary | null {
     !isUuid(raw.workspaceId) ||
     !nonEmptyString(raw.name) ||
     !isResourceStatus(raw.status) ||
-    !Array.isArray(raw.managerIds) ||
-    !raw.managerIds.every(isUuid) ||
+    !Array.isArray(raw.ownerIds) ||
+    !raw.ownerIds.every(isUuid) ||
+    (raw.boardId !== null && !isUuid(raw.boardId)) ||
+    (raw.boardName !== null && !nonEmptyString(raw.boardName)) ||
     !nonEmptyString(raw.createdAt) ||
     !nonEmptyString(raw.updatedAt)
   ) {
@@ -248,10 +256,29 @@ function parseAdminProject(value: unknown): AdminProjectSummary | null {
     workspaceId: raw.workspaceId,
     name: raw.name,
     status: raw.status,
-    managerIds: raw.managerIds,
+    ownerIds: raw.ownerIds,
+    boardId: raw.boardId,
+    boardName: raw.boardName,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
+}
+
+function parseCreatedProject(value: unknown): CreatedProject {
+  const raw = asRecord(value);
+  const projectRaw = asRecord(raw?.project);
+  const project = parseProject(projectRaw);
+  const board = parseBoardMeta(raw?.board);
+  const myRole = raw?.myRole;
+  if (
+    !project ||
+    !board ||
+    board.projectId !== project.id ||
+    (myRole !== null && !isProjectRole(myRole))
+  ) {
+    throw invalidResponse("建立專案");
+  }
+  return { project, board, myRole };
 }
 
 function parseAdminProjectListResponse(value: unknown): AdminProjectSummary[] {
@@ -475,6 +502,26 @@ export async function listAdminProjects(
   );
 }
 
+async function changeAdminProjectStatus(
+  config: SyncConfig,
+  projectId: string,
+  action: "archive" | "restore",
+): Promise<void> {
+  assertResourceId(projectId, "project_id");
+  await requestJson(
+    config,
+    apiPath("admin", "projects", projectId, action),
+    action === "archive" ? "由平台封存專案" : "由平台還原專案",
+    { method: "POST" },
+  );
+}
+
+export const archiveAdminProject = (config: SyncConfig, projectId: string) =>
+  changeAdminProjectStatus(config, projectId, "archive");
+
+export const restoreAdminProject = (config: SyncConfig, projectId: string) =>
+  changeAdminProjectStatus(config, projectId, "restore");
+
 export async function getProject(
   config: SyncConfig,
   projectId: string,
@@ -488,16 +535,25 @@ export async function getProject(
 
 export async function createProject(
   config: SyncConfig,
-  input: { id: string; workspaceId: string; name: string },
-): Promise<ProjectDetail> {
+  input: {
+    id: string;
+    workspaceId: string;
+    name: string;
+    boardId: string;
+    boardName: string;
+    board: BoardState;
+    ownerUserId: string;
+  },
+): Promise<CreatedProject> {
   assertResourceId(input.id, "project_id");
   assertResourceId(input.workspaceId, "workspace_id");
-  return parseProjectDetail(
-    await requestJson(config, "/projects", "建立專案", {
+  assertResourceId(input.boardId, "board_id");
+  assertResourceId(input.ownerUserId, "owner_user_id");
+  return parseCreatedProject(
+    await requestJson(config, "/projects", "建立專案與看板", {
       method: "POST",
       body: JSON.stringify(input),
     }),
-    "建立專案",
   );
 }
 

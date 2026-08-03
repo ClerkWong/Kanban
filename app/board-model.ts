@@ -218,6 +218,18 @@ export function createDemoBoard(now = new Date()): BoardState {
   };
 }
 
+/** Standard empty board used when a Project is created. */
+export function createEmptyBoard(now = new Date()): BoardState {
+  const template = createDemoBoard(now);
+  return {
+    ...template,
+    cards: {},
+    deletedCards: {},
+    columns: template.columns.map((column) => ({ ...column, cardIds: [] })),
+    lastSavedAt: now.toISOString(),
+  };
+}
+
 export function makeId(prefix: string): string {
   const random =
     typeof crypto !== "undefined" && "randomUUID" in crypto

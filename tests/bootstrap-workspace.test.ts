@@ -28,6 +28,10 @@ const migration2 = readFileSync(
   new URL("../worker-sync/migrations/0002_multi_project.sql", import.meta.url),
   "utf8",
 );
+const migration3 = readFileSync(
+  new URL("../worker-sync/migrations/0003_single_board_projects.sql", import.meta.url),
+  "utf8",
+);
 
 function createLegacyDatabase(): DatabaseSync {
   const database = new DatabaseSync(":memory:");
@@ -355,6 +359,72 @@ test("active normalized Project and Board names are unique only within their par
       timestamp,
       timestamp,
       USER_ID,
+    ),
+  );
+  database.close();
+});
+
+test("0003 preserves one active Board and archives extra Boards as history", () => {
+  const database = createLegacyDatabase();
+  database.exec(migration2);
+  database.exec(bootstrapSql());
+  const timestamp = "2026-07-26T00:00:00.000Z";
+  database.prepare(
+    `INSERT INTO projects (
+      id, workspace_id, name, normalized_name, status, created_by,
+      created_at, updated_at, archived_at, archived_by
+    ) VALUES (?, ?, 'Single Board Project', 'single board project', 'active', ?, ?, ?, NULL, NULL)`,
+  ).run(LEGACY_PROJECT_ID, DEFAULT_WORKSPACE_ID, USER_ID, timestamp, timestamp);
+  const insertBoard = database.prepare(
+    `INSERT INTO boards (
+      id, project_id, name, normalized_name, status, revision, data,
+      created_by, created_at, updated_at, archived_at, archived_by
+    ) VALUES (?, ?, ?, ?, 'active', 0, '{}', ?, ?, ?, NULL, NULL)`,
+  );
+  insertBoard.run(
+    LEGACY_BOARD_ID,
+    LEGACY_PROJECT_ID,
+    "Older",
+    "older",
+    USER_ID,
+    timestamp,
+    "2026-07-26T01:00:00.000Z",
+  );
+  const preferredId = "55555555-6666-4777-8888-999999999999";
+  insertBoard.run(
+    preferredId,
+    LEGACY_PROJECT_ID,
+    "Preferred",
+    "preferred",
+    USER_ID,
+    timestamp,
+    "2026-07-26T02:00:00.000Z",
+  );
+
+  database.exec(migration3);
+
+  assert.deepEqual(
+    database.prepare("SELECT id, status FROM boards ORDER BY id").all().map((row) => ({ ...row })),
+    [
+      { id: LEGACY_BOARD_ID, status: "archived" },
+      { id: preferredId, status: "active" },
+    ],
+  );
+  assert.equal(
+    database.prepare(
+      "SELECT COUNT(*) AS count FROM activity_logs WHERE action = 'board.archived_for_single_board'",
+    ).get()!.count,
+    1,
+  );
+  assert.throws(() =>
+    insertBoard.run(
+      "66666666-7777-4888-8999-000000000000",
+      LEGACY_PROJECT_ID,
+      "Another",
+      "another",
+      USER_ID,
+      timestamp,
+      "2026-07-26T03:00:00.000Z",
     ),
   );
   database.close();

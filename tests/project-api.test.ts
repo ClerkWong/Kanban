@@ -5,6 +5,8 @@ import { createDemoBoard } from "../app/board-model";
 import {
   ApiClientError,
   archiveBoard,
+  archiveAdminProject,
+  createProject,
   getBoard,
   getProject,
   getProjectSummary,
@@ -43,7 +45,7 @@ function project(overrides: Record<string, unknown> = {}) {
     workspaceId: context.workspaceId,
     name: "Alpha",
     status: "active",
-    myRole: "manager",
+    myRole: "owner",
     createdBy: userId,
     createdAt: "2026-07-27T00:00:00.000Z",
     updatedAt: "2026-07-27T00:00:00.000Z",
@@ -128,8 +130,10 @@ test("Project, member, summary, and Board Log clients strictly parse server resp
           id: context.projectId,
           name: "Alpha",
           status: "active",
-          myRole: "manager",
+          myRole: "owner",
           activeBoardCount: 1,
+          boardId: context.boardId,
+          boardName: "Roadmap",
           lastActivityAt: null,
         }],
       });
@@ -139,7 +143,7 @@ test("Project, member, summary, and Board Log clients strictly parse server resp
         members: [{
           userId,
           displayName: "Manager",
-          role: "manager",
+          role: "owner",
           createdAt: "2026-07-27T00:00:00.000Z",
           updatedAt: "2026-07-27T00:00:00.000Z",
         }],
@@ -187,7 +191,7 @@ test("Project, member, summary, and Board Log clients strictly parse server resp
   };
   try {
     assert.equal((await listProjects(config))[0].id, context.projectId);
-    assert.equal((await getProject(config, context.projectId)).myRole, "manager");
+    assert.equal((await getProject(config, context.projectId)).myRole, "owner");
     assert.equal((await listProjectMembers(config, context.projectId))[0].displayName, "Manager");
     assert.equal((await getProjectSummary(config, context.projectId, true)).stats.total, 2);
     const logs = await listBoardLogs(config, context, {
@@ -204,7 +208,7 @@ test("Project, member, summary, and Board Log clients strictly parse server resp
   }
 });
 
-test("platform registry client accepts metadata only and rejects malformed manager ids", async () => {
+test("platform registry client accepts metadata only and rejects malformed owner ids", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => json({
     projects: [{
@@ -212,7 +216,9 @@ test("platform registry client accepts metadata only and rejects malformed manag
       workspaceId: context.workspaceId,
       name: "Alpha",
       status: "active",
-      managerIds: [userId],
+      ownerIds: [userId],
+      boardId: context.boardId,
+      boardName: "Roadmap",
       createdAt: "2026-07-27T00:00:00.000Z",
       updatedAt: "2026-07-27T00:00:00.000Z",
     }],
@@ -220,16 +226,64 @@ test("platform registry client accepts metadata only and rejects malformed manag
   try {
     const projects = await listAdminProjects(config);
     assert.equal(projects[0].workspaceId, context.workspaceId);
-    assert.deepEqual(projects[0].managerIds, [userId]);
+    assert.deepEqual(projects[0].ownerIds, [userId]);
 
     globalThis.fetch = async () => json({
-      projects: [{ ...projects[0], managerIds: ["invalid"] }],
+      projects: [{ ...projects[0], ownerIds: ["invalid"] }],
     });
     await assert.rejects(
       () => listAdminProjects(config),
       (error: unknown) =>
         error instanceof ApiClientError && error.kind === "invalid_response",
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Project creation sends the Board and accepts an admin creator without membership", async () => {
+  const originalFetch = globalThis.fetch;
+  const requestBodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return json({
+      project: project({ myRole: undefined }),
+      board: boardMeta({ revision: 0 }),
+      myRole: null,
+    }, 201);
+  };
+  try {
+    const created = await createProject(config, {
+      id: context.projectId,
+      workspaceId: context.workspaceId,
+      name: "Alpha",
+      boardId: context.boardId,
+      boardName: "Roadmap",
+      board,
+      ownerUserId: userId,
+    });
+    assert.equal(created.myRole, null);
+    assert.equal(created.board.id, context.boardId);
+    assert.equal(requestBodies[0]?.ownerUserId, userId);
+    assert.deepEqual(requestBodies[0]?.board, board);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("platform archive uses the metadata-only admin route", async () => {
+  const originalFetch = globalThis.fetch;
+  let request: { path: string; method: string } | null = null;
+  globalThis.fetch = async (input, init) => {
+    request = { path: new URL(String(input)).pathname, method: init?.method ?? "GET" };
+    return json({ ok: true });
+  };
+  try {
+    await archiveAdminProject(config, context.projectId);
+    assert.deepEqual(request, {
+      path: `/admin/projects/${context.projectId}/archive`,
+      method: "POST",
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -5,6 +5,10 @@
 - 取代範圍：既有「全團隊共用單一看板」的資料、認證與同步模型
 - 不取代：既有卡片、附件、月報、離線合併、Web/PWA 與 Capacitor 平台能力
 
+> 2026-08-03 補充：角色名稱與「每個 Project 一個使用中 Board」已由
+> [`2026-08-03-project-admin-owner-member-design.md`](./2026-08-03-project-admin-owner-member-design.md)
+> 取代。本文件其餘隔離、封存與同步設計繼續有效。
+
 ## 1. 背景
 
 目前系統只有一份共用 `BoardState`：

@@ -301,7 +301,7 @@ export function DetailModal({
 }
 
 function projectRoleText(role: ProjectMember["role"]): string {
-  if (role === "manager") return "管理者";
-  if (role === "contributor") return "協作者";
-  return "檢視者";
+  if (role === "owner") return "Project Owner";
+  if (role === "member") return "Project Member";
+  return "唯讀成員（舊版）";
 }

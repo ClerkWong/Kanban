@@ -65,10 +65,10 @@ beforeEach(async () => {
   for (const [id, role] of [[managerId, "manager"], [contributorId, "contributor"], [viewerId, "viewer"]]) {
     await env.DB.prepare("INSERT INTO project_members VALUES (?,?,?,?,?)").bind(projectId, id, role, now, now).run();
   }
-  for (const [id, name, marker] of [[boardA, "A", "a"], [boardB, "B", "b"]]) {
-    await env.DB.prepare("INSERT INTO boards VALUES (?,?,?,?,'active',1,?,?,?, ?,NULL,NULL)")
-      .bind(id, projectId, name, name.toLowerCase(), JSON.stringify(board(marker)), managerId, now, now).run();
-  }
+  await env.DB.prepare("INSERT INTO boards VALUES (?,?,?,?,'active',1,?,?,?, ?,NULL,NULL)")
+    .bind(boardA, projectId, "A", "a", JSON.stringify(board("a")), managerId, now, now).run();
+  await env.DB.prepare("INSERT INTO boards VALUES (?,?,?,?,'archived',1,?,?,?,?,?,?)")
+    .bind(boardB, projectId, "B", "b", JSON.stringify(board("b")), managerId, now, now, now, managerId).run();
   await env.DB.prepare("INSERT INTO migration_state (id,status,default_workspace_id,legacy_project_id,legacy_board_id,completed_at,updated_at) VALUES (1,'complete',?,?,?,?,?)")
     .bind(workspaceId, projectId, boardA, now, now).run();
 });
@@ -88,7 +88,10 @@ describe("multi-project cutover e2e", () => {
     expect(await (await dispatch(tokens.manager, "/board")).json()).toMatchObject({
       revision: 2, board: { marker: "updated-a" },
     });
-    expect((await dispatch(tokens.manager, `/projects/${projectId}/boards/${boardA}/archive`, { method: "POST" })).status).toBe(200);
+    const archive = await dispatch(tokens.manager, `/projects/${projectId}/boards/${boardA}/archive`, { method: "POST" });
+    expect(archive.status).toBe(409);
+    expect(await archive.json()).toMatchObject({ error: "single_board_required" });
+    expect((await dispatch(tokens.manager, `/projects/${projectId}/archive`, { method: "POST" })).status).toBe(200);
     const blocked = await dispatch(tokens.contributor, `/projects/${projectId}/boards/${boardA}/content`, {
       method: "PUT", body: JSON.stringify({ baseRevision: 2, board: board("offline-pending") }),
     });

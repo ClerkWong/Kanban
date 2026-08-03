@@ -166,8 +166,10 @@ test("token switching clears runtime session and remote index without touching l
           id: projectId,
           name: "Alpha",
           status: "active",
-          myRole: "manager",
+          myRole: "owner",
           activeBoardCount: 1,
+          boardId,
+          boardName: "Roadmap",
           lastActivityAt: null,
         }],
       }));

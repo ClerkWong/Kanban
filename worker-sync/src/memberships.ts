@@ -1,6 +1,11 @@
 import { prepareAuditEvent } from "./audit";
 import { authorizeProject } from "./authorization";
-import type { ProjectRole, ProjectRow } from "./db-types";
+import {
+  toPublicProjectRole,
+  toStoredProjectRole,
+  type ProjectRole,
+  type ProjectRow,
+} from "./db-types";
 import { json } from "./http";
 import { requireMigrationComplete, type ApiContext } from "./projects";
 import { RequestError, parseProjectRole, parseUuid, readJsonObject } from "./validation";
@@ -17,7 +22,7 @@ function memberJson(row: MemberRow) {
   return {
     userId: row.user_id,
     displayName: row.display_name,
-    role: row.role,
+    role: toPublicProjectRole(row.role),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -75,7 +80,8 @@ async function putMember(
 ): Promise<Response> {
   await authorizeProject(context.env.DB, context.user.id, projectId, "manage");
   const body = await readJsonObject(context.request, ["role"]);
-  const role = parseProjectRole(body.role);
+  const publicRole = parseProjectRole(body.role);
+  const role = toStoredProjectRole(publicRole);
   const targetExists = await context.env.DB.prepare(
     "SELECT id FROM user_accounts WHERE id = ? AND status = 'active'",
   ).bind(targetUserId).first<string>("id");
@@ -125,7 +131,7 @@ async function putMember(
       { from: current?.role ?? null, to: role },
     ), true),
   ]);
-  if (!results[0].meta.changes) throw new RequestError(409, "last_manager");
+  if (!results[0].meta.changes) throw new RequestError(409, "last_owner");
   const row: MemberRow = {
     user_id: targetUserId,
     display_name: await context.env.DB.prepare(
@@ -173,7 +179,7 @@ async function deleteMember(
       { from: current.role },
     ), true),
   ]);
-  if (!results[0].meta.changes) throw new RequestError(409, "last_manager");
+  if (!results[0].meta.changes) throw new RequestError(409, "last_owner");
   return json(200, { ok: true, requestId: context.requestId }, context.requestId);
 }
 

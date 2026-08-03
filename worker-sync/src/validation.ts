@@ -1,4 +1,4 @@
-import type { ProjectRole } from "./db-types";
+import type { PublicProjectRole } from "./db-types";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,8 +29,8 @@ export function normalizeName(value: unknown): { name: string; normalizedName: s
   };
 }
 
-export function parseProjectRole(value: unknown): ProjectRole {
-  if (value !== "manager" && value !== "contributor" && value !== "viewer") {
+export function parseProjectRole(value: unknown): PublicProjectRole {
+  if (value !== "owner" && value !== "member") {
     throw new RequestError(400, "invalid_role");
   }
   return value;

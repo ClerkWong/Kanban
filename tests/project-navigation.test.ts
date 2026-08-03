@@ -20,8 +20,10 @@ const projects: ProjectSummary[] = [{
   id: projectId,
   name: "Alpha",
   status: "active",
-  myRole: "manager",
+  myRole: "owner",
   activeBoardCount: 1,
+  boardId,
+  boardName: "Roadmap",
   lastActivityAt: null,
 }];
 
@@ -100,23 +102,23 @@ test("board route validation rejects a board from another project", () => {
 });
 
 test("role and archive state produce the visible Board actions", () => {
-  assert.deepEqual(deriveBoardAccess("manager", "active", "active"), {
+  assert.deepEqual(deriveBoardAccess("owner", "active", "active"), {
     canEdit: true,
     canWriteAttachments: true,
     readOnlyReason: null,
   });
-  assert.deepEqual(deriveBoardAccess("contributor", "active", "active"), {
+  assert.deepEqual(deriveBoardAccess("member", "active", "active"), {
     canEdit: true,
     canWriteAttachments: true,
     readOnlyReason: null,
   });
   assert.equal(deriveBoardAccess("viewer", "active", "active").canEdit, false);
   assert.match(
-    deriveBoardAccess("manager", "active", "archived").readOnlyReason ?? "",
+    deriveBoardAccess("owner", "active", "archived").readOnlyReason ?? "",
     /看板已封存/,
   );
   assert.match(
-    deriveBoardAccess("manager", "archived", "active").readOnlyReason ?? "",
+    deriveBoardAccess("owner", "archived", "active").readOnlyReason ?? "",
     /專案已封存/,
   );
 });

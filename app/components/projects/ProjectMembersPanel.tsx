@@ -9,7 +9,7 @@ import {
 } from "../../projects/api";
 import type { ProjectRole } from "../../projects/types";
 import {
-  isLastManagerChangeBlocked,
+  isLastOwnerChangeBlocked,
   managementErrorMessage,
 } from "../../projects/view-model";
 import type { SyncConfig } from "../../sync/config";
@@ -23,7 +23,7 @@ export function ProjectMembersPanel({
 }) {
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [userId, setUserId] = useState("");
-  const [role, setRole] = useState<ProjectRole>("contributor");
+  const [role, setRole] = useState<ProjectRole>("member");
   const [error, setError] = useState("");
 
   async function reload() {
@@ -45,8 +45,8 @@ export function ProjectMembersPanel({
       setError(managementErrorMessage(null, false));
       return;
     }
-    if (isLastManagerChangeBlocked(members, targetUserId, nextRole)) {
-      setError("至少要保留一位管理者；請先新增或升級另一位管理者。");
+    if (isLastOwnerChangeBlocked(members, targetUserId, nextRole)) {
+      setError("至少要保留一位 Project Owner；請先新增或升級另一位 owner。");
       return;
     }
     setError("");
@@ -90,9 +90,9 @@ export function ProjectMembersPanel({
 function RoleSelect({ value, onChange }: { value: ProjectRole; onChange: (role: ProjectRole) => void }) {
   return (
     <select value={value} onChange={(event) => onChange(event.target.value as ProjectRole)}>
-      <option value="manager">管理者</option>
-      <option value="contributor">協作者</option>
-      <option value="viewer">檢視者</option>
+      <option value="owner">Project Owner</option>
+      <option value="member">Project Member</option>
+      {value === "viewer" && <option value="viewer" disabled>唯讀成員（舊版）</option>}
     </select>
   );
 }

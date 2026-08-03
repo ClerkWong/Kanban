@@ -215,6 +215,10 @@ async function createBoard(context: ApiContext, projectId: string): Promise<Resp
     }
     throw new RequestError(409, "board_id_conflict");
   }
+  const activeBoardId = await context.env.DB.prepare(
+    "SELECT id FROM boards WHERE project_id = ? AND status = 'active'",
+  ).bind(projectId).first<string>("id");
+  if (activeBoardId) throw new RequestError(409, "project_board_exists");
   const project = await getProject(context.env.DB, projectId);
   const now = new Date().toISOString();
   const row: BoardRow = {
@@ -379,6 +383,9 @@ async function changeBoardStatus(
   if (access.projectStatus === "archived") throw new RequestError(409, "resource_archived");
   const row = await getBoard(context.env.DB, projectId, boardId);
   const target = action === "archive" ? "archived" : "active";
+  if (action === "archive" && row.status === "active") {
+    throw new RequestError(409, "single_board_required");
+  }
   if (row.status === target) {
     return json(200, { board: boardMetadata(row), requestId: context.requestId }, context.requestId);
   }
@@ -442,7 +449,12 @@ async function changeBoardStatus(
       throw new RequestError(409, "board_changed");
     }
   } catch (error) {
-    if (isConstraintConflict(error)) throw new RequestError(409, "name_conflict");
+    if (isConstraintConflict(error)) {
+      const activeBoardId = await context.env.DB.prepare(
+        "SELECT id FROM boards WHERE project_id = ? AND status = 'active' AND id != ?",
+      ).bind(projectId, boardId).first<string>("id");
+      throw new RequestError(409, activeBoardId ? "project_board_exists" : "name_conflict");
+    }
     throw error;
   }
   return json(200, {

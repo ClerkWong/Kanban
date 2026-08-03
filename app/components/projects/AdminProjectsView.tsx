@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { listAdminProjects } from "../../projects/api";
+import {
+  archiveAdminProject,
+  listAdminProjects,
+  restoreAdminProject,
+} from "../../projects/api";
 import {
   administrativeWorkspaces,
   hasPlatformAdminAccess,
@@ -62,6 +66,25 @@ export function AdminProjectsView({
   const activeCount = projects.filter((project) => project.status === "active").length;
   const archivedCount = projects.length - activeCount;
 
+  async function changeStatus(project: AdminProjectSummary) {
+    if (!navigator.onLine) {
+      setError(managementErrorMessage(null, false));
+      return;
+    }
+    setError("");
+    try {
+      if (project.status === "active") {
+        await archiveAdminProject(config, project.id);
+      } else {
+        await restoreAdminProject(config, project.id);
+      }
+      setRefreshToken((current) => current + 1);
+      await onProjectsChanged();
+    } catch (cause) {
+      setError(managementErrorMessage(cause, navigator.onLine));
+    }
+  }
+
   return (
     <main className="projectShell">
       <WorkspaceEntryNav
@@ -94,9 +117,9 @@ export function AdminProjectsView({
       </p>
       {createdProjectId && (
         <p className="notice successNotice">
-          專案已建立。{memberProjectIds.has(createdProjectId)
-            ? <a href={`#/projects/${createdProjectId}`}>進入新專案 →</a>
-            : <span>正在更新你的專案入口…</span>}
+          專案與看板已建立。{memberProjectIds.has(createdProjectId)
+            ? <a href={`#/projects/${createdProjectId}`}>管理新專案 →</a>
+            : <span>你不是此專案成員，因此只會在平台管理清單中看到 metadata。</span>}
         </p>
       )}
       {error && <p className="notice warning" role="alert">{error}</p>}
@@ -126,11 +149,12 @@ export function AdminProjectsView({
                 <dl className="adminProjectFacts">
                   <div><dt>Workspace</dt><dd><code>{project.workspaceId}</code></dd></div>
                   <div>
-                    <dt>專案管理者</dt>
-                    <dd>{project.managerIds.length === 0
+                    <dt>Project Owner</dt>
+                    <dd>{project.ownerIds.length === 0
                       ? "尚未設定"
-                      : project.managerIds.map((id) => <code key={id}>{id}</code>)}</dd>
+                      : project.ownerIds.map((id) => <code key={id}>{id}</code>)}</dd>
                   </div>
+                  <div><dt>唯一看板</dt><dd>{project.boardName ?? "尚未建立"}</dd></div>
                   <div><dt>更新時間</dt><dd>{new Date(project.updatedAt).toLocaleString("zh-TW")}</dd></div>
                 </dl>
                 <div className="adminProjectActions">
@@ -139,6 +163,13 @@ export function AdminProjectsView({
                   ) : (
                     <span>你尚未加入此專案，因此不能查看工作內容。</span>
                   )}
+                  <button
+                    className={project.status === "active" ? "dangerGhost" : "secondaryButton"}
+                    type="button"
+                    onClick={() => void changeStatus(project)}
+                  >
+                    {project.status === "active" ? "封存專案" : "還原專案"}
+                  </button>
                 </div>
               </article>
             );
@@ -150,6 +181,7 @@ export function AdminProjectsView({
         <CreateProjectModal
           config={config}
           workspaces={workspaces}
+          currentUserId={session.user.id}
           onClose={() => setCreateOpen(false)}
           onCreated={(projectId) => {
             setCreatedProjectId(projectId);

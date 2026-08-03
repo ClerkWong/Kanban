@@ -32,12 +32,17 @@ export function MyProjectsView({
         </section>
       ) : (
         <section className="projectGrid" aria-label="我的專案">
-          {projects.map((project) => (
-            <a
-              className="projectCard"
-              href={serializeProjectRoute({ kind: "project", projectId: project.id })}
-              key={project.id}
-            >
+          {projects.map((project) => {
+            const destination = project.boardId
+              ? serializeProjectRoute({
+                kind: "board",
+                projectId: project.id,
+                boardId: project.boardId,
+              })
+              : serializeProjectRoute({ kind: "project", projectId: project.id });
+            return (
+            <article className="projectCard" key={project.id}>
+              <a className="projectCardMainLink" href={destination}>
               <div className="projectCardHeading">
                 <h2>{project.name}</h2>
                 <span className={`statusBadge ${project.status}`}>{
@@ -46,7 +51,7 @@ export function MyProjectsView({
               </div>
               <dl className="projectFacts">
                 <div><dt>我的角色</dt><dd>{projectRoleLabel(project.myRole)}</dd></div>
-                <div><dt>使用中看板</dt><dd>{project.activeBoardCount}</dd></div>
+                <div><dt>看板</dt><dd>{project.boardName ?? "尚未建立"}</dd></div>
                 <div>
                   <dt>最近活動</dt>
                   <dd>{project.lastActivityAt
@@ -54,9 +59,15 @@ export function MyProjectsView({
                     : "尚無紀錄"}</dd>
                 </div>
               </dl>
-              <span className="projectCardLink">進入專案 →</span>
-            </a>
-          ))}
+              <span className="projectCardLink">進入看板 →</span>
+              </a>
+              {project.myRole === "owner" && (
+                <a className="projectManageLink" href={serializeProjectRoute({ kind: "project", projectId: project.id })}>
+                  專案與成員管理
+                </a>
+              )}
+            </article>
+          )})}
         </section>
       )}
     </main>

@@ -18,7 +18,7 @@ import type {
 const MAX_RESOURCE_NAME_LENGTH = 80;
 
 const WORKSPACE_ROLES: readonly WorkspaceRole[] = ["owner", "admin", "member"];
-const PROJECT_ROLES: readonly ProjectRole[] = ["manager", "contributor", "viewer"];
+const PROJECT_ROLES: readonly ProjectRole[] = ["owner", "member", "viewer"];
 const RESOURCE_STATUSES: readonly ResourceStatus[] = ["active", "archived"];
 
 /** IDs that only ever exist in local (unsynced) storage -- see
@@ -102,7 +102,7 @@ export function normalizeResourceName(value: unknown): NormalizedResourceName | 
 // Project role capability matrix (design spec §7.2)
 // ---------------------------------------------------------------------------
 //
-//   能力                                | manager | contributor | viewer
+//   能力                                | owner | member | viewer (legacy)
 //   查看 Project 與 Board / summary/Log |    ✓    |      ✓      |   ✓
 //   新增／編輯／移動 Card                |    ✓    |      ✓      |   -
 //   新增／下載／移除 Attachment          |  ✓ full |   ✓ full    | 僅下載
@@ -139,12 +139,12 @@ export function canDownloadAttachment(role: ProjectRole): boolean {
   return isProjectRole(role);
 }
 
-/** Manager-only gate for Project-level management: renaming/archiving the
- * Project, managing members, and creating/renaming/archiving Boards. This
- * is the single source of truth the manager-only wrappers below delegate
+/** Owner-only gate for Project-level management: renaming/archiving the
+ * Project, managing members, and renaming the single active Board. This
+ * is the single source of truth the owner-only wrappers below delegate
  * to. */
 export function canManageProject(role: ProjectRole): boolean {
-  return isProjectRole(role) && role === "manager";
+  return isProjectRole(role) && role === "owner";
 }
 
 /** Create a new Board within the Project. */
@@ -172,13 +172,13 @@ export function canRenameProject(role: ProjectRole): boolean {
   return canManageProject(role);
 }
 
-/** Add/remove Project members or change their role. Contributor explicitly
+/** Add/remove Project members or change their role. Member explicitly
  * has no membership-management capability. */
 export function canManageMembers(role: ProjectRole): boolean {
   return canManageProject(role);
 }
 
-/** Archive the Project itself. Contributor explicitly has no archive
+/** Archive the Project itself. Member explicitly has no archive
  * capability. */
 export function canArchiveProject(role: ProjectRole): boolean {
   return canManageProject(role);
@@ -316,7 +316,10 @@ function parseProjectSummary(value: unknown): ProjectSummary | null {
     !isResourceStatus(raw.status) ||
     !isProjectRole(raw.myRole) ||
     !Number.isInteger(raw.activeBoardCount) ||
-    (raw.activeBoardCount as number) < 0
+    (raw.activeBoardCount as number) < 0 ||
+    (raw.boardId !== null && !isUuid(raw.boardId)) ||
+    (raw.boardName !== null && !isNonEmptyString(raw.boardName)) ||
+    ((raw.boardId === null) !== (raw.boardName === null))
   ) {
     return null;
   }
@@ -331,6 +334,8 @@ function parseProjectSummary(value: unknown): ProjectSummary | null {
     status: raw.status,
     myRole: raw.myRole,
     activeBoardCount: raw.activeBoardCount as number,
+    boardId: raw.boardId,
+    boardName: raw.boardName,
     lastActivityAt: raw.lastActivityAt === null ? null : raw.lastActivityAt,
   };
 }
