@@ -407,6 +407,7 @@ function ProjectRouteView({
   return (
     <ActiveBoard
       context={context}
+      projectName={state.detail.project.name}
       access={access}
       projectMembers={state.members}
       navigation={(
@@ -425,6 +426,7 @@ function ProjectRouteView({
 
 function ActiveBoard({
   context,
+  projectName,
   access,
   projectMembers,
   navigation,
@@ -432,6 +434,7 @@ function ActiveBoard({
   appConfigUrl,
 }: {
   context: BoardContext;
+  projectName: string;
   access: BoardAccess;
   projectMembers: ProjectMember[];
   navigation: ReactNode;
@@ -445,6 +448,7 @@ function ActiveBoard({
   return (
     <BoardApp
       context={context}
+      projectName={projectName}
       access={access}
       projectMembers={projectMembers}
       navigation={navigation}

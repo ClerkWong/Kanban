@@ -62,6 +62,7 @@ export function BoardApp({
   enableServiceWorker = false,
   appConfigUrl = "/app-config.json",
   context,
+  projectName,
   access,
   navigation,
   projectMembers,
@@ -69,6 +70,7 @@ export function BoardApp({
   enableServiceWorker?: boolean;
   appConfigUrl?: string;
   context?: BoardContext;
+  projectName?: string;
   access?: BoardAccess;
   navigation?: ReactNode;
   projectMembers?: ProjectMember[];
@@ -76,6 +78,7 @@ export function BoardApp({
   return context ? (
     <ScopedBoardApp
       context={context}
+      projectName={projectName}
       access={access}
       navigation={navigation}
       projectMembers={projectMembers ?? []}
@@ -138,6 +141,7 @@ function LegacyBoardApp({
 
 function ScopedBoardApp({
   context,
+  projectName,
   access = { canEdit: false, canWriteAttachments: false, readOnlyReason: "唯讀模式。" },
   navigation,
   projectMembers,
@@ -145,6 +149,7 @@ function ScopedBoardApp({
   appConfigUrl,
 }: {
   context: BoardContext;
+  projectName?: string;
   access?: BoardAccess;
   navigation?: ReactNode;
   projectMembers: ProjectMember[];
@@ -167,6 +172,7 @@ function ScopedBoardApp({
       storageMessage={store.errorMessage}
       access={access}
       context={context}
+      projectName={projectName}
       projectMembers={projectMembers}
       navigation={navigation}
       enableServiceWorker={enableServiceWorker}
@@ -182,6 +188,7 @@ function BoardSurface({
   storageMessage,
   access,
   context,
+  projectName,
   projectMembers,
   navigation,
   enableServiceWorker,
@@ -194,6 +201,7 @@ function BoardSurface({
   storageMessage: string;
   access: BoardAccess;
   context?: BoardContext;
+  projectName?: string;
   projectMembers?: ProjectMember[];
   navigation?: ReactNode;
   enableServiceWorker: boolean;
@@ -474,7 +482,7 @@ function BoardSurface({
       <section className="topBar" aria-label="看板摘要">
         <div className="brandBlock">
           <p className="eyebrow">本機優先 Kanban PWA</p>
-          <h1>{appTitle}</h1>
+          <h1>{projectName ?? appTitle}</h1>
           <p className="storageNote">資料先保存在本裝置；啟用同步後可跨裝置共用，離線仍可使用核心流程。</p>
         </div>
 
