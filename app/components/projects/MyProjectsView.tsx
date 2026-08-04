@@ -6,14 +6,16 @@ export function MyProjectsView({
   projects,
   userName,
   showAdmin,
+  onSignOut,
 }: {
   projects: ProjectSummary[];
   userName: string;
   showAdmin: boolean;
+  onSignOut: () => void;
 }) {
   return (
     <main className="projectShell">
-      <WorkspaceEntryNav current="projects" userName={userName} showAdmin={showAdmin} />
+      <WorkspaceEntryNav current="projects" userName={userName} showAdmin={showAdmin} onSignOut={onSignOut} />
       <header className="projectHero">
         <div>
           <p className="eyebrow">Kanban workspace</p>
@@ -28,7 +30,7 @@ export function MyProjectsView({
       {projects.length === 0 ? (
         <section className="projectEmpty">
           <h2>目前沒有可查看的專案</h2>
-          <p>請請專案管理者將你加入專案，或確認同步 token 是否正確。</p>
+          <p>請專案管理者將你加入專案，或確認目前登入帳號是否正確。</p>
         </section>
       ) : (
         <section className="projectGrid" aria-label="我的專案">

@@ -10,7 +10,22 @@ import {
 test("parseAppConfig trims a valid custom title", () => {
   assert.deepEqual(parseAppConfig({ title: "  團隊工作台  " }), {
     title: "團隊工作台",
+    syncServerUrl: "",
   });
+});
+
+test("parseAppConfig accepts only a clean HTTPS sync server origin", () => {
+  assert.deepEqual(parseAppConfig({
+    title: "Beta 工作看板",
+    syncServerUrl: "https://sync.example/",
+  }), {
+    title: "Beta 工作看板",
+    syncServerUrl: "https://sync.example",
+  });
+  assert.equal(parseAppConfig({
+    title: "Beta 工作看板",
+    syncServerUrl: "http://sync.example",
+  }).syncServerUrl, "");
 });
 
 test("parseAppConfig falls back for missing, blank, or oversized titles", () => {
@@ -34,6 +49,7 @@ test("loadAppConfig requests a fresh JSON value on startup", async () => {
 
   assert.deepEqual(await loadAppConfig("/app-config.json", fetcher), {
     title: "Beta 工作看板",
+    syncServerUrl: "",
   });
   assert.equal(requestedUrl, "/app-config.json");
   assert.equal(requestedCache, "no-store");

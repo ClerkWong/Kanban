@@ -7,7 +7,7 @@ export type RuntimeSession = {
   user: {
     id: string;
     displayName: string;
-    tokenKind: "personal" | "legacy";
+    tokenKind: "personal" | "legacy" | "session";
   };
   workspaces: Array<{
     workspaceId: string;
@@ -30,7 +30,7 @@ export function parseRuntimeSession(value: unknown): RuntimeSession | null {
     !isUuid(user.id) ||
     typeof user.displayName !== "string" ||
     !user.displayName ||
-    (user.tokenKind !== "personal" && user.tokenKind !== "legacy") ||
+    (user.tokenKind !== "personal" && user.tokenKind !== "legacy" && user.tokenKind !== "session") ||
     !Array.isArray(raw.workspaces)
   ) {
     return null;

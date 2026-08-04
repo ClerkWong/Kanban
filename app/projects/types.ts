@@ -103,6 +103,20 @@ export type AdminProjectSummary = {
   updatedAt: string;
 };
 
+export type AdminUserSummary = {
+  id: string;
+  displayName: string;
+  email: string | null;
+  status: "active" | "disabled";
+  workspaceId: string;
+  workspaceRole: WorkspaceRole;
+  hasPassword: boolean;
+  projectCount: number;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 /** Append-only activity log entry (design spec §8.5). Produced by the
  * Worker only; clients never create, edit, or delete these. */
 export type ActivityLogEntry = {

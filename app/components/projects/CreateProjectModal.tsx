@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { createEmptyBoard } from "../../board-model";
-import { createProject } from "../../projects/api";
+import { createProject, listAdminUsers } from "../../projects/api";
 import type { RuntimeSession } from "../../projects/session";
+import type { AdminUserSummary } from "../../projects/types";
 import { managementErrorMessage } from "../../projects/view-model";
 import type { SyncConfig } from "../../sync/config";
 
@@ -26,6 +27,27 @@ export function CreateProjectModal({
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.workspaceId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [ownerOptions, setOwnerOptions] = useState<AdminUserSummary[]>([]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    let cancelled = false;
+    void listAdminUsers(config, workspaceId)
+      .then((users) => {
+        if (cancelled) return;
+        const activeUsers = users.filter((user) => user.status === "active");
+        setOwnerOptions(activeUsers);
+        if (!activeUsers.some((user) => user.id === ownerUserId)) {
+          setOwnerUserId(activeUsers[0]?.id ?? currentUserId);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setOwnerOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [config, currentUserId, ownerUserId, workspaceId]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -106,13 +128,20 @@ export function CreateProjectModal({
             />
           </label>
           <label className="formField">
-            <span>初始 Project Owner UUID</span>
-            <input
+            <span>初始 Project Owner</span>
+            <select
               value={ownerUserId}
               required
-              placeholder={currentUserId}
-              onChange={(event) => setOwnerUserId(event.target.value.trim())}
-            />
+              onChange={(event) => setOwnerUserId(event.target.value)}
+            >
+              {ownerOptions.length === 0 ? (
+                <option value={currentUserId}>目前管理者</option>
+              ) : ownerOptions.map((user) => (
+                <option value={user.id} key={user.id}>
+                  {user.displayName}{user.email ? ` · ${user.email}` : ""}
+                </option>
+              ))}
+            </select>
           </label>
           <p className="storageNote">
             送出後會同時建立專案、唯一看板與第一位 owner。之後可由 owner 加入其他 owner 或 member。

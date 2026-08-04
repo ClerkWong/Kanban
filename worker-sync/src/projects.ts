@@ -256,8 +256,14 @@ async function createProject(context: ApiContext): Promise<Response> {
     throw new AuthorizationError(403, "forbidden");
   }
   const ownerExists = await context.env.DB.prepare(
-    "SELECT id FROM user_accounts WHERE id = ? AND status = 'active'",
-  ).bind(ownerUserId).first<string>("id");
+    `SELECT user_accounts.id
+     FROM workspace_members
+     INNER JOIN user_accounts
+       ON user_accounts.id = workspace_members.user_id
+      AND user_accounts.status = 'active'
+     WHERE workspace_members.workspace_id = ?
+       AND workspace_members.user_id = ?`,
+  ).bind(workspaceId, ownerUserId).first<string>("id");
   if (!ownerExists) throw new RequestError(404, "user_not_found");
   const existing = await context.env.DB.prepare("SELECT * FROM projects WHERE id = ?")
     .bind(id).first<ProjectRow>();

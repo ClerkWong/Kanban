@@ -18,6 +18,13 @@ type MemberRow = {
   updated_at: string;
 };
 
+type MemberCandidateRow = {
+  user_id: string;
+  display_name: string;
+  email: string | null;
+  project_role: ProjectRole | null;
+};
+
 function memberJson(row: MemberRow) {
   return {
     userId: row.user_id,
@@ -73,6 +80,34 @@ async function listMembers(context: ApiContext, projectId: string): Promise<Resp
   }, context.requestId);
 }
 
+async function listMemberCandidates(context: ApiContext, projectId: string): Promise<Response> {
+  await authorizeProject(context.env.DB, context.user.id, projectId, "manage");
+  const result = await context.env.DB.prepare(
+    `SELECT user_accounts.id AS user_id, user_accounts.display_name, user_accounts.email,
+            project_members.role AS project_role
+     FROM projects
+     INNER JOIN workspace_members
+       ON workspace_members.workspace_id = projects.workspace_id
+     INNER JOIN user_accounts
+       ON user_accounts.id = workspace_members.user_id
+      AND user_accounts.status = 'active'
+     LEFT JOIN project_members
+       ON project_members.project_id = projects.id
+      AND project_members.user_id = user_accounts.id
+     WHERE projects.id = ?
+     ORDER BY user_accounts.display_name COLLATE NOCASE, user_accounts.id`,
+  ).bind(projectId).all<MemberCandidateRow>();
+  return json(200, {
+    users: result.results.map((row) => ({
+      userId: row.user_id,
+      displayName: row.display_name,
+      email: row.email,
+      currentRole: row.project_role ? toPublicProjectRole(row.project_role) : null,
+    })),
+    requestId: context.requestId,
+  }, context.requestId);
+}
+
 async function putMember(
   context: ApiContext,
   projectId: string,
@@ -83,8 +118,16 @@ async function putMember(
   const publicRole = parseProjectRole(body.role);
   const role = toStoredProjectRole(publicRole);
   const targetExists = await context.env.DB.prepare(
-    "SELECT id FROM user_accounts WHERE id = ? AND status = 'active'",
-  ).bind(targetUserId).first<string>("id");
+    `SELECT user_accounts.id
+     FROM projects
+     INNER JOIN workspace_members
+       ON workspace_members.workspace_id = projects.workspace_id
+      AND workspace_members.user_id = ?
+     INNER JOIN user_accounts
+       ON user_accounts.id = workspace_members.user_id
+      AND user_accounts.status = 'active'
+     WHERE projects.id = ?`,
+  ).bind(targetUserId, projectId).first<string>("id");
   if (!targetExists) throw new RequestError(404, "user_not_found");
   const projectRow = await project(context.env.DB, projectId);
   const current = await context.env.DB.prepare(
@@ -185,6 +228,16 @@ async function deleteMember(
 
 export async function handleMembershipRequest(context: ApiContext): Promise<Response | null> {
   const pathname = new URL(context.request.url).pathname;
+  const candidatesMatch = pathname.match(
+    /^\/projects\/([0-9a-f-]+)\/member-candidates$/i,
+  );
+  if (candidatesMatch) {
+    await requireMigrationComplete(context.env.DB);
+    const projectId = parseUuid(candidatesMatch[1], "project_id");
+    return context.request.method === "GET"
+      ? listMemberCandidates(context, projectId)
+      : null;
+  }
   const match = pathname.match(
     /^\/projects\/([0-9a-f-]+)\/members(?:\/([0-9a-f-]+))?$/i,
   );

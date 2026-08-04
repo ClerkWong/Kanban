@@ -8,7 +8,7 @@ export type ProjectRole = "manager" | "contributor" | "viewer";
 export type PublicProjectRole = "owner" | "member" | "viewer";
 export type ResourceStatus = "active" | "archived";
 export type UserStatus = "active" | "disabled";
-export type TokenKind = "personal" | "legacy";
+export type TokenKind = "personal" | "legacy" | "session";
 export type MigrationStatus = "pending" | "locked" | "complete";
 
 export function toPublicProjectRole(role: ProjectRole): PublicProjectRole {

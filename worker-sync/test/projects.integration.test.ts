@@ -72,6 +72,9 @@ beforeEach(async () => {
     "INSERT INTO workspace_members (workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, 'admin', ?, ?)",
   ).bind(workspaceId, managerId, now, now).run();
   await env.DB.prepare(
+    "INSERT INTO workspace_members (workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, 'member', ?, ?)",
+  ).bind(workspaceId, secondManagerId, now, now).run();
+  await env.DB.prepare(
     `INSERT INTO projects (
        id, workspace_id, name, normalized_name, status, created_by, created_at, updated_at
      ) VALUES (?, ?, 'Alpha', 'alpha', 'active', ?, ?, ?),

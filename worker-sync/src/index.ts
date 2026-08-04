@@ -1,6 +1,7 @@
 import { authenticate, scheduleLastUsedUpdate } from "./auth";
 import { json, logRequestError, responseHeaders } from "./http";
 import { routeRequest } from "./router";
+import { handlePublicAuthRequest } from "./auth-routes";
 
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -10,6 +11,12 @@ const worker = {
     }
 
     try {
+      const publicAuthResponse = await handlePublicAuthRequest(
+        request,
+        env.DB,
+        requestId,
+      );
+      if (publicAuthResponse) return publicAuthResponse;
       const user = await authenticate(request, env.DB);
       if (!user) {
         return json(401, { error: "unauthorized", requestId }, requestId);

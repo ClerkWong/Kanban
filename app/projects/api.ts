@@ -5,12 +5,14 @@ import {
   isResourceStatus,
   isServerResourceId,
   isUuid,
+  isWorkspaceRole,
   parseBoardMeta,
   parseProject,
   parseProjectList,
 } from "./model";
 import type {
   AdminProjectSummary,
+  AdminUserSummary,
   ActivityLogEntry,
   BoardContext,
   BoardMeta,
@@ -58,6 +60,13 @@ export type ProjectMember = {
   role: ProjectRole;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ProjectMemberCandidate = {
+  userId: string;
+  displayName: string;
+  email: string | null;
+  currentRole: ProjectRole | null;
 };
 
 export type SummaryStats = {
@@ -161,7 +170,7 @@ export async function readResponseJson(response: Response): Promise<unknown> {
 }
 
 function errorMessage(kind: ApiErrorKind, operation: string): string {
-  if (kind === "unauthorized") return "同步憑證無效，請重新設定 token。";
+  if (kind === "unauthorized") return "登入已失效，請重新登入。";
   if (kind === "forbidden") return "目前帳號沒有執行此操作的權限。";
   if (kind === "not_found") return "找不到資源，或目前帳號未參與此專案。";
   if (kind === "resource_archived") return "此專案或看板已封存，現在只能讀取。";
@@ -291,6 +300,47 @@ function parseAdminProjectListResponse(value: unknown): AdminProjectSummary[] {
   return projects as AdminProjectSummary[];
 }
 
+function parseAdminUser(value: unknown): AdminUserSummary | null {
+  const raw = asRecord(value);
+  if (
+    !raw ||
+    !isUuid(raw.id) ||
+    !nonEmptyString(raw.displayName) ||
+    (raw.email !== null && !nonEmptyString(raw.email)) ||
+    (raw.status !== "active" && raw.status !== "disabled") ||
+    !isUuid(raw.workspaceId) ||
+    !isWorkspaceRole(raw.workspaceRole) ||
+    typeof raw.hasPassword !== "boolean" ||
+    !nonNegativeInteger(raw.projectCount) ||
+    (raw.lastLoginAt !== null && !nonEmptyString(raw.lastLoginAt)) ||
+    !nonEmptyString(raw.createdAt) ||
+    !nonEmptyString(raw.updatedAt)
+  ) {
+    return null;
+  }
+  return {
+    id: raw.id,
+    displayName: raw.displayName,
+    email: raw.email,
+    status: raw.status,
+    workspaceId: raw.workspaceId,
+    workspaceRole: raw.workspaceRole,
+    hasPassword: raw.hasPassword,
+    projectCount: raw.projectCount,
+    lastLoginAt: raw.lastLoginAt,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+  };
+}
+
+function parseAdminUserListResponse(value: unknown): AdminUserSummary[] {
+  const raw = asRecord(value);
+  if (!raw || !Array.isArray(raw.users)) throw invalidResponse("讀取平台使用者列表");
+  const users = raw.users.map(parseAdminUser);
+  if (users.some((user) => user === null)) throw invalidResponse("讀取平台使用者列表");
+  return users as AdminUserSummary[];
+}
+
 function parseMember(value: unknown): ProjectMember | null {
   const raw = asRecord(value);
   if (
@@ -309,6 +359,25 @@ function parseMember(value: unknown): ProjectMember | null {
     role: raw.role,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+  };
+}
+
+function parseMemberCandidate(value: unknown): ProjectMemberCandidate | null {
+  const raw = asRecord(value);
+  if (
+    !raw ||
+    !isUuid(raw.userId) ||
+    !nonEmptyString(raw.displayName) ||
+    (raw.email !== null && !nonEmptyString(raw.email)) ||
+    (raw.currentRole !== null && !isProjectRole(raw.currentRole))
+  ) {
+    return null;
+  }
+  return {
+    userId: raw.userId,
+    displayName: raw.displayName,
+    email: raw.email,
+    currentRole: raw.currentRole,
   };
 }
 
@@ -502,6 +571,76 @@ export async function listAdminProjects(
   );
 }
 
+export async function listAdminUsers(
+  config: SyncConfig,
+  workspaceId: string,
+): Promise<AdminUserSummary[]> {
+  assertResourceId(workspaceId, "workspace_id");
+  const query = new URLSearchParams({ workspaceId });
+  return parseAdminUserListResponse(
+    await requestJson(config, `/admin/users?${query}`, "讀取平台使用者列表"),
+  );
+}
+
+export async function createAdminUser(
+  config: SyncConfig,
+  input: {
+    workspaceId: string;
+    displayName: string;
+    email: string;
+    password: string;
+    workspaceRole: "admin" | "member";
+  },
+): Promise<AdminUserSummary> {
+  assertResourceId(input.workspaceId, "workspace_id");
+  const raw = asRecord(await requestJson(config, "/admin/users", "建立使用者", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }));
+  const user = parseAdminUser(raw?.user);
+  if (!user) throw invalidResponse("建立使用者");
+  return user;
+}
+
+export async function updateAdminUser(
+  config: SyncConfig,
+  workspaceId: string,
+  userId: string,
+  input: {
+    displayName?: string;
+    email?: string;
+    status?: "active" | "disabled";
+    workspaceRole?: "admin" | "member";
+  },
+): Promise<void> {
+  assertResourceId(workspaceId, "workspace_id");
+  assertResourceId(userId, "user_id");
+  const query = new URLSearchParams({ workspaceId });
+  await requestJson(
+    config,
+    `${apiPath("admin", "users", userId)}?${query}`,
+    "更新使用者",
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+}
+
+export async function resetAdminUserPassword(
+  config: SyncConfig,
+  workspaceId: string,
+  userId: string,
+  password: string,
+): Promise<void> {
+  assertResourceId(workspaceId, "workspace_id");
+  assertResourceId(userId, "user_id");
+  const query = new URLSearchParams({ workspaceId });
+  await requestJson(
+    config,
+    `${apiPath("admin", "users", userId, "password")}?${query}`,
+    "重設使用者密碼",
+    { method: "POST", body: JSON.stringify({ password }) },
+  );
+}
+
 async function changeAdminProjectStatus(
   config: SyncConfig,
   projectId: string,
@@ -624,6 +763,22 @@ export async function listProjectMembers(
   const members = value.members.map(parseMember);
   if (members.some((member) => member === null)) throw invalidResponse("讀取專案成員");
   return members as ProjectMember[];
+}
+
+export async function listProjectMemberCandidates(
+  config: SyncConfig,
+  projectId: string,
+): Promise<ProjectMemberCandidate[]> {
+  assertResourceId(projectId, "project_id");
+  const value = asRecord(await requestJson(
+    config,
+    apiPath("projects", projectId, "member-candidates"),
+    "讀取可加入的使用者",
+  ));
+  if (!value || !Array.isArray(value.users)) throw invalidResponse("讀取可加入的使用者");
+  const users = value.users.map(parseMemberCandidate);
+  if (users.some((user) => user === null)) throw invalidResponse("讀取可加入的使用者");
+  return users as ProjectMemberCandidate[];
 }
 
 export async function setProjectMember(

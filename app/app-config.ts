@@ -2,10 +2,12 @@ import rawAppConfig from "../public/app-config.json";
 
 export interface AppConfig {
   title: string;
+  syncServerUrl: string;
 }
 
 export const DEFAULT_APP_CONFIG: AppConfig = {
   title: "覓夜",
+  syncServerUrl: "",
 };
 
 export function parseAppConfig(value: unknown): AppConfig {
@@ -14,6 +16,7 @@ export function parseAppConfig(value: unknown): AppConfig {
   }
 
   const title = Reflect.get(value, "title");
+  const syncServerUrl = Reflect.get(value, "syncServerUrl");
   if (typeof title !== "string") {
     return DEFAULT_APP_CONFIG;
   }
@@ -23,7 +26,19 @@ export function parseAppConfig(value: unknown): AppConfig {
     return DEFAULT_APP_CONFIG;
   }
 
-  return { title: normalizedTitle };
+  let normalizedSyncServerUrl = "";
+  if (typeof syncServerUrl === "string" && syncServerUrl.trim()) {
+    try {
+      const parsed = new URL(syncServerUrl.trim());
+      if (parsed.protocol === "https:" && parsed.pathname === "/" && !parsed.search && !parsed.hash) {
+        normalizedSyncServerUrl = parsed.origin;
+      }
+    } catch {
+      normalizedSyncServerUrl = "";
+    }
+  }
+
+  return { title: normalizedTitle, syncServerUrl: normalizedSyncServerUrl };
 }
 
 export const bundledAppConfig = parseAppConfig(rawAppConfig);

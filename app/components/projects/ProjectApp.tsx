@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { BoardApp } from "../board/BoardApp";
-import { bundledAppConfig, loadAppConfig } from "../../app-config";
+import { bundledAppConfig, loadAppConfig, type AppConfig } from "../../app-config";
+import { logoutSession } from "../../auth/api";
 import {
   ApiClientError,
   getProject,
@@ -39,7 +40,8 @@ import type {
   ProjectSummary,
 } from "../../projects/types";
 import { usePlatform } from "../../platform/context";
-import { loadSyncConfig, type SyncConfig } from "../../sync/config";
+import { loadSyncConfig, saveSyncConfig, type SyncConfig } from "../../sync/config";
+import { LoginView } from "../auth/LoginView";
 import { BoardNavigation } from "./BoardNavigation";
 import { MyProjectsView } from "./MyProjectsView";
 import { ProjectOverview } from "./ProjectOverview";
@@ -53,7 +55,7 @@ type ProjectAppProps = {
 
 type BootstrapState =
   | { kind: "loading" }
-  | { kind: "local" }
+  | { kind: "signedOut"; message?: string }
   | {
     kind: "ready";
     config: SyncConfig;
@@ -69,11 +71,17 @@ export function ProjectApp({
   const platform = usePlatform();
   const [bootstrap, setBootstrap] = useState<BootstrapState>({ kind: "loading" });
   const [route, setRoute] = useState<ProjectRoute>({ kind: "projects" });
+  const [appConfig, setAppConfig] = useState<AppConfig>(bundledAppConfig);
+  const [credentialRevision, setCredentialRevision] = useState(0);
+  const [useLocalBoard, setUseLocalBoard] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void loadAppConfig(appConfigUrl).then((config) => {
-      if (!cancelled) document.title = config.title;
+      if (!cancelled) {
+        document.title = config.title;
+        setAppConfig(config);
+      }
     });
     return () => {
       cancelled = true;
@@ -85,7 +93,7 @@ export function ProjectApp({
     void loadSyncConfig(platform.syncCredentials).then((config) => {
       if (cancelled) return;
       if (!config) {
-        setBootstrap({ kind: "local" });
+        setBootstrap({ kind: "signedOut" });
         return;
       }
       void Promise.all([
@@ -104,6 +112,14 @@ export function ProjectApp({
         })
         .catch((error: unknown) => {
           if (cancelled) return;
+          if (error instanceof ApiClientError && error.kind === "unauthorized") {
+            void saveSyncConfig(null, platform.syncCredentials).finally(() => {
+              if (!cancelled) {
+                setBootstrap({ kind: "signedOut", message: "登入已過期，請重新登入。" });
+              }
+            });
+            return;
+          }
           setBootstrap({
             kind: "error",
             message: error instanceof Error
@@ -115,7 +131,7 @@ export function ProjectApp({
     return () => {
       cancelled = true;
     };
-  }, [platform]);
+  }, [credentialRevision, platform]);
 
   useEffect(() => {
     if (bootstrap.kind !== "ready") return;
@@ -139,9 +155,24 @@ export function ProjectApp({
   }, [bootstrap]);
 
   if (bootstrap.kind === "loading") {
-    return <LoadingState message={`正在載入 ${bundledAppConfig.title}…`} />;
+    return <LoadingState message={`正在載入 ${appConfig.title}…`} />;
   }
-  if (bootstrap.kind === "local") {
+  if (bootstrap.kind === "signedOut" && !useLocalBoard) {
+    return (
+      <LoginView
+        appConfig={appConfig}
+        message={bootstrap.message}
+        onUseLocal={() => setUseLocalBoard(true)}
+        onAuthenticated={async (config) => {
+          await saveSyncConfig(config, platform.syncCredentials);
+          setUseLocalBoard(false);
+          setBootstrap({ kind: "loading" });
+          setCredentialRevision((value) => value + 1);
+        }}
+      />
+    );
+  }
+  if (bootstrap.kind === "signedOut") {
     return (
       <BoardApp
         enableServiceWorker={enableServiceWorker}
@@ -163,6 +194,19 @@ export function ProjectApp({
       </main>
     );
   }
+
+  const signOut = async () => {
+    try {
+      await logoutSession(bootstrap.config);
+    } catch {
+      // Local credential removal is authoritative for this device even when
+      // the network is unavailable. The server session expires independently.
+    }
+    await saveSyncConfig(null, platform.syncCredentials);
+    window.history.replaceState(null, "", "#/projects");
+    setUseLocalBoard(false);
+    setBootstrap({ kind: "signedOut" });
+  };
   if (route.kind === "projects") {
     return (
       <LegacyMigrationGate
@@ -174,6 +218,7 @@ export function ProjectApp({
           projects={bootstrap.projects}
           userName={bootstrap.session.user.displayName}
           showAdmin={hasPlatformAdminAccess(bootstrap.session)}
+          onSignOut={() => void signOut()}
         />
       </LegacyMigrationGate>
     );
@@ -189,6 +234,7 @@ export function ProjectApp({
           config={bootstrap.config}
           session={bootstrap.session}
           memberProjects={bootstrap.projects}
+          onSignOut={() => void signOut()}
           onProjectsChanged={async () => {
             const [active, archived] = await Promise.all([
               listProjects(bootstrap.config, "active"),

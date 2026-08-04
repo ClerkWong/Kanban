@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import {
   listProjectMembers,
+  listProjectMemberCandidates,
   removeProjectMember,
   setProjectMember,
   type ProjectMember,
+  type ProjectMemberCandidate,
 } from "../../projects/api";
 import type { ProjectRole } from "../../projects/types";
 import {
@@ -25,10 +27,16 @@ export function ProjectMembersPanel({
   const [userId, setUserId] = useState("");
   const [role, setRole] = useState<ProjectRole>("member");
   const [error, setError] = useState("");
+  const [candidates, setCandidates] = useState<ProjectMemberCandidate[]>([]);
 
   async function reload() {
     try {
-      setMembers(await listProjectMembers(config, projectId));
+      const [nextMembers, nextCandidates] = await Promise.all([
+        listProjectMembers(config, projectId),
+        listProjectMemberCandidates(config, projectId),
+      ]);
+      setMembers(nextMembers);
+      setCandidates(nextCandidates);
     } catch (cause) {
       setError(managementErrorMessage(cause, navigator.onLine));
     }
@@ -69,7 +77,17 @@ export function ProjectMembersPanel({
           void update(userId, role).then(() => setUserId(""));
         }}
       >
-        <label className="formField"><span>User UUID</span><input required value={userId} onChange={(event) => setUserId(event.target.value)} /></label>
+        <label className="formField">
+          <span>使用者</span>
+          <select required value={userId} onChange={(event) => setUserId(event.target.value)}>
+            <option value="">選擇工作區使用者</option>
+            {candidates.filter((candidate) => !candidate.currentRole).map((candidate) => (
+              <option value={candidate.userId} key={candidate.userId}>
+                {candidate.displayName}{candidate.email ? ` · ${candidate.email}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="formField"><span>角色</span><RoleSelect value={role} onChange={setRole} /></label>
         <button className="primaryButton" type="submit">新增／更新</button>
       </form>

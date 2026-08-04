@@ -16,16 +16,19 @@ import { managementErrorMessage } from "../../projects/view-model";
 import type { SyncConfig } from "../../sync/config";
 import { CreateProjectModal } from "./CreateProjectModal";
 import { WorkspaceEntryNav } from "./WorkspaceEntryNav";
+import { AdminUsersPanel } from "./AdminUsersPanel";
 
 export function AdminProjectsView({
   config,
   session,
   memberProjects,
+  onSignOut,
   onProjectsChanged,
 }: {
   config: SyncConfig;
   session: RuntimeSession;
   memberProjects: ProjectSummary[];
+  onSignOut: () => void;
   onProjectsChanged: () => Promise<void>;
 }) {
   const [projects, setProjects] = useState<AdminProjectSummary[]>([]);
@@ -34,6 +37,7 @@ export function AdminProjectsView({
   const [createOpen, setCreateOpen] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
+  const [section, setSection] = useState<"projects" | "users">("projects");
   const workspaces = useMemo(() => administrativeWorkspaces(session), [session]);
   const memberProjectIds = useMemo(
     () => new Set(memberProjects.map((project) => project.id)),
@@ -66,6 +70,28 @@ export function AdminProjectsView({
   const activeCount = projects.filter((project) => project.status === "active").length;
   const archivedCount = projects.length - activeCount;
 
+  if (section === "users") {
+    return (
+      <main className="projectShell">
+        <WorkspaceEntryNav
+          current="admin"
+          userName={session.user.displayName}
+          showAdmin={hasPlatformAdminAccess(session)}
+          onSignOut={onSignOut}
+        />
+        <header className="projectHero adminHero">
+          <div>
+            <p className="eyebrow">Workspace control</p>
+            <h1>平台管理</h1>
+            <p className="storageNote">分別管理專案結構與可登入的使用者帳號。</p>
+          </div>
+        </header>
+        <AdminSectionTabs current={section} onChange={setSection} />
+        <AdminUsersPanel config={config} currentUserId={session.user.id} workspaces={workspaces} />
+      </main>
+    );
+  }
+
   async function changeStatus(project: AdminProjectSummary) {
     if (!navigator.onLine) {
       setError(managementErrorMessage(null, false));
@@ -91,6 +117,7 @@ export function AdminProjectsView({
         current="admin"
         userName={session.user.displayName}
         showAdmin={hasPlatformAdminAccess(session)}
+        onSignOut={onSignOut}
       />
       <header className="projectHero adminHero">
         <div>
@@ -104,6 +131,8 @@ export function AdminProjectsView({
           ＋ 建立專案
         </button>
       </header>
+
+      <AdminSectionTabs current={section} onChange={setSection} />
 
       <section className="adminStats" aria-label="平台專案統計">
         <div className="stat"><span>全部專案</span><strong>{projects.length}</strong></div>
@@ -193,5 +222,24 @@ export function AdminProjectsView({
         />
       )}
     </main>
+  );
+}
+
+function AdminSectionTabs({
+  current,
+  onChange,
+}: {
+  current: "projects" | "users";
+  onChange: (next: "projects" | "users") => void;
+}) {
+  return (
+    <nav className="adminSectionTabs" aria-label="平台管理分類">
+      <button type="button" className={current === "projects" ? "active" : ""} onClick={() => onChange("projects")}>
+        專案管理
+      </button>
+      <button type="button" className={current === "users" ? "active" : ""} onClick={() => onChange("users")}>
+        使用者管理
+      </button>
+    </nav>
   );
 }

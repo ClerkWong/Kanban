@@ -7,6 +7,8 @@ import { handleProjectRequest, type ApiContext } from "./projects";
 import { handleReportRequest } from "./reports";
 import { AuthorizationError } from "./authorization";
 import { RequestError } from "./validation";
+import { handleAuthenticatedAuthRequest } from "./auth-routes";
+import { handleUserRequest } from "./users";
 
 type RouteContext = ApiContext;
 
@@ -15,6 +17,8 @@ type Route = {
   handle(context: RouteContext): Promise<Response | null>;
 };
 const ROUTES: readonly Route[] = [
+  { capability: "authenticated", handle: handleAuthenticatedAuthRequest },
+  { capability: "authenticated", handle: handleUserRequest },
   { capability: "authenticated", handle: handleMembershipRequest },
   { capability: "authenticated", handle: handleBoardRequest },
   { capability: "authenticated", handle: handleReportRequest },

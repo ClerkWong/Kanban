@@ -2,10 +2,12 @@ export function WorkspaceEntryNav({
   current,
   userName,
   showAdmin,
+  onSignOut,
 }: {
   current: "projects" | "admin";
   userName: string;
   showAdmin: boolean;
+  onSignOut: () => void;
 }) {
   return (
     <nav className="workspaceEntryNav" aria-label="工作區入口">
@@ -30,8 +32,8 @@ export function WorkspaceEntryNav({
         )}
       </div>
       <div className="workspaceIdentity">
-        <span>目前使用者</span>
-        <strong>{userName}</strong>
+        <div><span>目前使用者</span><strong>{userName}</strong></div>
+        <button type="button" onClick={onSignOut}>登出</button>
       </div>
     </nav>
   );
