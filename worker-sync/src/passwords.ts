@@ -1,7 +1,9 @@
 import { RequestError } from "./validation";
 
 export const PASSWORD_ALGORITHM = "PBKDF2-SHA512" as const;
-export const PASSWORD_ITERATIONS = 210_000;
+// Cloudflare Workers Web Crypto currently caps PBKDF2 at 100,000 iterations.
+// Keep this centralized so credentials can be upgraded when the runtime ceiling changes.
+export const PASSWORD_ITERATIONS = 100_000;
 const PASSWORD_MIN_LENGTH = 12;
 const PASSWORD_MAX_LENGTH = 128;
 

@@ -13,8 +13,9 @@
 
 ## 驗證與工作階段
 
-- 密碼以 Web Crypto `PBKDF2-SHA512`、每帳號獨立 16-byte salt 與 210,000 iterations
-  衍生；D1 不保存明文密碼。
+- 密碼以 Web Crypto `PBKDF2-SHA512`、每帳號獨立 16-byte salt 與 Workers runtime
+  目前支援上限 100,000 iterations 衍生；D1 不保存明文密碼。iteration 數集中保存，
+  後續可隨 runtime 上限提升進行 credential upgrade。
 - 登入成功核發 256-bit 隨機 session token；D1 只保存 SHA-256 hash，預設 30 日到期。
 - 登出、停用帳號與管理者重設密碼都會撤銷相關 session；停用帳號也撤銷 personal token。
 - 登入錯誤不區分帳號不存在、停用或密碼錯誤；依 email + client IP 做 15 分鐘失敗限制。
