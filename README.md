@@ -1,4 +1,4 @@
-# 本機 Kanban
+# 定恆人工智能
 
 離線優先的繁體中文 Kanban。Web/PWA 與 Capacitor iOS、Android 共用同一套
 React 看板介面；資料先寫入裝置，使用者可選擇連接 Cloudflare Worker，將看板存入

@@ -1,6 +1,6 @@
 {
-  "name": "本機 Kanban 看板",
-  "short_name": "Kanban",
+  "name": "定恆人工智能",
+  "short_name": "定恆人工智能",
   "description": "離線可用、本機優先，並可選擇跨裝置同步的 Kanban PWA。",
   "lang": "zh-Hant",
   "start_url": "/",

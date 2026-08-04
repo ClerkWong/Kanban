@@ -33,7 +33,7 @@ export async function generateMetadata(): Promise<Metadata> {
           url: "/og.png",
           width: 1200,
           height: 630,
-          alt: "本機 Kanban：離線優先、選用同步",
+          alt: "定恆人工智能：離線優先、選用同步",
         },
       ],
     },

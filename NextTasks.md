@@ -120,7 +120,7 @@
 Sites beta v3 已從 `d43eb3f` 發布，保留 owner-only custom access。驗證結果：
 
 - [x] `/`、`/privacy`、`/support` 都回 200。
-- [x] `/app-config.json` 回 200，提供目前客製 title `本機 Kanban 看板`。
+- [x] `/app-config.json` 回 200，提供目前客製 title `定恆人工智能`。
 - [x] 發布後 10 分鐘內 Sites Worker error log 無事件。
 - [x] personal token 首次連線不再依賴 legacy `/board`。
 - [ ] 由瀏覽器人工確認：輸入 staging URL 與 personal token 後，重新載入並進入

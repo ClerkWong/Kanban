@@ -3,14 +3,14 @@ import Link from "next/link";
 import { SupportContent } from "../components/legal/SupportContent";
 
 export const metadata: Metadata = {
-  title: "支援｜本機 Kanban",
-  description: "本機 Kanban 的同步、離線與權限問題排解方式。",
+  title: "支援｜定恆人工智能",
+  description: "定恆人工智能的同步、離線與權限問題排解方式。",
 };
 
 export default function SupportPage() {
   return (
     <main className="legalPage">
-      <p className="eyebrow">本機 Kanban</p>
+      <p className="eyebrow">定恆人工智能</p>
       <h1>支援</h1>
       <SupportContent />
 

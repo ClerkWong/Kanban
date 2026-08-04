@@ -46,7 +46,7 @@ export function MobileApp() {
           >
             <header className="modalHeader">
               <div>
-                <p className="eyebrow">本機 Kanban · 1.1.0</p>
+                <p className="eyebrow">定恆人工智能 · 1.1.0</p>
                 <h2 id="mobile-info-title">
                   {panel === "privacy" ? "隱私說明" : "支援"}
                 </h2>

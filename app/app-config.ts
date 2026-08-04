@@ -6,7 +6,7 @@ export interface AppConfig {
 }
 
 export const DEFAULT_APP_CONFIG: AppConfig = {
-  title: "覓夜",
+  title: "定恆人工智能",
   syncServerUrl: "",
 };
 
