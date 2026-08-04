@@ -753,15 +753,21 @@ textarea {
   }
 
   .board {
-    grid-auto-columns: minmax(318px, calc(100vw - 24px));
+    width: 100%;
+    grid-auto-columns: 100%;
     grid-auto-flow: column;
     grid-template-columns: none;
     min-height: 620px;
+    scroll-padding-inline: 0;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
   }
 
   .column {
-    min-width: 318px;
+    width: 100%;
+    min-width: 0;
     max-height: none;
+    scroll-snap-stop: always;
   }
 
   .formGrid {
