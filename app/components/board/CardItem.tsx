@@ -92,6 +92,13 @@ export function CardItem({
         <span>{card.title}</span>
       </button>
 
+      {card.blocked && (
+        <div className="blockedBanner">
+          <strong>卡住</strong>
+          <span>{card.blockedReason}</span>
+        </div>
+      )}
+
       {card.description && <p className="cardDescription">{card.description}</p>}
 
       <div className="labelRow" aria-label="標籤">
@@ -115,6 +122,11 @@ export function CardItem({
           <span>成員：{card.members.join("、")}</span>
         )}
         {assignees.length > 0 && <span>負責人：{assignees.join("、")}</span>}
+        {card.blockedAt && (
+          <span className="blockedSince">
+            卡住時間：{new Date(card.blockedAt).toLocaleString("zh-TW")}
+          </span>
+        )}
         {assigneeNames !== undefined && card.members.length > 0 && (
           <span>舊版成員：{card.members.join("、")}</span>
         )}

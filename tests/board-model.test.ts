@@ -73,7 +73,14 @@ test("WIP warnings come from canonical unfiltered state", () => {
   const canonicalDoing = moved.columns.find((column) => column.id === "doing");
   const filtered = filterCards(
     moved,
-    { query: "不存在", labelId: "", priority: "all", due: "all" },
+    {
+      query: "不存在",
+      labelId: "",
+      priority: "all",
+      due: "all",
+      assigneeUserId: "",
+      blocked: "all",
+    },
     "2026-07-10",
   );
 
@@ -114,6 +121,50 @@ test("multiple canonical Project assignees are deduplicated and survive reload",
   assert.deepEqual(parsed.board.cards["card-assigned"].assigneeUserIds, ["user-b", "user-c"]);
 });
 
+test("assignee and blocked filters compose without changing canonical order", () => {
+  const board = createDemoBoard(new Date(2026, 6, 10));
+  const assigned = updateCard(board, "card-roadmap", {
+    assigneeUserIds: ["user-a", "user-b"],
+    blocked: true,
+    blockedReason: "等待 API 權限",
+  }, new Date("2026-07-10T09:00:00.000Z"));
+  const filtered = filterCards(assigned, {
+    query: "",
+    labelId: "",
+    priority: "all",
+    due: "all",
+    assigneeUserId: "user-b",
+    blocked: "blocked",
+  }, "2026-07-10");
+
+  assert.deepEqual(filtered.todo.map((card) => card.id), ["card-roadmap"]);
+  assert.deepEqual(
+    assigned.columns.find((column) => column.id === "todo")?.cardIds,
+    board.columns.find((column) => column.id === "todo")?.cardIds,
+  );
+});
+
+test("blocked transition records its first timestamp and clearing removes blocker details", () => {
+  const board = createDemoBoard(new Date(2026, 6, 10));
+  const blocked = updateCard(board, "card-roadmap", {
+    blocked: true,
+    blockedReason: " 等待客戶回覆 ",
+  }, new Date("2026-07-10T09:00:00.000Z"));
+  const reasonEdited = updateCard(blocked, "card-roadmap", {
+    blockedReason: "等待客戶與法務確認",
+  }, new Date("2026-07-11T09:00:00.000Z"));
+  const cleared = updateCard(reasonEdited, "card-roadmap", {
+    blocked: false,
+  }, new Date("2026-07-12T09:00:00.000Z"));
+
+  assert.equal(blocked.cards["card-roadmap"].blockedReason, "等待客戶回覆");
+  assert.equal(blocked.cards["card-roadmap"].blockedAt, "2026-07-10T09:00:00.000Z");
+  assert.equal(reasonEdited.cards["card-roadmap"].blockedAt, "2026-07-10T09:00:00.000Z");
+  assert.equal(cleared.cards["card-roadmap"].blocked, false);
+  assert.equal(cleared.cards["card-roadmap"].blockedReason, "");
+  assert.equal(cleared.cards["card-roadmap"].blockedAt, null);
+});
+
 test("v4 boards gain an empty assignee list without rewriting completion history", () => {
   const board = createDemoBoard(new Date(2026, 6, 10));
   const completed = board.cards["card-done"];
@@ -133,12 +184,33 @@ test("v4 boards gain an empty assignee list without rewriting completion history
 
   const parsed = parsePersistedBoard(legacy);
 
-  assert.equal(parsed.board.version, 5);
+  assert.equal(parsed.board.version, 6);
   assert.deepEqual(parsed.board.cards["card-done"].assigneeUserIds, []);
   assert.equal(
     parsed.board.cards["card-done"].completedAt,
     "2026-06-15T10:00:00.000Z",
   );
+});
+
+test("v5 boards gain clear blocker fields and migrate to schema v6", () => {
+  const board = createDemoBoard(new Date(2026, 6, 10));
+  const legacy = JSON.parse(serializeBoard(board));
+  legacy.version = 5;
+  for (const card of Object.values(legacy.cards) as Array<Record<string, unknown>>) {
+    delete card.blocked;
+    delete card.blockedReason;
+    delete card.blockedAt;
+  }
+
+  const parsed = parsePersistedBoard(JSON.stringify(legacy));
+
+  assert.equal(parsed.error, null);
+  assert.equal(parsed.board.version, 6);
+  for (const card of Object.values(parsed.board.cards)) {
+    assert.equal(card.blocked, false);
+    assert.equal(card.blockedReason, "");
+    assert.equal(card.blockedAt, null);
+  }
 });
 
 test("malformed persisted state is recovered instead of crashing", () => {
@@ -210,6 +282,9 @@ describe("getMonthlyCompletionStats", () => {
       dueDate: "",
       checklist: [],
       assigneeUserIds: [],
+      blocked: false,
+      blockedReason: "",
+      blockedAt: null,
       members: [],
       attachments: [],
       createdAt: updatedAt,

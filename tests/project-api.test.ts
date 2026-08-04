@@ -91,7 +91,7 @@ test("Board v2 fetch/push requires context and uses the nested content path", as
   try {
     const remote = await fetchRemoteBoard(config, context);
     assert.equal(remote.revision, 3);
-    assert.equal(remote.board.version, 5);
+    assert.equal(remote.board.version, 6);
 
     const conflict = await pushRemoteBoard(config, context, 3, board);
     assert.equal(conflict.kind, "conflict");

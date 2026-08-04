@@ -15,6 +15,8 @@ test("createDraft 以空白欄位與中優先級起始", () => {
   assert.equal(draft.priority, "medium");
   assert.deepEqual(draft.labelIds, []);
   assert.deepEqual(draft.assigneeUserIds, []);
+  assert.equal(draft.blocked, false);
+  assert.equal(draft.blockedReason, "");
   assert.deepEqual(draft.checklist, []);
   assert.deepEqual(draft.attachments, []);
 });
@@ -39,6 +41,22 @@ test("draftFromCard 複製欄位並以逗號串接成員、深拷貝清單", () 
   const draftWithRef = draftFromCard(boardWithRef.cards[card.id]);
   assert.equal(draftWithRef.attachments.length, 1);
   assert.notEqual(draftWithRef.attachments, boardWithRef.cards[card.id].attachments);
+});
+
+test("draftToCardInput only preserves a blocker reason while blocked", () => {
+  const blocked = draftToCardInput({
+    ...createDraft(),
+    blocked: true,
+    blockedReason: " 等待法務確認 ",
+  });
+  const clear = draftToCardInput({
+    ...createDraft(),
+    blocked: false,
+    blockedReason: "不應保存",
+  });
+
+  assert.equal(blocked.blockedReason, "等待法務確認");
+  assert.equal(clear.blockedReason, "");
 });
 
 test("draftToCardInput 修剪成員字串並剔除空項", () => {

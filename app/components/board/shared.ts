@@ -19,6 +19,8 @@ export type CardDraft = {
   labelIds: string[];
   dueDate: string;
   assigneeUserIds: string[];
+  blocked: boolean;
+  blockedReason: string;
   members: string;
   checklist: ChecklistItem[];
   attachments: AttachmentRef[];
@@ -38,6 +40,8 @@ export const emptyFilters: Filters = {
   labelId: "",
   priority: "all",
   due: "all",
+  assigneeUserId: "",
+  blocked: "all",
 };
 
 export const priorityText: Record<Priority, string> = {
@@ -54,6 +58,8 @@ export function createDraft(): CardDraft {
     labelIds: [],
     dueDate: "",
     assigneeUserIds: [],
+    blocked: false,
+    blockedReason: "",
     members: "",
     checklist: [],
     attachments: [],
@@ -68,6 +74,8 @@ export function draftFromCard(card: Card): CardDraft {
     labelIds: [...card.labelIds],
     dueDate: card.dueDate,
     assigneeUserIds: [...card.assigneeUserIds],
+    blocked: card.blocked,
+    blockedReason: card.blockedReason,
     members: card.members.join(", "),
     checklist: card.checklist.map((item) => ({ ...item })),
     attachments: card.attachments.map((ref) => ({ ...ref })),
@@ -82,6 +90,8 @@ export function draftToCardInput(draft: CardDraft) {
     labelIds: draft.labelIds,
     dueDate: draft.dueDate,
     assigneeUserIds: [...new Set(draft.assigneeUserIds)],
+    blocked: draft.blocked,
+    blockedReason: draft.blocked ? draft.blockedReason.trim() : "",
     members: draft.members
       .split(",")
       .map((member) => member.trim())

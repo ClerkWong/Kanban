@@ -174,7 +174,7 @@ textarea:focus-visible,
 
 .toolBand {
   display: grid;
-  grid-template-columns: minmax(220px, 1.6fr) minmax(128px, 0.65fr) minmax(128px, 0.65fr) minmax(128px, 0.65fr) auto auto;
+  grid-template-columns: minmax(220px, 2fr) repeat(5, minmax(118px, 1fr)) repeat(3, auto);
   gap: 10px;
   align-items: end;
   max-width: 1560px;
@@ -256,6 +256,26 @@ textarea {
 .dangerButton {
   background: var(--rose);
   color: white;
+}
+
+.filterToggle {
+  min-height: 44px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  background: var(--paper-strong);
+  color: var(--teal-strong);
+  font-weight: 900;
+}
+
+.filterToggle.active {
+  border-color: var(--teal);
+  background: #e8f6f2;
+}
+
+.filterToggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .secondaryButton:hover,
@@ -415,6 +435,55 @@ textarea {
   line-height: 1.45;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+}
+
+.blockedBanner {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid #e0a7b1;
+  border-radius: var(--radius);
+  background: #fff1f3;
+  color: #8f1d36;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.blockedBanner strong {
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+}
+
+.blockedBanner span {
+  overflow-wrap: anywhere;
+}
+
+.blockedSince {
+  color: var(--rose);
+  font-weight: 800;
+}
+
+.blockerFields {
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.blockerFields.active {
+  border-color: #e0a7b1;
+  background: #fff7f8;
+}
+
+.blockedToggle {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.blockedToggle input {
+  width: 22px;
+  min-height: 22px;
+  margin: 0;
 }
 
 .labelRow {

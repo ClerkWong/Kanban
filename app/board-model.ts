@@ -1,4 +1,4 @@
-export const BOARD_SCHEMA_VERSION = 5;
+export const BOARD_SCHEMA_VERSION = 6;
 
 export type Priority = "low" | "medium" | "high";
 export type DueFilter = "all" | "overdue" | "today" | "upcoming" | "none";
@@ -30,6 +30,9 @@ export type Card = {
   checklist: ChecklistItem[];
   /** Canonical Project user IDs assigned to this task. Multiple assignees are allowed. */
   assigneeUserIds: string[];
+  blocked: boolean;
+  blockedReason: string;
+  blockedAt: string | null;
   /** Legacy free-text labels retained for v1–v4 compatibility; never used for authorization. */
   members: string[];
   attachments: AttachmentRef[];
@@ -65,7 +68,11 @@ export type Filters = {
   labelId: string;
   priority: "all" | Priority;
   due: DueFilter;
+  assigneeUserId: string;
+  blocked: "all" | "blocked" | "unblocked";
 };
+
+export const UNASSIGNED_FILTER_VALUE = "__unassigned__";
 
 export type BoardStats = {
   total: number;
@@ -256,7 +263,9 @@ export function isFilterActive(filters: Filters): boolean {
     filters.query.trim() ||
       filters.labelId ||
       filters.priority !== "all" ||
-      filters.due !== "all",
+      filters.due !== "all" ||
+      filters.assigneeUserId ||
+      filters.blocked !== "all",
   );
 }
 
@@ -321,8 +330,17 @@ export function filterCards(
         const priorityMatches =
           filters.priority === "all" || card.priority === filters.priority;
         const dueMatches = matchesDueFilter(card, filters.due, today, doneIds);
+        const assigneeMatches =
+          !filters.assigneeUserId ||
+          (filters.assigneeUserId === UNASSIGNED_FILTER_VALUE
+            ? card.assigneeUserIds.length === 0
+            : card.assigneeUserIds.includes(filters.assigneeUserId));
+        const blockedMatches =
+          filters.blocked === "all" ||
+          (filters.blocked === "blocked" ? card.blocked : !card.blocked);
 
-        return textMatches && labelMatches && priorityMatches && dueMatches;
+        return textMatches && labelMatches && priorityMatches && dueMatches &&
+          assigneeMatches && blockedMatches;
       });
   }
 
@@ -333,9 +351,12 @@ export function addCard(
   board: BoardState,
   columnId: string,
   input: Partial<Card> & Pick<Card, "title">,
+  now = new Date(),
 ): BoardState {
   const id = input.id ?? makeId("card");
-  const now = new Date().toISOString();
+  const timestamp = normalizeTimestamp(now) ?? new Date().toISOString();
+  const blockedReason = normalizeBlockedReason(input.blockedReason);
+  const blocked = Boolean(input.blocked && blockedReason);
   const card: Card = {
     id,
     title: input.title.trim(),
@@ -345,13 +366,16 @@ export function addCard(
     dueDate: normalizeDateOnly(input.dueDate ?? ""),
     checklist: normalizeChecklist(input.checklist ?? []),
     assigneeUserIds: uniqueStrings(input.assigneeUserIds ?? []),
+    blocked,
+    blockedReason: blocked ? blockedReason : "",
+    blockedAt: blocked ? normalizeTimestamp(input.blockedAt) ?? timestamp : null,
     members: uniqueStrings(input.members ?? []),
     attachments: normalizeAttachments(input.attachments ?? []),
-    createdAt: input.createdAt ?? now,
-    updatedAt: now,
+    createdAt: input.createdAt ?? timestamp,
+    updatedAt: timestamp,
     completedAt:
       columnId === DONE_COLUMN_ID
-        ? normalizeTimestamp(input.completedAt) ?? now
+        ? normalizeTimestamp(input.completedAt) ?? timestamp
         : null,
   };
 
@@ -371,13 +395,14 @@ export function addCard(
       ? { ...column, cardIds: [...column.cardIds, id] }
       : column,
   );
-  return normalizeBoard(touch(next));
+  return normalizeBoard(touch(next, now));
 }
 
 export function updateCard(
   board: BoardState,
   cardId: string,
   patch: Partial<Omit<Card, "id" | "createdAt">>,
+  now = new Date(),
 ): BoardState {
   const existing = board.cards[cardId];
   if (!existing) {
@@ -390,6 +415,11 @@ export function updateCard(
   }
 
   const next = cloneBoard(board);
+  const timestamp = normalizeTimestamp(now) ?? new Date().toISOString();
+  const blockedReason = normalizeBlockedReason(
+    patch.blockedReason ?? existing.blockedReason,
+  );
+  const blocked = Boolean((patch.blocked ?? existing.blocked) && blockedReason);
   next.cards[cardId] = {
     ...existing,
     ...patch,
@@ -400,12 +430,19 @@ export function updateCard(
     assigneeUserIds: uniqueStrings(
       patch.assigneeUserIds ?? existing.assigneeUserIds,
     ),
+    blocked,
+    blockedReason: blocked ? blockedReason : "",
+    blockedAt: blocked
+      ? existing.blocked
+        ? existing.blockedAt ?? timestamp
+        : normalizeTimestamp(patch.blockedAt) ?? timestamp
+      : null,
     members: uniqueStrings(patch.members ?? existing.members),
     attachments: normalizeAttachments(patch.attachments ?? existing.attachments),
-    updatedAt: new Date().toISOString(),
+    updatedAt: timestamp,
   };
 
-  return normalizeBoard(touch(next));
+  return normalizeBoard(touch(next, now));
 }
 
 export function deleteCard(board: BoardState, cardId: string): BoardState {
@@ -556,6 +593,7 @@ export function parsePersistedBoard(raw: string | null): {
         version !== 2 &&
         version !== 3 &&
         version !== 4 &&
+        version !== 5 &&
         version !== BOARD_SCHEMA_VERSION)
     ) {
       return {
@@ -718,6 +756,9 @@ function createSeedCard(input: {
     labelIds: input.labelIds,
     dueDate: input.dueDate,
     assigneeUserIds: [],
+    blocked: false,
+    blockedReason: "",
+    blockedAt: null,
     members: input.members,
     attachments: [],
     checklist: input.checklist.map(([text, done], index) => ({
@@ -804,6 +845,10 @@ function normalizeCards(cards: Record<string, Card>): Record<string, Card> {
       continue;
     }
 
+    const blockedReason = normalizeBlockedReason(
+      (raw as { blockedReason?: unknown }).blockedReason,
+    );
+    const blocked = Boolean((raw as { blocked?: unknown }).blocked && blockedReason);
     normalized[cardId] = {
       id: cardId,
       title: raw.title.trim() || "未命名卡片",
@@ -817,6 +862,12 @@ function normalizeCards(cards: Record<string, Card>): Record<string, Card> {
           ? (raw as { assigneeUserIds: string[] }).assigneeUserIds
           : [],
       ),
+      blocked,
+      blockedReason: blocked ? blockedReason : "",
+      blockedAt: blocked
+        ? normalizeTimestamp((raw as { blockedAt?: unknown }).blockedAt) ??
+          normalizeTimestamp(raw.updatedAt)
+        : null,
       members: uniqueStrings(Array.isArray(raw.members) ? raw.members : []),
       attachments: normalizeAttachments((raw as { attachments?: unknown }).attachments),
       createdAt:
@@ -898,6 +949,10 @@ function normalizeDateOnly(value: unknown): string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
     ? value
     : "";
+}
+
+function normalizeBlockedReason(value: unknown): string {
+  return typeof value === "string" ? value.trim().slice(0, 500) : "";
 }
 
 function normalizeWipLimit(value: unknown): number | null {

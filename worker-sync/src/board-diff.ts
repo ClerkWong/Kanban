@@ -21,6 +21,9 @@ export type CardField =
   | "dueDate"
   | "checklist"
   | "assigneeUserIds"
+  | "blocked"
+  | "blockedReason"
+  | "blockedAt"
   | "members"
   | "completedAt";
 
@@ -38,6 +41,9 @@ export type CardSnapshot = {
   dueDate: string;
   checklist: unknown[];
   assigneeUserIds: unknown[];
+  blocked: boolean;
+  blockedReason: string;
+  blockedAt: string | null;
   members: unknown[];
   attachments: AttachmentSnapshot[];
   completedAt: string | null;
@@ -125,6 +131,9 @@ export function parseBoardSnapshot(value: unknown): BoardSnapshot | null {
       dueDate: typeof card.dueDate === "string" ? card.dueDate : "",
       checklist: safeArray(card.checklist),
       assigneeUserIds: safeArray(card.assigneeUserIds),
+      blocked: card.blocked === true,
+      blockedReason: typeof card.blockedReason === "string" ? card.blockedReason : "",
+      blockedAt: typeof card.blockedAt === "string" ? card.blockedAt : null,
       members: safeArray(card.members),
       attachments: parseAttachments(card.attachments),
       completedAt: typeof card.completedAt === "string" ? card.completedAt : null,
@@ -169,6 +178,9 @@ function changedFields(before: CardSnapshot, after: CardSnapshot): CardField[] {
   if (!sameValue(before.assigneeUserIds, after.assigneeUserIds)) {
     fields.push("assigneeUserIds");
   }
+  if (before.blocked !== after.blocked) fields.push("blocked");
+  if (before.blockedReason !== after.blockedReason) fields.push("blockedReason");
+  if (before.blockedAt !== after.blockedAt) fields.push("blockedAt");
   if (!sameValue(before.members, after.members)) fields.push("members");
   if (
     before.completedAt !== after.completedAt &&

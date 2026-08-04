@@ -11,6 +11,9 @@ type TestCard = {
   dueDate: string;
   checklist: Array<{ id: string; text: string; done: boolean }>;
   assigneeUserIds: string[];
+  blocked: boolean;
+  blockedReason: string;
+  blockedAt: string | null;
   members: string[];
   attachments: Array<Record<string, unknown>>;
   completedAt: string | null;
@@ -25,6 +28,9 @@ function card(overrides: Partial<TestCard> = {}): TestCard {
     dueDate: "",
     checklist: [],
     assigneeUserIds: [],
+    blocked: false,
+    blockedReason: "",
+    blockedAt: null,
     members: [],
     attachments: [],
     completedAt: null,
@@ -38,7 +44,7 @@ function board(
   done: string[],
 ): Record<string, unknown> {
   return {
-    version: 5,
+    version: 6,
     columns: [
       { id: "todo", cardIds: todo },
       { id: "done", cardIds: done },
@@ -147,4 +153,25 @@ test("records canonical multi-assignee changes without logging display names", (
     title: "Card",
     fields: ["assigneeUserIds"],
   }]);
+});
+
+test("records blocker field names without logging the private blocker reason", () => {
+  const before = board({ blocked: card() }, ["blocked"], []);
+  const after = board({
+    blocked: card({
+      blocked: true,
+      blockedReason: "客戶尚未提供 production secret",
+      blockedAt: "2026-08-04T09:00:00.000Z",
+    }),
+  }, ["blocked"], []);
+
+  const diff = diffBoardStates(before, after);
+
+  assert.deepEqual(diff.changes, [{
+    kind: "card.updated",
+    cardId: "blocked",
+    title: "Card",
+    fields: ["blocked", "blockedReason", "blockedAt"],
+  }]);
+  assert.equal(JSON.stringify(diff).includes("production secret"), false);
 });

@@ -116,6 +116,41 @@ export function DetailModal({
             </label>
           </div>
 
+          <fieldset className={`fieldGroup blockerFields ${draft.blocked ? "active" : ""}`}>
+            <legend>流動狀態</legend>
+            <label className="blockedToggle">
+              <input
+                type="checkbox"
+                checked={draft.blocked}
+                onChange={(event) => setDraft({
+                  blocked: event.target.checked,
+                  blockedReason: event.target.checked ? draft.blockedReason : "",
+                })}
+              />
+              <span>此任務目前卡住</span>
+            </label>
+            {draft.blocked && (
+              <label className="formField" htmlFor="blockedReason">
+                <span>卡住原因</span>
+                <textarea
+                  id="blockedReason"
+                  aria-describedby="blockedReasonHint"
+                  rows={3}
+                  maxLength={500}
+                  required
+                  value={draft.blockedReason}
+                  placeholder="例如：等待客戶確認 API 權限"
+                  onChange={(event) => setDraft({ blockedReason: event.target.value })}
+                />
+              </label>
+            )}
+            {draft.blocked && (
+              <small id="blockedReasonHint" className="fieldHint">
+                解除卡住時，原因與卡住時間會一併清除。
+              </small>
+            )}
+          </fieldset>
+
           <fieldset className="fieldGroup">
             <legend>標籤</legend>
             <div className="checkboxGrid">

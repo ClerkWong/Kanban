@@ -3,6 +3,7 @@
 import {
   type Filters,
   STORAGE_KEY,
+  UNASSIGNED_FILTER_VALUE,
   addCard,
   createDemoBoard,
   deleteCard,
@@ -378,6 +379,10 @@ function BoardSurface({
       setLiveMessage("標題不可為空白，請輸入標題後再儲存。");
       return;
     }
+    if (input.blocked && !input.blockedReason) {
+      setLiveMessage("請填寫卡住原因後再儲存。");
+      return;
+    }
 
     const { added, removed } = diffAttachmentRefs(detailOriginalAttachments(detail), detail.draft.attachments);
     if (detail.mode === "edit") {
@@ -475,6 +480,8 @@ function BoardSurface({
 
   const noVisibleCards =
     board.columns.reduce((count, column) => count + visibleCards[column.id].length, 0) === 0;
+  const currentUserId = sync.session?.user.id ?? "";
+  const onlyMeActive = Boolean(currentUserId && filters.assigneeUserId === currentUserId);
 
   return (
     <main className="appShell">
@@ -571,9 +578,52 @@ function BoardSurface({
             <option value="none">未設定</option>
           </select>
         </label>
+        {projectMembers !== undefined && (
+          <label>
+            <span>負責人</span>
+            <select
+              value={filters.assigneeUserId}
+              onChange={(event) => setFilters({ ...filters, assigneeUserId: event.target.value })}
+            >
+              <option value="">全部</option>
+              <option value={UNASSIGNED_FILTER_VALUE}>未指派</option>
+              {projectMembers.map((member) => (
+                <option value={member.userId} key={member.userId}>{member.displayName}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label>
+          <span>流動狀態</span>
+          <select
+            value={filters.blocked}
+            onChange={(event) => setFilters({
+              ...filters,
+              blocked: event.target.value as Filters["blocked"],
+            })}
+          >
+            <option value="all">全部</option>
+            <option value="blocked">已卡住</option>
+            <option value="unblocked">未卡住</option>
+          </select>
+        </label>
         <button type="button" className="secondaryButton" onClick={() => setFilters(emptyFilters)}>
           清除
         </button>
+        {projectMembers !== undefined && (
+          <button
+            type="button"
+            className={onlyMeActive ? "filterToggle active" : "filterToggle"}
+            aria-pressed={onlyMeActive}
+            disabled={!currentUserId}
+            onClick={() => setFilters({
+              ...filters,
+              assigneeUserId: onlyMeActive ? "" : currentUserId,
+            })}
+          >
+            {onlyMeActive ? "取消只看我" : "只看我"}
+          </button>
+        )}
         {access.canEdit && (
           <button type="button" className="dangerGhost" onClick={() => setConfirmAction({ type: "reset" })}>
             重設示範資料
