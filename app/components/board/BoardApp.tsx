@@ -2,11 +2,16 @@
 
 import {
   type Filters,
+  COLUMN_TITLE_MAX_LENGTH,
+  DONE_COLUMN_ID,
+  MAX_BOARD_COLUMNS,
   STORAGE_KEY,
   UNASSIGNED_FILTER_VALUE,
   addCard,
+  addColumn,
   createDemoBoard,
   deleteCard,
+  deleteColumn,
   diffAttachmentRefs,
   filterCards,
   getBoardStats,
@@ -17,16 +22,22 @@ import {
   makeId,
   moveCard,
   moveCardRelative,
+  moveColumnRelative,
   parsePersistedBoard,
   serializeBoard,
   toggleChecklistItem,
+  updateColumnTitle,
   updateCard,
   updateWipLimit,
+  validateColumnDeletion,
+  validateColumnTitle,
+  validateNewColumnTitle,
   type AttachmentRef,
   type BoardState,
 } from "../../board-model";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  CSSProperties,
   Dispatch,
   FormEvent,
   ReactNode,
@@ -56,6 +67,7 @@ import {
   emptyFilters,
   findNearestFocus,
   getBoardOverlayKey,
+  isImeComposing,
   locateCard,
 } from "./shared";
 import { bundledAppConfig, loadAppConfig } from "../../app-config";
@@ -133,7 +145,12 @@ function LegacyBoardApp({
       setBoard={setBoard}
       sync={sync}
       storageMessage={storageMessage}
-      access={{ canEdit: true, canWriteAttachments: true, readOnlyReason: null }}
+      access={{
+        canEdit: true,
+        canConfigureWorkflow: true,
+        canWriteAttachments: true,
+        readOnlyReason: null,
+      }}
       enableServiceWorker={enableServiceWorker}
       appConfigUrl={appConfigUrl}
       showSyncSettings
@@ -144,7 +161,12 @@ function LegacyBoardApp({
 function ScopedBoardApp({
   context,
   projectName,
-  access = { canEdit: false, canWriteAttachments: false, readOnlyReason: "唯讀模式。" },
+  access = {
+    canEdit: false,
+    canConfigureWorkflow: false,
+    canWriteAttachments: false,
+    readOnlyReason: "唯讀模式。",
+  },
   navigation,
   projectMembers,
   enableServiceWorker,
@@ -221,6 +243,16 @@ function BoardSurface({
   const [restoreFocusId, setRestoreFocusId] = useState<string | null>(null);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [columnEditor, setColumnEditor] = useState<{
+    columnId: string;
+    title: string;
+    error: string;
+  } | null>(null);
+  const [newColumnEditor, setNewColumnEditor] = useState<{
+    title: string;
+    wipLimit: number;
+    error: string;
+  } | null>(null);
   const cardRefs = useRef(new Map<string, HTMLButtonElement>());
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -488,6 +520,99 @@ function BoardSurface({
     setDraggedCardId(null);
   }
 
+  function startColumnRename(columnId: string, title: string) {
+    setColumnEditor({ columnId, title, error: "" });
+  }
+
+  function saveColumnTitle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!columnEditor || !access.canConfigureWorkflow) return;
+    const validationError = validateColumnTitle(
+      board,
+      columnEditor.columnId,
+      columnEditor.title,
+    );
+    if (validationError) {
+      const errorText = {
+        missing: "找不到這個欄位，請重新整理後再試。",
+        empty: "欄位名稱不可空白。",
+        too_long: `欄位名稱不可超過 ${COLUMN_TITLE_MAX_LENGTH} 個字元。`,
+        duplicate: "欄位名稱不可與其他欄位重複。",
+      }[validationError];
+      setColumnEditor({ ...columnEditor, error: errorText });
+      return;
+    }
+    const previousTitle = board.columns.find(
+      (column) => column.id === columnEditor.columnId,
+    )?.title;
+    const nextTitle = columnEditor.title.trim();
+    setBoard((current) => updateColumnTitle(
+      current,
+      columnEditor.columnId,
+      nextTitle,
+    ));
+    setColumnEditor(null);
+    if (previousTitle !== nextTitle) {
+      setLiveMessage(`已將欄位「${previousTitle ?? "未命名"}」改名為「${nextTitle}」。`);
+    }
+  }
+
+  function saveNewColumn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!newColumnEditor || !access.canConfigureWorkflow) return;
+    const validationError = validateNewColumnTitle(board, newColumnEditor.title);
+    if (validationError) {
+      const errorText = {
+        missing: "無法建立欄位，請重新整理後再試。",
+        empty: "欄位名稱不可空白。",
+        too_long: `欄位名稱不可超過 ${COLUMN_TITLE_MAX_LENGTH} 個字元。`,
+        duplicate: "欄位名稱不可與其他欄位重複。",
+        max_columns: `每個看板最多 ${MAX_BOARD_COLUMNS} 個欄位。`,
+      }[validationError];
+      setNewColumnEditor({ ...newColumnEditor, error: errorText });
+      return;
+    }
+    const title = newColumnEditor.title.trim();
+    setBoard((current) => addColumn(current, {
+      title,
+      wipLimit: newColumnEditor.wipLimit,
+    }));
+    setNewColumnEditor(null);
+    setLiveMessage(`已新增欄位「${title}」。`);
+  }
+
+  function moveWorkflowColumn(columnId: string, direction: "left" | "right") {
+    if (!access.canConfigureWorkflow) return;
+    const column = board.columns.find((candidate) => candidate.id === columnId);
+    if (!column) return;
+    setBoard((current) => moveColumnRelative(current, columnId, direction));
+    setLiveMessage(`已將欄位「${column.title}」向${direction === "left" ? "左" : "右"}移動。`);
+  }
+
+  function requestDeleteColumn(columnId: string, title: string) {
+    if (!access.canConfigureWorkflow) return;
+    const validationError = validateColumnDeletion(board, columnId);
+    if (validationError) {
+      const message = {
+        missing: "找不到這個欄位，請重新整理後再試。",
+        done: "完成狀態欄位不可刪除。",
+        not_empty: "欄位內仍有任務，請先移到其他欄位。",
+        minimum_columns: "看板至少需要一個工作欄位與一個完成欄位。",
+      }[validationError];
+      setLiveMessage(message);
+      return;
+    }
+    setConfirmAction({ type: "deleteColumn", columnId, title });
+  }
+
+  function confirmDeleteColumn(columnId: string) {
+    if (!access.canConfigureWorkflow) return;
+    const title = board.columns.find((column) => column.id === columnId)?.title ?? "欄位";
+    setBoard((current) => deleteColumn(current, columnId));
+    setConfirmAction(null);
+    setLiveMessage(`已刪除空欄位「${title}」。`);
+  }
+
   const noVisibleCards =
     board.columns.reduce((count, column) => count + visibleCards[column.id].length, 0) === 0;
   const currentUserId = sync.session?.user.id ?? "";
@@ -680,10 +805,72 @@ function BoardSurface({
         {liveMessage}
       </p>
 
-      <section className="board" aria-label="Kanban 看板">
-        {board.columns.map((column) => {
+      {access.canConfigureWorkflow && (
+        <section className="workflowToolbar" aria-label="工作流欄位管理">
+          <div>
+            <strong>工作流欄位</strong>
+            <span>{board.columns.length}/{MAX_BOARD_COLUMNS} 欄</span>
+          </div>
+          {newColumnEditor ? (
+            <form className="newColumnForm" onSubmit={saveNewColumn}>
+              <label>
+                <span>欄位名稱</span>
+                <input
+                  autoFocus
+                  maxLength={COLUMN_TITLE_MAX_LENGTH}
+                  value={newColumnEditor.title}
+                  onChange={(event) => setNewColumnEditor({
+                    ...newColumnEditor,
+                    title: event.target.value,
+                    error: "",
+                  })}
+                  onKeyDown={(event) => {
+                    if (isImeComposing(event.nativeEvent)) return;
+                    if (event.key === "Escape") setNewColumnEditor(null);
+                  }}
+                />
+              </label>
+              <label className="newColumnWip">
+                <span>WIP 上限</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="99"
+                  value={newColumnEditor.wipLimit}
+                  onChange={(event) => setNewColumnEditor({
+                    ...newColumnEditor,
+                    wipLimit: Math.min(99, Math.max(1, Number(event.target.value) || 1)),
+                    error: "",
+                  })}
+                />
+              </label>
+              <button type="submit">建立欄位</button>
+              <button type="button" className="secondaryButton" onClick={() => setNewColumnEditor(null)}>
+                取消
+              </button>
+              {newColumnEditor.error && <small role="alert">{newColumnEditor.error}</small>}
+            </form>
+          ) : (
+            <button
+              type="button"
+              disabled={board.columns.length >= MAX_BOARD_COLUMNS}
+              onClick={() => setNewColumnEditor({ title: "", wipLimit: 3, error: "" })}
+            >
+              ＋ 新增欄位
+            </button>
+          )}
+        </section>
+      )}
+
+      <section
+        className="board"
+        aria-label="Kanban 看板"
+        style={{ "--column-count": board.columns.length } as CSSProperties}
+      >
+        {board.columns.map((column, columnIndex) => {
           const wip = getColumnWip(column);
           const cards = visibleCards[column.id];
+          const deletionError = validateColumnDeletion(board, column.id);
 
           return (
             <article
@@ -696,11 +883,69 @@ function BoardSurface({
               }}
               onDrop={() => dropCard(column.id, column.cardIds.length)}
             >
-              <header className="columnHeader">
+              <header
+                className={`columnHeader ${
+                  columnEditor?.columnId === column.id ? "columnTitleEditing" : ""
+                }`}
+              >
                 <div>
-                  <h2>{column.title}</h2>
+                  {columnEditor?.columnId === column.id ? (
+                    <form className="columnTitleEditor" onSubmit={saveColumnTitle}>
+                      <input
+                        aria-label="欄位名稱"
+                        autoFocus
+                        maxLength={COLUMN_TITLE_MAX_LENGTH}
+                        value={columnEditor.title}
+                        onChange={(event) => setColumnEditor({
+                          ...columnEditor,
+                          title: event.target.value,
+                          error: "",
+                        })}
+                        onKeyDown={(event) => {
+                          if (isImeComposing(event.nativeEvent)) return;
+                          if (event.key === "Escape") {
+                            setColumnEditor(null);
+                          }
+                        }}
+                      />
+                      <button type="submit" className="iconOnly" aria-label="儲存欄位名稱">
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        className="iconOnly"
+                        aria-label="取消修改欄位名稱"
+                        onClick={() => setColumnEditor(null)}
+                      >
+                        ×
+                      </button>
+                      {columnEditor.error && (
+                        <small className="columnTitleError" role="alert">
+                          {columnEditor.error}
+                        </small>
+                      )}
+                    </form>
+                  ) : (
+                    <div className="columnTitleRow">
+                      <h2>{column.title}</h2>
+                      {access.canConfigureWorkflow && (
+                        <div className="columnTitleActions">
+                          <button
+                            type="button"
+                            className="columnRenameButton"
+                            aria-label={`重新命名「${column.title}」欄位`}
+                            onClick={() => startColumnRename(column.id, column.title)}
+                          >
+                            改名
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {wip.limit === null ? (
-                    <p className="columnMeta">{column.cardIds.length} 張，完成欄不設 WIP</p>
+                    <p className="columnMeta">
+                      {column.cardIds.length} 張，此欄為完成狀態且不設 WIP
+                    </p>
                   ) : (
                     <p className="columnMeta">
                       WIP {wip.count}/{wip.limit}
@@ -708,7 +953,7 @@ function BoardSurface({
                     </p>
                   )}
                 </div>
-                {wip.limit !== null && access.canEdit && (
+                {wip.limit !== null && access.canConfigureWorkflow && (
                   <label className="wipInput">
                     <span>上限</span>
                     <input
@@ -725,6 +970,46 @@ function BoardSurface({
                   </label>
                 )}
               </header>
+
+              {access.canConfigureWorkflow && (
+                <div className="columnWorkflowActions" aria-label={`管理「${column.title}」欄位`}>
+                  <button
+                    type="button"
+                    className="secondaryButton"
+                    disabled={columnIndex === 0}
+                    onClick={() => moveWorkflowColumn(column.id, "left")}
+                    aria-label={`將「${column.title}」向左移`}
+                  >
+                    ← 左移
+                  </button>
+                  <button
+                    type="button"
+                    className="secondaryButton"
+                    disabled={columnIndex === board.columns.length - 1}
+                    onClick={() => moveWorkflowColumn(column.id, "right")}
+                    aria-label={`將「${column.title}」向右移`}
+                  >
+                    右移 →
+                  </button>
+                  {column.id !== DONE_COLUMN_ID && (
+                    <button
+                      type="button"
+                      className="columnDeleteButton"
+                      disabled={deletionError !== null}
+                      title={
+                        deletionError === "not_empty"
+                          ? "請先移走欄位內的任務"
+                          : deletionError === "minimum_columns"
+                            ? "看板至少需要一個工作欄位"
+                            : undefined
+                      }
+                      onClick={() => requestDeleteColumn(column.id, column.title)}
+                    >
+                      刪除空欄
+                    </button>
+                  )}
+                </div>
+              )}
 
               <div className="cardList">
                 {cards.length === 0 ? (
@@ -825,7 +1110,9 @@ function BoardSurface({
           onConfirm={() =>
             confirmAction.type === "reset"
               ? confirmReset()
-              : confirmDelete(confirmAction.cardId)
+              : confirmAction.type === "deleteColumn"
+                ? confirmDeleteColumn(confirmAction.columnId)
+                : confirmDelete(confirmAction.cardId)
           }
         />
       )}

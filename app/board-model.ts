@@ -83,7 +83,17 @@ export type BoardStats = {
 
 export const STORAGE_KEY = "kanban-pwa-board-v1";
 export const DONE_COLUMN_ID = "done";
+export const COLUMN_TITLE_MAX_LENGTH = 40;
+export const MAX_BOARD_COLUMNS = 20;
 export const TOMBSTONE_TTL_DAYS = 30;
+
+export type ColumnTitleValidationError = "missing" | "empty" | "too_long" | "duplicate";
+export type NewColumnValidationError = ColumnTitleValidationError | "max_columns";
+export type ColumnDeletionValidationError =
+  | "missing"
+  | "done"
+  | "not_empty"
+  | "minimum_columns";
 
 const STARTER_LABELS: Label[] = [
   { id: "strategy", name: "策略", color: "#5b7cfa" },
@@ -554,6 +564,133 @@ export function updateWipLimit(
   return normalizeBoard(touch(next));
 }
 
+export function validateNewColumnTitle(
+  board: BoardState,
+  value: string,
+): NewColumnValidationError | null {
+  if (board.columns.length >= MAX_BOARD_COLUMNS) {
+    return "max_columns";
+  }
+  return validateColumnTitleValue(board, null, value);
+}
+
+export function addColumn(
+  board: BoardState,
+  input: { title: string; wipLimit?: number | null },
+  now = new Date(),
+): BoardState {
+  if (validateNewColumnTitle(board, input.title)) {
+    return board;
+  }
+  const doneIndex = board.columns.findIndex((column) => column.id === DONE_COLUMN_ID);
+  const insertionIndex = doneIndex >= 0 ? doneIndex : board.columns.length;
+  const next = cloneBoard(board);
+  next.columns.splice(insertionIndex, 0, {
+    id: makeId("column"),
+    title: input.title.trim(),
+    wipLimit: input.wipLimit === null
+      ? null
+      : clamp(Math.round(Number(input.wipLimit) || 3), 1, 99),
+    cardIds: [],
+  });
+  return normalizeBoard(touch(next, now));
+}
+
+export function moveColumnRelative(
+  board: BoardState,
+  columnId: string,
+  direction: "left" | "right",
+  now = new Date(),
+): BoardState {
+  const sourceIndex = board.columns.findIndex((column) => column.id === columnId);
+  if (sourceIndex < 0) return board;
+  const targetIndex = direction === "left" ? sourceIndex - 1 : sourceIndex + 1;
+  if (targetIndex < 0 || targetIndex >= board.columns.length) return board;
+
+  const next = cloneBoard(board);
+  const [column] = next.columns.splice(sourceIndex, 1);
+  next.columns.splice(targetIndex, 0, column);
+  return normalizeBoard(touch(next, now));
+}
+
+export function validateColumnDeletion(
+  board: BoardState,
+  columnId: string,
+): ColumnDeletionValidationError | null {
+  const column = board.columns.find((candidate) => candidate.id === columnId);
+  if (!column) return "missing";
+  if (column.id === DONE_COLUMN_ID) return "done";
+  if (column.cardIds.length) return "not_empty";
+  if (board.columns.length <= 2) return "minimum_columns";
+  return null;
+}
+
+export function deleteColumn(
+  board: BoardState,
+  columnId: string,
+  now = new Date(),
+): BoardState {
+  if (validateColumnDeletion(board, columnId)) {
+    return board;
+  }
+  const next = cloneBoard(board);
+  next.columns = next.columns.filter((column) => column.id !== columnId);
+  return normalizeBoard(touch(next, now));
+}
+
+export function validateColumnTitle(
+  board: BoardState,
+  columnId: string,
+  value: string,
+): ColumnTitleValidationError | null {
+  if (!board.columns.some((column) => column.id === columnId)) {
+    return "missing";
+  }
+  return validateColumnTitleValue(board, columnId, value);
+}
+
+function validateColumnTitleValue(
+  board: BoardState,
+  excludedColumnId: string | null,
+  value: string,
+): Exclude<ColumnTitleValidationError, "missing"> | null {
+  const title = value.trim();
+  if (!title) {
+    return "empty";
+  }
+  if (title.length > COLUMN_TITLE_MAX_LENGTH) {
+    return "too_long";
+  }
+  const titleKey = columnTitleKey(title);
+  if (board.columns.some(
+    (column) => column.id !== excludedColumnId && columnTitleKey(column.title) === titleKey,
+  )) {
+    return "duplicate";
+  }
+  return null;
+}
+
+export function updateColumnTitle(
+  board: BoardState,
+  columnId: string,
+  value: string,
+  now = new Date(),
+): BoardState {
+  if (validateColumnTitle(board, columnId, value)) {
+    return board;
+  }
+  const title = value.trim();
+  const current = board.columns.find((column) => column.id === columnId);
+  if (!current || current.title === title) {
+    return board;
+  }
+  const next = cloneBoard(board);
+  next.columns = next.columns.map((column) =>
+    column.id === columnId ? { ...column, title } : column,
+  );
+  return normalizeBoard(touch(next, now));
+}
+
 export function toggleChecklistItem(
   board: BoardState,
   cardId: string,
@@ -657,6 +794,13 @@ export function normalizeBoard(board: BoardState): BoardState {
 }
 
 export function assertBoardInvariants(board: BoardState): void {
+  const columnIds = board.columns.map((column) => column.id);
+  if (new Set(columnIds).size !== columnIds.length) {
+    throw new Error("Column IDs must be unique.");
+  }
+  if (columnIds.filter((columnId) => columnId === DONE_COLUMN_ID).length !== 1) {
+    throw new Error("Board must contain exactly one completion column.");
+  }
   const allColumnIds = board.columns.flatMap((column) => column.cardIds);
   const uniqueColumnIds = new Set(allColumnIds);
   const cardIds = Object.keys(board.cards);
@@ -827,7 +971,7 @@ function normalizeColumns(columns: Column[], cards: Record<string, Card>): Colum
 
     return {
       id,
-      title: typeof column.title === "string" && column.title ? column.title : "未命名",
+      title: normalizeColumnTitle(column.title) ?? "未命名",
       wipLimit: id === DONE_COLUMN_ID ? null : normalizeWipLimit(column.wipLimit),
       cardIds,
     };
@@ -953,6 +1097,16 @@ function normalizeDateOnly(value: unknown): string {
 
 function normalizeBlockedReason(value: unknown): string {
   return typeof value === "string" ? value.trim().slice(0, 500) : "";
+}
+
+function normalizeColumnTitle(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const title = value.trim().slice(0, COLUMN_TITLE_MAX_LENGTH);
+  return title || null;
+}
+
+function columnTitleKey(value: string): string {
+  return value.trim().normalize("NFKC").toLocaleLowerCase("zh-TW");
 }
 
 function normalizeWipLimit(value: unknown): number | null {

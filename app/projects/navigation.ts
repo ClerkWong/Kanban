@@ -1,4 +1,9 @@
-import { canEditBoard, canWriteAttachment, isServerResourceId } from "./model";
+import {
+  canEditBoard,
+  canManageProject,
+  canWriteAttachment,
+  isServerResourceId,
+} from "./model";
 import type {
   BoardContext,
   BoardMeta,
@@ -15,6 +20,7 @@ export type ProjectRoute =
 
 export type BoardAccess = {
   canEdit: boolean;
+  canConfigureWorkflow: boolean;
   canWriteAttachments: boolean;
   readOnlyReason: string | null;
 };
@@ -101,6 +107,7 @@ export function deriveBoardAccess(
   if (projectStatus === "archived") {
     return {
       canEdit: false,
+      canConfigureWorkflow: false,
       canWriteAttachments: false,
       readOnlyReason: "此專案已封存，目前為唯讀模式。",
     };
@@ -108,6 +115,7 @@ export function deriveBoardAccess(
   if (boardStatus === "archived") {
     return {
       canEdit: false,
+      canConfigureWorkflow: false,
       canWriteAttachments: false,
       readOnlyReason: "此看板已封存，目前為唯讀模式。",
     };
@@ -115,12 +123,14 @@ export function deriveBoardAccess(
   if (!canEditBoard(role)) {
     return {
       canEdit: false,
+      canConfigureWorkflow: false,
       canWriteAttachments: false,
       readOnlyReason: "你的專案角色是檢視者，目前為唯讀模式。",
     };
   }
   return {
     canEdit: true,
+    canConfigureWorkflow: canManageProject(role),
     canWriteAttachments: canWriteAttachment(role),
     readOnlyReason: null,
   };

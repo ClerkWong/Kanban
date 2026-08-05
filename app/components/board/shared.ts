@@ -32,6 +32,7 @@ export type DetailState =
 
 export type ConfirmState =
   | { type: "delete"; cardId: string; title: string }
+  | { type: "deleteColumn"; columnId: string; title: string }
   | { type: "reset" }
   | null;
 

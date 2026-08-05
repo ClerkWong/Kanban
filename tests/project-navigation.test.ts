@@ -104,11 +104,13 @@ test("board route validation rejects a board from another project", () => {
 test("role and archive state produce the visible Board actions", () => {
   assert.deepEqual(deriveBoardAccess("owner", "active", "active"), {
     canEdit: true,
+    canConfigureWorkflow: true,
     canWriteAttachments: true,
     readOnlyReason: null,
   });
   assert.deepEqual(deriveBoardAccess("member", "active", "active"), {
     canEdit: true,
+    canConfigureWorkflow: false,
     canWriteAttachments: true,
     readOnlyReason: null,
   });

@@ -16,6 +16,9 @@ import {
 const MAX_BOARD_BYTES = 1_000_000;
 const MAX_ASSIGNEES_PER_CARD = 20;
 const MAX_ASSIGNEES_PER_BOARD = 100;
+const MAX_WORKFLOW_COLUMNS = 20;
+const MAX_COLUMN_TITLE_LENGTH = 40;
+const DONE_COLUMN_ID = "done";
 
 type BoardListRow = Omit<BoardRow, "data">;
 type LegacyBoardRow = {
@@ -63,6 +66,122 @@ function collectAssigneeUserIds(value: unknown, strict: boolean): Set<string> {
     }
   }
   return result;
+}
+
+function workflowSignature(value: unknown): string | null {
+  const columns = asRecord(value)?.columns;
+  if (!Array.isArray(columns)) return null;
+  const workflow = columns.map((raw) => {
+    const column = asRecord(raw);
+    if (!column || typeof column.id !== "string") return null;
+    return {
+      id: column.id,
+      title: typeof column.title === "string" ? column.title : "",
+      wipLimit: column.wipLimit === null ? null : Number(column.wipLimit),
+    };
+  });
+  return workflow.some((column) => column === null) ? null : JSON.stringify(workflow);
+}
+
+function requireWorkflowManagement(
+  access: ProjectAccess,
+  previousBoard: unknown,
+  nextBoard: unknown,
+): void {
+  if (access.projectRole === "manager") return;
+  const previous = workflowSignature(previousBoard);
+  const next = workflowSignature(nextBoard);
+  if (previous === null || next === null || previous !== next) {
+    throw new RequestError(403, "forbidden");
+  }
+}
+
+type WorkflowColumn = {
+  id: string;
+  title: string;
+  wipLimit: number | null;
+  cardIds: string[];
+};
+
+function parseWorkflowColumns(value: unknown): WorkflowColumn[] | null {
+  const rawColumns = asRecord(value)?.columns;
+  if (!Array.isArray(rawColumns)) return null;
+  const columns: WorkflowColumn[] = [];
+  for (const raw of rawColumns) {
+    const column = asRecord(raw);
+    if (!column || typeof column.id !== "string" || typeof column.title !== "string") {
+      return null;
+    }
+    const wipLimit = column.wipLimit === null ? null : Number(column.wipLimit);
+    if (
+      !Array.isArray(column.cardIds) ||
+      (wipLimit !== null && (!Number.isInteger(wipLimit) || wipLimit < 1 || wipLimit > 99))
+    ) {
+      return null;
+    }
+    columns.push({
+      id: column.id,
+      title: column.title,
+      wipLimit,
+      cardIds: column.cardIds.filter((cardId): cardId is string => typeof cardId === "string"),
+    });
+  }
+  return columns;
+}
+
+function requireSafeWorkflowTransition(previousBoard: unknown, nextBoard: unknown): void {
+  if (workflowSignature(previousBoard) === workflowSignature(nextBoard)) return;
+  const previousColumns = parseWorkflowColumns(previousBoard);
+  const nextColumns = parseWorkflowColumns(nextBoard);
+  if (!nextColumns || !nextColumns.length || nextColumns.length > MAX_WORKFLOW_COLUMNS) {
+    throw new RequestError(400, "invalid_workflow");
+  }
+
+  const ids = new Set<string>();
+  const titleKeys = new Set<string>();
+  for (const column of nextColumns) {
+    const title = column.title.trim();
+    const titleKey = title.normalize("NFKC").toLocaleLowerCase("zh-TW");
+    if (
+      !column.id ||
+      column.id.length > 128 ||
+      ids.has(column.id) ||
+      !title ||
+      title !== column.title ||
+      title.length > MAX_COLUMN_TITLE_LENGTH ||
+      titleKeys.has(titleKey) ||
+      (column.id === DONE_COLUMN_ID && column.wipLimit !== null)
+    ) {
+      throw new RequestError(400, "invalid_workflow");
+    }
+    ids.add(column.id);
+    titleKeys.add(titleKey);
+  }
+
+  if (!previousColumns) return;
+  const nextIds = new Set(nextColumns.map((column) => column.id));
+  for (const column of previousColumns) {
+    if (nextIds.has(column.id)) continue;
+    if (column.id === DONE_COLUMN_ID) {
+      throw new RequestError(400, "invalid_workflow");
+    }
+    if (column.cardIds.length) {
+      throw new RequestError(400, "column_not_empty");
+    }
+  }
+  if (
+    previousColumns.some((column) => column.id === DONE_COLUMN_ID) &&
+    !nextIds.has(DONE_COLUMN_ID)
+  ) {
+    throw new RequestError(400, "invalid_workflow");
+  }
+  if (
+    previousColumns.some((column) => column.id === DONE_COLUMN_ID) &&
+    nextIds.has(DONE_COLUMN_ID) &&
+    nextColumns.length < 2
+  ) {
+    throw new RequestError(400, "invalid_workflow");
+  }
 }
 
 async function requireNewAssigneesAreProjectMembers(
@@ -482,10 +601,13 @@ async function putBoardContent(
   if (payload.baseRevision !== row.revision) {
     return boardConflict(row, context.requestId);
   }
+  const previousBoard = JSON.parse(row.data) as unknown;
+  requireWorkflowManagement(access, previousBoard, payload.board);
+  requireSafeWorkflowTransition(previousBoard, payload.board);
   await requireNewAssigneesAreProjectMembers(
     context.env.DB,
     projectId,
-    JSON.parse(row.data) as unknown,
+    previousBoard,
     payload.board,
   );
   const project = await getProject(context.env.DB, projectId);
@@ -497,7 +619,7 @@ async function putBoardContent(
     data: JSON.stringify(payload.board),
     updated_at: now,
   };
-  const diff = diffBoardStates(JSON.parse(row.data) as unknown, payload.board);
+  const diff = diffBoardStates(previousBoard, payload.board);
   const results = await context.env.DB.batch([
     context.env.DB.prepare(
       `UPDATE boards SET revision = ?, data = ?, updated_at = ?

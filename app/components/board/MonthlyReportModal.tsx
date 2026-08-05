@@ -53,7 +53,7 @@ export function MonthlyReportModal({
 
           <div className="reportChart">
             {stats.length === 0 ? (
-              <div className="reportEmpty">完成欄目前沒有任何卡片。</div>
+              <div className="reportEmpty">目前沒有任何已完成卡片。</div>
             ) : (
               stats.map((s) => {
                 const widthPercent = maxCount > 0 ? (s.count / maxCount) * 100 : 0;

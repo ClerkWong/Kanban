@@ -310,9 +310,60 @@ textarea {
   color: #8f1d36;
 }
 
+.workflowToolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1560px;
+  margin: 0 auto 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 253, 248, 0.82);
+}
+
+.workflowToolbar > div {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.workflowToolbar > div span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.newColumnForm {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 110px auto auto;
+  gap: 8px;
+  align-items: end;
+  width: min(760px, 100%);
+}
+
+.newColumnForm label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.newColumnForm input,
+.newColumnForm button {
+  min-height: 42px;
+}
+
+.newColumnForm small {
+  grid-column: 1 / -1;
+  color: var(--danger);
+  font-weight: 800;
+}
+
 .board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(270px, 1fr));
+  grid-template-columns: repeat(var(--column-count, 4), minmax(270px, 1fr));
   gap: 12px;
   max-width: 1560px;
   min-height: min(68vh, 760px);
@@ -353,6 +404,98 @@ textarea {
 .columnHeader h2 {
   margin: 0 0 4px;
   font-size: 1.05rem;
+}
+
+.columnTitleRow {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  align-items: center;
+}
+
+.columnTitleRow h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.columnRenameButton {
+  min-height: 36px;
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.columnRenameButton:hover,
+.columnRenameButton:focus-visible {
+  border-color: var(--line);
+  background: #f6f1e8;
+  color: var(--teal-strong);
+}
+
+.columnWorkflowActions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(246, 241, 232, 0.58);
+}
+
+.columnWorkflowActions button {
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px 8px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.columnDeleteButton {
+  border-color: #e0a7b1;
+  background: #fff6f7;
+  color: var(--rose);
+}
+
+.columnWorkflowActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.columnTitleEditor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px 40px;
+  gap: 6px;
+  align-items: start;
+}
+
+.columnTitleEditor input {
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+.columnTitleEditor .iconOnly {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.columnHeader.columnTitleEditing {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.columnTitleEditing .wipInput {
+  grid-template-columns: minmax(0, 1fr) 68px;
+  align-items: center;
+  width: 100%;
+}
+
+.columnTitleError {
+  grid-column: 1 / -1;
+  color: var(--danger);
+  font-size: 0.72rem;
 }
 
 .columnMeta {
@@ -819,6 +962,23 @@ textarea {
 
   .toolBand {
     grid-template-columns: 1fr;
+  }
+
+  .workflowToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .workflowToolbar > button {
+    width: 100%;
+  }
+
+  .newColumnForm {
+    grid-template-columns: minmax(0, 1fr) 104px;
+  }
+
+  .newColumnForm button {
+    width: 100%;
   }
 
   .board {

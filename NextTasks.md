@@ -41,7 +41,7 @@
 | staging Worker/D1/R2/token | 已建立 | 和 production 完全隔離；URL 與非敏感 inventory 見 staging runbook |
 | production Worker/D1 | 既有 3a 上線 | 尚未部署本次 3b Worker |
 | production R2 | **尚未建立** | 必須等 staging 驗收全數通過 |
-| iOS/Android | `1.1.0` 內測程式已建置，未完成發行 | 品牌 icon/splash、App 內支援／隱私入口與版本 `1.1.0 (2)` 已完成；Android debug 與 iOS simulator build 通過，尚缺實機與 release signing／分發 |
+| iOS/Android | `1.1.0` 內測程式已建置，未完成發行 | 可管理工作流欄位的最新資產已同步至 `1.1.0 (4)`；Android debug、iOS simulator 與已簽署 iOS device build 通過，尚缺 build 4 實機 smoke test 與正式分發 |
 
 ### 已完成的驗證
 
@@ -339,7 +339,15 @@ git diff --check
 - [x] iOS/Android native bundle 都包含多人指派介面。
 - [x] 以 `assets/` Kanban 品牌來源取代 Capacitor 預設 icon/splash，並加入
   `pnpm mobile:assets` 可重現產生流程。
-- [x] 設為 iOS `1.1.0 (2)`、Android `1.1.0 (versionCode 2)`。
+- [x] 內測更新設為 iOS `1.1.0 (3)`、Android `1.1.0 (versionCode 3)`；包含可客製化工作流欄位名稱的最新 Mobile bundle。
+- [x] build 3 已通過 Android debug APK、iOS simulator 與 Apple Development 簽署的 iOS device build。
+- [x] build 3 已覆蓋安裝並啟動於 iPhone 12 Pro Max；裝置回報版本 `1.1.0 (3)`。
+- [x] build 3 已覆蓋安裝並啟動於 Pixel 9a；裝置回報 Android `versionName 1.1.0`、`versionCode 3`。
+- [ ] 在 iPhone 與 Pixel 9a 驗證登入憑證保留、欄位改名與任務移動。
+- [x] Project Owner 工作流管理已支援新增欄位、設定 WIP、左右排序與刪除空欄；完成欄與非空欄位不可刪除，member 仍只能編輯／移動任務。
+- [x] 欄位管理已加入 Worker 權限與安全轉換驗證，以及 created／renamed／WIP／moved／deleted audit diff；183 個 Web 測試與 56 個 Worker 測試通過。
+- [x] build 4 已通過 Mobile sync、Android debug、iOS simulator 與 Apple Development 簽署的 iOS device build；產物位於 `outputs/mobile/`。
+- [ ] 將 build 4 覆蓋安裝至 iPhone 12 Pro Max 與 Pixel 9a，驗證欄位管理及既有登入資料保留。
 - [x] 補 Mobile bundle 內可離線讀取的支援／隱私面板，內容與 Web 共用。
 - [x] Android debug APK 已由 debug keystore 簽署，可供受控內部測試。
 - [x] 本機已有有效 Apple Development／Distribution identity；iOS Release device

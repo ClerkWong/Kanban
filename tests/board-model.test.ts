@@ -3,19 +3,29 @@ import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { describe, it } from "node:test";
 import {
+  COLUMN_TITLE_MAX_LENGTH,
+  DONE_COLUMN_ID,
+  MAX_BOARD_COLUMNS,
   addCard,
+  addColumn,
   assertBoardInvariants,
   createDemoBoard,
+  deleteColumn,
   filterCards,
   getMonthlyCompletionStats,
   getBoardStats,
   getColumnWip,
   moveCard,
   moveCardRelative,
+  moveColumnRelative,
   normalizeBoard,
   parsePersistedBoard,
   serializeBoard,
   updateCard,
+  updateColumnTitle,
+  validateColumnDeletion,
+  validateColumnTitle,
+  validateNewColumnTitle,
   type Card,
 } from "../app/board-model";
 
@@ -91,6 +101,109 @@ test("WIP warnings come from canonical unfiltered state", () => {
     limit: 3,
     reached: true,
   });
+});
+
+test("column titles can change without changing workflow identity or completion state", () => {
+  const board = createDemoBoard(new Date(2026, 6, 10));
+  const doneBefore = board.columns.find((column) => column.id === "done");
+  const completedAt = board.cards["card-done"].completedAt;
+  const renamedAt = new Date("2026-08-05T02:00:00.000Z");
+
+  const renamed = updateColumnTitle(board, "done", "  已上線  ", renamedAt);
+  const doneAfter = renamed.columns.find((column) => column.id === "done");
+
+  assert.ok(doneBefore);
+  assert.ok(doneAfter);
+  assert.equal(doneAfter.title, "已上線");
+  assert.equal(doneAfter.id, doneBefore.id);
+  assert.equal(doneAfter.wipLimit, null);
+  assert.deepEqual(doneAfter.cardIds, doneBefore.cardIds);
+  assert.equal(renamed.cards["card-done"].completedAt, completedAt);
+  assert.equal(renamed.lastSavedAt, renamedAt.toISOString());
+});
+
+test("column title validation rejects blank, oversized, duplicate, and missing targets", () => {
+  const board = createDemoBoard(new Date(2026, 6, 10));
+
+  assert.equal(validateColumnTitle(board, "todo", "   "), "empty");
+  assert.equal(
+    validateColumnTitle(board, "todo", "欄".repeat(COLUMN_TITLE_MAX_LENGTH + 1)),
+    "too_long",
+  );
+  assert.equal(validateColumnTitle(board, "todo", "完成"), "duplicate");
+  assert.equal(validateColumnTitle(board, "missing", "待處理"), "missing");
+  assert.equal(updateColumnTitle(board, "todo", "完成"), board);
+});
+
+test("owners can add and reorder workflow columns without changing completion identity", () => {
+  const board = createDemoBoard(new Date(2026, 6, 10));
+  const createdAt = new Date("2026-08-05T03:00:00.000Z");
+  const added = addColumn(board, { title: "  驗收  ", wipLimit: 4 }, createdAt);
+  const addedColumn = added.columns.find((column) => column.title === "驗收");
+
+  assert.ok(addedColumn);
+  assert.match(addedColumn.id, /^column-/);
+  assert.equal(addedColumn.wipLimit, 4);
+  assert.deepEqual(addedColumn.cardIds, []);
+  assert.equal(
+    added.columns.findIndex((column) => column.id === DONE_COLUMN_ID),
+    added.columns.length - 1,
+  );
+  assert.equal(added.lastSavedAt, createdAt.toISOString());
+
+  const moved = moveColumnRelative(added, addedColumn.id, "left");
+  assert.equal(
+    moved.columns.findIndex((column) => column.id === addedColumn.id),
+    added.columns.findIndex((column) => column.id === addedColumn.id) - 1,
+  );
+  assert.equal(moved.columns.find((column) => column.id === DONE_COLUMN_ID)?.id, DONE_COLUMN_ID);
+  assert.equal(moved.cards["card-done"].completedAt, board.cards["card-done"].completedAt);
+  assertBoardInvariants(moved);
+});
+
+test("new workflow columns enforce names and the board column limit", () => {
+  let board = createDemoBoard(new Date(2026, 6, 10));
+
+  assert.equal(validateNewColumnTitle(board, "   "), "empty");
+  assert.equal(validateNewColumnTitle(board, "完成"), "duplicate");
+  assert.equal(
+    validateNewColumnTitle(board, "欄".repeat(COLUMN_TITLE_MAX_LENGTH + 1)),
+    "too_long",
+  );
+
+  while (board.columns.length < MAX_BOARD_COLUMNS) {
+    board = addColumn(board, { title: `新增欄位 ${board.columns.length}` });
+  }
+  assert.equal(validateNewColumnTitle(board, "超出上限"), "max_columns");
+  assert.equal(addColumn(board, { title: "超出上限" }), board);
+});
+
+test("only empty non-completion columns can be deleted", () => {
+  const board = createDemoBoard(new Date(2026, 6, 10));
+  const added = addColumn(board, { title: "暫存" });
+  const emptyColumn = added.columns.find((column) => column.title === "暫存");
+  assert.ok(emptyColumn);
+
+  assert.equal(validateColumnDeletion(added, "todo"), "not_empty");
+  assert.equal(validateColumnDeletion(added, DONE_COLUMN_ID), "done");
+  assert.equal(validateColumnDeletion(added, "missing"), "missing");
+  assert.equal(deleteColumn(added, "todo"), added);
+
+  const deleted = deleteColumn(added, emptyColumn.id);
+  assert.equal(deleted.columns.some((column) => column.id === emptyColumn.id), false);
+  assertBoardInvariants(deleted);
+
+  const minimal = {
+    ...deleted,
+    columns: deleted.columns.filter((column) => column.id === "todo" || column.id === DONE_COLUMN_ID),
+  };
+  assert.equal(validateColumnDeletion(minimal, "todo"), "not_empty");
+  const emptyMinimal = {
+    ...minimal,
+    cards: {},
+    columns: minimal.columns.map((column) => ({ ...column, cardIds: [] })),
+  };
+  assert.equal(validateColumnDeletion(emptyMinimal, "todo"), "minimum_columns");
 });
 
 test("serialized board reloads without changing card membership", () => {

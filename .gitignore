@@ -41,6 +41,7 @@ yarn-error.log*
 next-env.d.ts
 tsconfig.tsbuildinfo
 /dist/
+/.artifacts/
 /.wrangler/
 worker-sync/.wrangler/
 /outputs/

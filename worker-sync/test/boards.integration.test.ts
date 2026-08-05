@@ -48,6 +48,15 @@ function assignedBoard(
   };
 }
 
+function workflowBoard(title: string, marker = "workflow"): Record<string, unknown> {
+  return {
+    version: 6,
+    marker,
+    columns: [{ id: "todo", title, wipLimit: 3, cardIds: [] }],
+    cards: {},
+  };
+}
+
 async function dispatch(
   token: string,
   path: string,
@@ -219,6 +228,154 @@ describe("Single-board Project content APIs", () => {
       await env.DB.prepare("SELECT COUNT(*) AS count FROM boards WHERE project_id = ? AND status = 'active'")
         .bind(projectA).first<number>("count"),
     ).toBe(1);
+  });
+
+  it("allows only managers to change workflow column settings", async () => {
+    expect((await createBoard(
+      managerToken,
+      projectA,
+      boardA,
+      "Workflow",
+      workflowBoard("待辦"),
+    )).status).toBe(201);
+
+    const contributorRename = await dispatch(
+      contributorToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          baseRevision: 0,
+          board: workflowBoard("需求池", "contributor-rename"),
+        }),
+      },
+    );
+    expect(contributorRename.status).toBe(403);
+
+    const managerRename = await dispatch(
+      managerToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          baseRevision: 0,
+          board: workflowBoard("需求池", "manager-rename"),
+        }),
+      },
+    );
+    expect(managerRename.status).toBe(200);
+
+    const expanded = workflowBoard("需求池", "manager-add-column");
+    (expanded.columns as Array<Record<string, unknown>>).push({
+      id: "qa",
+      title: "驗收",
+      wipLimit: 2,
+      cardIds: [],
+    });
+    const managerAdd = await dispatch(
+      managerToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ baseRevision: 1, board: expanded }),
+      },
+    );
+    expect(managerAdd.status).toBe(200);
+
+    const reordered = structuredClone(expanded);
+    reordered.columns = [...(reordered.columns as unknown[])].reverse();
+    const contributorReorder = await dispatch(
+      contributorToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ baseRevision: 2, board: reordered }),
+      },
+    );
+    expect(contributorReorder.status).toBe(403);
+
+    const removed = workflowBoard("需求池", "manager-delete-empty-column");
+    const managerDelete = await dispatch(
+      managerToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ baseRevision: 2, board: removed }),
+      },
+    );
+    expect(managerDelete.status).toBe(200);
+  });
+
+  it("rejects deleting a workflow column that still contains tasks", async () => {
+    const withTask = {
+      version: 6,
+      columns: [
+        { id: "todo", title: "待辦", wipLimit: 3, cardIds: ["task-1"] },
+        { id: "done", title: "完成", wipLimit: null, cardIds: [] },
+      ],
+      cards: { "task-1": { title: "保留的任務", assigneeUserIds: [] } },
+    };
+    expect((await createBoard(
+      managerToken,
+      projectA,
+      boardA,
+      "Workflow",
+      withTask,
+    )).status).toBe(201);
+
+    const response = await dispatch(
+      managerToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          baseRevision: 0,
+          board: {
+            ...withTask,
+            columns: [{ id: "done", title: "完成", wipLimit: null, cardIds: [] }],
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "column_not_empty" });
+  });
+
+  it("preserves at least one work column beside the completion column", async () => {
+    const minimal = {
+      version: 6,
+      columns: [
+        { id: "todo", title: "待辦", wipLimit: 3, cardIds: [] },
+        { id: "done", title: "完成", wipLimit: null, cardIds: [] },
+      ],
+      cards: {},
+    };
+    expect((await createBoard(
+      managerToken,
+      projectA,
+      boardA,
+      "Workflow",
+      minimal,
+    )).status).toBe(201);
+
+    const response = await dispatch(
+      managerToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          baseRevision: 0,
+          board: {
+            ...minimal,
+            columns: [{ id: "done", title: "完成", wipLimit: null, cardIds: [] }],
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_workflow" });
   });
 
   it("allows multiple Project assignees, rejects outsiders, and preserves departed assignments", async () => {

@@ -15,6 +15,7 @@ export function ConfirmModal({
   onConfirm: () => void;
 }) {
   const isReset = confirmAction.type === "reset";
+  const isColumnDelete = confirmAction.type === "deleteColumn";
 
   return (
     <div className="modalBackdrop" role="presentation">
@@ -34,18 +35,22 @@ export function ConfirmModal({
           }
         }}
       >
-        <h2 id="confirmTitle">{isReset ? "重設示範資料？" : "永久刪除卡片？"}</h2>
+        <h2 id="confirmTitle">
+          {isReset ? "重設示範資料？" : isColumnDelete ? "刪除工作流欄位？" : "永久刪除卡片？"}
+        </h2>
         <p>
           {isReset
             ? "這會以內建示範資料取代目前本機看板。取消時不會變更任何資料。若已啟用雲端同步，重設結果也會同步給所有成員。"
-            : `「${confirmAction.title}」會從本裝置永久刪除，這個 MVP 不使用封存或復原語意。`}
+            : isColumnDelete
+              ? `空欄位「${confirmAction.title}」會從工作流中刪除。這不會刪除任何任務。`
+              : `「${confirmAction.title}」會從本裝置永久刪除，這個 MVP 不使用封存或復原語意。`}
         </p>
         <div className="modalActions">
           <button type="button" className="secondaryButton" onClick={onCancel}>
             取消
           </button>
           <button type="button" className="dangerButton" onClick={onConfirm}>
-            {isReset ? "確認重設" : "確認刪除"}
+            {isReset ? "確認重設" : isColumnDelete ? "刪除欄位" : "確認刪除"}
           </button>
         </div>
       </div>

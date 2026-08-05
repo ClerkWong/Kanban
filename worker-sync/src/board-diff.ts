@@ -10,6 +10,11 @@ export const BOARD_CHANGE_KINDS = [
   "card.deleted",
   "attachment.added",
   "attachment.removed",
+  "column.created",
+  "column.renamed",
+  "column.wip_changed",
+  "column.moved",
+  "column.deleted",
 ] as const;
 
 export type BoardChangeKind = typeof BOARD_CHANGE_KINDS[number];
@@ -50,7 +55,12 @@ export type CardSnapshot = {
 };
 
 export type BoardSnapshot = {
-  columns: Array<{ id: string; cardIds: string[] }>;
+  columns: Array<{
+    id: string;
+    title: string;
+    wipLimit: number | null;
+    cardIds: string[];
+  }>;
   cards: Record<string, CardSnapshot>;
 };
 
@@ -74,6 +84,35 @@ export type BoardChange =
     cardId: string;
     attachmentId: string;
     attachmentType: string;
+  }
+  | {
+    kind: "column.created";
+    columnId: string;
+    title: string;
+    wipLimit: number | null;
+  }
+  | {
+    kind: "column.renamed";
+    columnId: string;
+    fromTitle: string;
+    toTitle: string;
+  }
+  | {
+    kind: "column.wip_changed";
+    columnId: string;
+    fromLimit: number | null;
+    toLimit: number | null;
+  }
+  | {
+    kind: "column.moved";
+    columnId: string;
+    fromIndex: number;
+    toIndex: number;
+  }
+  | {
+    kind: "column.deleted";
+    columnId: string;
+    title: string;
   };
 
 export type BoardDiff = {
@@ -145,6 +184,12 @@ export function parseBoardSnapshot(value: unknown): BoardSnapshot | null {
     if (!column || typeof column.id !== "string") return [];
     return [{
       id: column.id,
+      title: safeString(column.title, "未命名"),
+      wipLimit: column.wipLimit === null
+        ? null
+        : Number.isFinite(Number(column.wipLimit))
+          ? Number(column.wipLimit)
+          : null,
       cardIds: Array.isArray(column.cardIds)
         ? column.cardIds.filter((id): id is string => typeof id === "string")
         : [],
@@ -246,6 +291,54 @@ export function diffBoardStates(beforeValue: unknown, afterValue: unknown): Boar
     counts[change.kind] += 1;
     if (details.length < MAX_CHANGE_DETAILS) details.push(change);
   };
+
+  const beforeColumns = new Map(before.columns.map((column, index) => [column.id, { column, index }]));
+  const afterColumnIds = new Set(after.columns.map((column) => column.id));
+  for (const [index, column] of after.columns.entries()) {
+    const previous = beforeColumns.get(column.id);
+    if (!previous) {
+      record({
+        kind: "column.created",
+        columnId: safeString(column.id),
+        title: safeString(column.title),
+        wipLimit: column.wipLimit,
+      });
+      continue;
+    }
+    if (previous.column.title !== column.title) {
+      record({
+        kind: "column.renamed",
+        columnId: safeString(column.id),
+        fromTitle: safeString(previous.column.title),
+        toTitle: safeString(column.title),
+      });
+    }
+    if (previous.column.wipLimit !== column.wipLimit) {
+      record({
+        kind: "column.wip_changed",
+        columnId: safeString(column.id),
+        fromLimit: previous.column.wipLimit,
+        toLimit: column.wipLimit,
+      });
+    }
+    if (previous.index !== index) {
+      record({
+        kind: "column.moved",
+        columnId: safeString(column.id),
+        fromIndex: previous.index,
+        toIndex: index,
+      });
+    }
+  }
+  for (const column of before.columns) {
+    if (!afterColumnIds.has(column.id)) {
+      record({
+        kind: "column.deleted",
+        columnId: safeString(column.id),
+        title: safeString(column.title),
+      });
+    }
+  }
 
   for (const cardId of Object.keys(after.cards).sort()) {
     const next = after.cards[cardId];

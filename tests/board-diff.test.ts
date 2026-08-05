@@ -46,8 +46,8 @@ function board(
   return {
     version: 6,
     columns: [
-      { id: "todo", cardIds: todo },
-      { id: "done", cardIds: done },
+      { id: "todo", title: "待辦", cardIds: todo },
+      { id: "done", title: "完成", cardIds: done },
     ],
     cards,
   };
@@ -174,4 +174,56 @@ test("records blocker field names without logging the private blocker reason", (
     fields: ["blocked", "blockedReason", "blockedAt"],
   }]);
   assert.equal(JSON.stringify(diff).includes("production secret"), false);
+});
+
+test("records column renames without treating cards as moved", () => {
+  const before = board({ task: card() }, ["task"], []);
+  const after = board({ task: card() }, ["task"], []);
+  (after.columns as Array<Record<string, unknown>>)[0].title = "待處理";
+
+  const diff = diffBoardStates(before, after);
+
+  assert.deepEqual(diff.changes, [{
+    kind: "column.renamed",
+    columnId: "todo",
+    fromTitle: "待辦",
+    toTitle: "待處理",
+  }]);
+  assert.equal(diff.counts["column.renamed"], 1);
+  assert.equal(diff.counts["card.moved"], 0);
+});
+
+test("records workflow column creation, WIP changes, ordering, and deletion", () => {
+  const before = board({}, [], []);
+  const after = board({}, [], []);
+  (before.columns as Array<Record<string, unknown>>)[0].wipLimit = 3;
+  after.columns = [
+    { id: "done", title: "完成", wipLimit: null, cardIds: [] },
+    { id: "qa", title: "驗收", wipLimit: 2, cardIds: [] },
+    { id: "todo", title: "待辦", wipLimit: 5, cardIds: [] },
+  ];
+
+  const diff = diffBoardStates(before, after);
+
+  assert.ok(diff.changes.some((change) =>
+    change.kind === "column.created" && change.columnId === "qa" && change.wipLimit === 2
+  ));
+  assert.ok(diff.changes.some((change) =>
+    change.kind === "column.wip_changed" && change.columnId === "todo" &&
+    change.fromLimit === 3 && change.toLimit === 5
+  ));
+  assert.ok(diff.changes.some((change) =>
+    change.kind === "column.moved" && change.columnId === "done" &&
+    change.fromIndex === 1 && change.toIndex === 0
+  ));
+  assert.equal(diff.counts["column.created"], 1);
+  assert.equal(diff.counts["column.wip_changed"], 1);
+  assert.equal(diff.counts["column.deleted"], 0);
+
+  const deleted = board({}, [], []);
+  deleted.columns = [{ id: "done", title: "完成", wipLimit: null, cardIds: [] }];
+  const deletionDiff = diffBoardStates(before, deleted);
+  assert.ok(deletionDiff.changes.some((change) =>
+    change.kind === "column.deleted" && change.columnId === "todo"
+  ));
 });
