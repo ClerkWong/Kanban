@@ -1,7 +1,12 @@
 "use client";
 
 import { type AttachmentRef, type Label, type Priority, makeId } from "../../board-model";
-import { type CardDraft, type DetailState, type StyleWithVars } from "./shared";
+import {
+  isImeComposing,
+  type CardDraft,
+  type DetailState,
+  type StyleWithVars,
+} from "./shared";
 import { AttachmentSection } from "./AttachmentSection";
 import type { BoardContext } from "../../projects/types";
 import type { ProjectMember } from "../../projects/api";
@@ -50,6 +55,9 @@ export function DetailModal({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (isImeComposing(event.nativeEvent)) {
+      return;
+    }
     if (event.key === "Escape") {
       onClose();
     }

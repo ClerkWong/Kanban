@@ -3,6 +3,7 @@
 import type { RefObject } from "react";
 import { useEffect } from "react";
 import type { Label, MonthlyCompletion, Priority } from "../../board-model";
+import { isImeComposing } from "./shared";
 
 const priorityText: Record<Priority, string> = { high: "高", medium: "中", low: "低" };
 
@@ -34,6 +35,9 @@ export function MonthlyReportModal({
         tabIndex={-1}
         ref={modalRef}
         onKeyDown={(e) => {
+          if (isImeComposing(e.nativeEvent)) {
+            return;
+          }
           if (e.key === "Escape") {
             onClose();
           }

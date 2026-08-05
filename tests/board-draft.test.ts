@@ -5,6 +5,8 @@ import {
   draftFromCard,
   draftToCardInput,
   findNearestFocus,
+  getBoardOverlayKey,
+  isImeComposing,
   locateCard,
 } from "../app/components/board/shared";
 import { createDemoBoard, updateCard } from "../app/board-model";
@@ -98,4 +100,37 @@ test("findNearestFocus 優先取同欄下一張，否則上一張，否則 null"
   const [first, second] = column.cardIds;
   assert.equal(findNearestFocus(board.columns, first), second);
   assert.equal(findNearestFocus(board.columns, "card-不存在"), null);
+});
+
+test("編輯內容更新時維持相同 overlay key，避免重新聚焦對話框", () => {
+  const firstDetail = { mode: "add" as const, columnId: "todo", draft: createDraft() };
+  const updatedDetail = {
+    ...firstDetail,
+    draft: { ...firstDetail.draft, title: "注音輸入" },
+  };
+
+  assert.equal(getBoardOverlayKey({
+    detail: firstDetail,
+    confirmAction: null,
+    syncOpen: false,
+    reportOpen: false,
+  }), "detail");
+  assert.equal(getBoardOverlayKey({
+    detail: updatedDetail,
+    confirmAction: null,
+    syncOpen: false,
+    reportOpen: false,
+  }), "detail");
+  assert.equal(getBoardOverlayKey({
+    detail: null,
+    confirmAction: null,
+    syncOpen: false,
+    reportOpen: false,
+  }), null);
+});
+
+test("IME 組字期間辨識標準旗標與 Safari keyCode 229", () => {
+  assert.equal(isImeComposing({ isComposing: true, keyCode: 0 }), true);
+  assert.equal(isImeComposing({ isComposing: false, keyCode: 229 }), true);
+  assert.equal(isImeComposing({ isComposing: false, keyCode: 13 }), false);
 });

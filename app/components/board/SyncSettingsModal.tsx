@@ -2,6 +2,7 @@
 
 import { normalizeBaseUrl } from "../../sync/config";
 import type { SyncHandle } from "../../sync/useSync";
+import { isImeComposing } from "./shared";
 import { useState } from "react";
 import type { FormEvent, KeyboardEvent, RefObject } from "react";
 
@@ -42,6 +43,9 @@ export function SyncSettingsModal({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (isImeComposing(event.nativeEvent)) {
+      return;
+    }
     if (event.key === "Escape") {
       onClose();
     }

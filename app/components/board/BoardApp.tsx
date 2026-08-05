@@ -55,6 +55,7 @@ import {
   draftToCardInput,
   emptyFilters,
   findNearestFocus,
+  getBoardOverlayKey,
   locateCard,
 } from "./shared";
 import { bundledAppConfig, loadAppConfig } from "../../app-config";
@@ -226,6 +227,12 @@ function BoardSurface({
   const platform = usePlatform();
   const [capabilityMessage, setCapabilityMessage] = useState("");
   const [speechAvailable, setSpeechAvailable] = useState(false);
+  const activeOverlay = getBoardOverlayKey({
+    detail,
+    confirmAction,
+    syncOpen: syncModalOpen,
+    reportOpen,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -327,15 +334,18 @@ function BoardSurface({
   }, [board, pendingFocusId]);
 
   useEffect(() => {
-    if (detail || confirmAction || syncModalOpen) {
-      modalRef.current?.focus();
+    if (activeOverlay) {
+      const modal = modalRef.current;
+      if (modal && !modal.contains(document.activeElement)) {
+        modal.focus();
+      }
     } else if (restoreFocusId) {
       window.requestAnimationFrame(() => {
         cardRefs.current.get(restoreFocusId)?.focus();
         setRestoreFocusId(null);
       });
     }
-  }, [detail, confirmAction, syncModalOpen, restoreFocusId]);
+  }, [activeOverlay, restoreFocusId]);
 
   function openAdd(columnId: string) {
     if (!access.canEdit) return;

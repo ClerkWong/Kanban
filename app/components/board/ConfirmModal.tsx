@@ -1,6 +1,6 @@
 "use client";
 
-import type { ConfirmState } from "./shared";
+import { isImeComposing, type ConfirmState } from "./shared";
 import type { RefObject } from "react";
 
 export function ConfirmModal({
@@ -26,6 +26,9 @@ export function ConfirmModal({
         aria-labelledby="confirmTitle"
         tabIndex={-1}
         onKeyDown={(event) => {
+          if (isImeComposing(event.nativeEvent)) {
+            return;
+          }
           if (event.key === "Escape") {
             onCancel();
           }

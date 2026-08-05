@@ -35,6 +35,30 @@ export type ConfirmState =
   | { type: "reset" }
   | null;
 
+export type BoardOverlayKey = "detail" | "confirm" | "sync" | "report" | null;
+
+export function getBoardOverlayKey({
+  detail,
+  confirmAction,
+  syncOpen,
+  reportOpen,
+}: {
+  detail: DetailState | null;
+  confirmAction: ConfirmState;
+  syncOpen: boolean;
+  reportOpen: boolean;
+}): BoardOverlayKey {
+  if (confirmAction) return "confirm";
+  if (reportOpen) return "report";
+  if (syncOpen) return "sync";
+  if (detail) return "detail";
+  return null;
+}
+
+export function isImeComposing(event: Pick<KeyboardEvent, "isComposing" | "keyCode">): boolean {
+  return event.isComposing || event.keyCode === 229;
+}
+
 export const emptyFilters: Filters = {
   query: "",
   labelId: "",
