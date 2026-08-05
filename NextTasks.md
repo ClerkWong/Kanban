@@ -1,7 +1,8 @@
 # Kanban 後續任務與發布 Runbook
 
-- 最後更新：2026-08-04
+- 最後更新：2026-08-05
 - 目前分支：`codex/platform-admin-user-entry`
+- 最新已推送應用候選：`2bd8506`（Web Beta v15；iOS／Android `1.1.0 (5)`）
 - `main` 已整合多專案 v1：`d54e0ec`
 
 本文件整併先前兩份規劃，是後續工作、驗收與發布順序的單一依據。
@@ -11,37 +12,40 @@
 
 | 項目 | 狀態 | 說明 |
 | --- | --- | --- |
-| 單一專案看板與 admin/owner/member | 已完成並發布 Beta | Project 建立會同時建立唯一 Board 與初始 owner；member 可編輯任務；legacy viewer 僅唯讀；staging migration、Worker smoke 與 private Sites Beta v7 已完成 |
-| 登入與使用者管理 | 已發布 Beta，待 owner 設定登入 | email/password session、登入限制、平台帳號建立／停用／角色／密碼重設、同 Workspace 使用者選單已發布為 Sites Beta v8；production 不變更 |
+| 單一專案看板與 admin/owner/member | 已完成並發布 Beta v15 | Project 建立會同時建立唯一 Board 與初始 owner；member 可編輯任務；legacy viewer 僅唯讀；staging Worker 與 private Sites Beta 已更新 |
+| 登入與使用者管理 | 已發布 Beta，待完整多角色驗收 | email/password session、登入限制、平台帳號建立／停用／角色／密碼重設、同 Workspace 使用者選單已發布；production 不變更 |
 | 多專案 v1 合併 main | 已完成並推送 | `feature/multi-project-v1` 已於 `d54e0ec` 合併至 `main` |
-| 平台管理者／一般使用者入口 | 第一階段實作中 | 一般使用者預設進「我的專案」；Workspace owner/admin 才可見平台管理入口、metadata registry 與建立專案功能 |
+| 平台管理者／一般使用者入口 | 第一階段已完成並發布 Beta | 一般使用者預設進「我的專案」；Workspace owner/admin 才可見平台管理入口、metadata registry 與建立專案功能 |
 | 月報資料模型 | 已完成 | 以 `completedAt` 計算最近六個日曆月；schema v4 可遷移 v1/v2/v3 |
 | 3b 附件用戶端 | 多看板同步層與 UI 已完成 | queue v2、下載與 R2 endpoint 已按 user/Project/Board/Attachment 隔離 |
 | Worker 3b | 多專案後端已部署 staging | identity、ACL、Project/Board API、summary、Activity Log 與 scoped R2 API 已部署到隔離 staging；production 尚未部署 |
-| 多專案／多看板規格 | 已核准 | 實作計畫位於 `docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md` |
+| 多專案規格 | 已核准並收斂為單專案單看板 | 2026-07-24 多看板規格保留為歷史基礎；現行產品規則是每個 Project 一個主要 Board，名稱仍可不同 |
 | 多專案 Milestone A | 已完成並推送 | Project domain／ACL capability、per-board storage 與可恢復 legacy migration |
 | 多專案 Worker Task 3 | 已完成並推送 | additive D1 schema、append-only Activity Log constraints、個人／legacy token bootstrap；未套用遠端 |
 | 多專案 Worker Task 4 | 已完成並推送 | HTTP/router、個人 identity、Project ACL、audit foundation；legacy API 保持相容 |
-| 多專案 Worker Task 5 | 已完成並推送 | `/me`、Project lifecycle、membership 與 admin registry APIs；具備 last-manager guard、idempotency 與原子 audit |
+| 多專案 Worker Task 5 | 已完成並推送 | `/me`、Project lifecycle、membership 與 admin registry APIs；具備 last-owner guard（歷史程式命名為 manager）、idempotency 與原子 audit |
 | 多專案 Worker Task 6 | 已完成並推送 | multi-board metadata/content、per-board revision、archive/restore 與 migration-aware `/board` alias；未套用遠端 |
 | 多專案 Worker Task 7 | 已完成並推送 | Project summary、六個月月報、server-side Board diff 與 Project/Board Activity Log cursor API；未套用遠端 |
 | 多專案 Worker Task 8 | 已完成並推送 | Attachment API 與 R2 key 已限定到 Workspace/Project/Board；三角色與 archived read-only 已驗證，未套用遠端 |
 | 多專案 Client Task 9 | 已完成並推送 | runtime `/me` session、Project/Board v2 client、scoped Attachment API、嚴格 parser 與統一錯誤 mapping |
 | 多專案 Client Task 10 | 已完成並推送 | per-board store/revision/sync、queue v2、stale response suppression 與 legacy queue blocker |
 | 多專案 Client Task 11 | 已完成並推送 | Web／Capacitor 共用 ProjectApp、我的專案、專案摘要、Board switcher、嚴格 hash route 與 viewer/archive 唯讀 UI |
-| 多專案 Client Task 12 | 已完成並推送 | manager Project／Board lifecycle、成員角色、archived views、summary filter、Activity Log cursor 與離線管理 guard |
+| 多專案 Client Task 12 | 已完成並推送 | owner Project／Board lifecycle（歷史程式命名為 manager）、成員角色、archived views、summary filter、Activity Log cursor 與離線管理 guard |
 | 多專案 Task 13 | 已完成並推送 | legacy lock/copy/rollback、client merge/remote、一次性 backup、personal token 換發、verification script 與 E2E |
 | 多專案 Task 14 | 已完成並推送 | staging-ready CI、fresh clone／原生完整關卡、受限 token CLI 與 staging/token/reset runbooks |
-| 任務多人指派 v1.1 | 程式已完成，待發布 beta | Card schema v5、Project member 多選、Worker membership validation、離開成員保留與 assignment audit |
+| 任務多人指派 v1.1 | 已完成並發布 Beta | Card schema v5、Project member 多選、Worker membership validation、離開成員保留與 assignment audit 均已進 staging／Beta |
+| 任務流動與阻塞狀態 | 已完成並發布 Beta | 任務可標示 blocked、原因與起始時間，並可依阻塞狀態篩選；Activity Log 只記欄位變更，不洩漏原因內容 |
+| 動態工作流欄位 | 已完成並發布 Beta v15 | owner 可新增／改名／排序／設定 WIP／刪除空欄；member 可編輯與移動任務但不能管理工作流；完成欄 identity 受保護 |
+| 輸入與響應式看板 | 已完成並發布 Beta v15 | 修正繁中注音 IME 組字；桌面與 Mobile 欄位固定同一水平列，溢出時水平捲動，Mobile 滿版吸附 |
 | staging 設定 | 已建立並部署 | staging Worker、D1、private R2、migration、owner 與 personal token 已完成；待 RC 多角色／多裝置驗收 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
-| Web/PWA | private beta v3 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site) 已更新至 `d43eb3f`；修正 personal token 首次連線誤呼叫 legacy `/board`，目前僅擁有者可存取 |
+| Web/PWA | private Beta v15 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site) 已更新至 `f007174`；包含登入、平台／專案入口、多人指派、阻塞狀態、動態工作流欄位、IME 修正與水平單列排版，目前僅擁有者可存取 |
 | Sites 關聯 | 已完成 beta 關聯 | `.openai/hosting.json` 已保存 beta `project_id`；Sites 本身不擁有同步 D1/R2 |
-| 客製 title | 已完成並發布 beta | `public/app-config.json` 控制畫面與 WebView title；beta v3 已提供目前 JSON 值 |
+| 客製 title | 已完成並發布 Beta | `public/app-config.json` 控制畫面與 WebView title；Beta v15 與 Mobile build 5 使用 `定恆人工智能` |
 | staging Worker/D1/R2/token | 已建立 | 和 production 完全隔離；URL 與非敏感 inventory 見 staging runbook |
 | production Worker/D1 | 既有 3a 上線 | 尚未部署本次 3b Worker |
 | production R2 | **尚未建立** | 必須等 staging 驗收全數通過 |
-| iOS/Android | `1.1.0` 內測程式已建置，未完成發行 | 可管理工作流欄位的最新資產已同步至 `1.1.0 (4)`；Android debug、iOS simulator 與已簽署 iOS device build 通過，尚缺 build 4 實機 smoke test 與正式分發 |
+| iOS/Android | `1.1.0 (5)` 已部署實機，未完成正式分發 | 最新資產已覆蓋安裝並啟動於 iPhone 12 Pro Max 與 Pixel 9a；兩台裝置皆回報 build 5，尚缺完整功能 smoke、TestFlight／internal track 與正式簽章分發 |
 
 ### 已完成的驗證
 
@@ -82,8 +86,8 @@
   Web build 與 mobile build；已驗證嚴格 hash routing、無權 context fallback、
   Project role／archive 唯讀 actions，以及 scoped 附件重試下載。
 - 多專案 Task 12 已通過 140 個單元測試、46 個 Worker runtime tests、lint、typecheck、
-  Web build、mobile build 與完整 mobile sync；已驗證 manager-only actions、
-  last-manager guard、archived read-only、Log filter/cursor、summary archived filter
+  Web build、mobile build 與完整 mobile sync；已驗證 owner-only actions（當時命名為
+  manager）、last-owner guard、archived read-only、Log filter/cursor、summary archived filter
   與離線管理操作不進 queue。
 - 多專案 Task 13 已通過 144 個單元測試、48 個 Worker runtime tests、lint、typecheck、
   Web/mobile build、Worker types check 與 production/staging dry-run；已驗證 legacy
@@ -106,38 +110,54 @@
 - 任務多人指派 v1.1 已通過 159 個 client tests、49 個 Worker tests、8 個 release
   tests、lint、typecheck、Web/mobile build 與 staging Worker dry-run。Board schema
   v5 migration 保留 v4 `completedAt`，Worker 只允許新指派目前的 Project members。
+- 工作流欄位管理 `8a44490` 已通過 183 個 client tests、56 個 Worker tests、lint、
+  typecheck、Worker types、Web/mobile build、staging dry-run、Android debug、iOS
+  simulator 與 Apple Development device build。Owner 可新增／改名／排序／設定 WIP／
+  刪除空欄；完成欄 identity、非空欄與最少工作欄受 client/Worker 雙重保護。
+- 水平單列修正 `f007174` 已通過 183 個 client tests、lint、typecheck 與 Web build；
+  1590 px 桌面五欄頂端座標一致，390 px Mobile 每欄 370 px、同列且使用 mandatory
+  scroll snap。Private Sites Beta v15 已發布。
+- Mobile `2bd8506` 已完成 iOS／Android final sync 與 build 5 實機部署。iPhone 12 Pro
+  Max 回報 `1.1.0 (5)` 且 App 程序成功啟動；Pixel 9a 回報 `versionName 1.1.0`、
+  `versionCode 5` 且程序成功啟動。兩份 bundle 均包含水平單列 CSS 與 staging URL。
 - `47f604f` 已執行完整 `pnpm mobile:sync`；iOS/Android bundle 均包含多人指派 UI，
   Android debug APK 與未簽章 iOS simulator build 成功。詳細差距與下一批工作見
   [Mobile 進度報告](./docs/reports/mobile-progress-2026-07-30.md)。
-- `feature/multi-project-v1` 的 staging 候選基準是 `de24a29`。隔離的 staging
-  Worker、D1、private R2、migration、owner、personal token 與驗證 Project/Boards
-  已建立，authenticated smoke 與 R2 scope round-trip 已通過。private beta v3 已從
-  `d43eb3f` 發布；下一步是以瀏覽器人工驗證首次連線，再進行 P0-4 多角色、雙裝置與
-  實機驗收。
+- 隔離的 staging Worker、D1、private R2、migration、owner、personal token 與驗證
+  Project/Board 已建立，authenticated smoke 與 R2 scope round-trip 已通過。目前
+  staging Worker 版本為 `a78e0c42-7557-49b3-9f09-5e27af9ee3de`，private Beta v15
+  已從 `f007174` 發布；下一步是 P0-4 多角色、雙裝置、附件與完整實機驗收。
 
-## P0-1：發布 Web private beta（已完成）
+## P0-1：發布 Web private Beta（已完成）
 
-Sites beta v3 已從 `d43eb3f` 發布，保留 owner-only custom access。驗證結果：
+Sites Beta v15 已從 `f007174` 發布，保留 owner-only custom access。驗證結果：
 
-- [x] `/`、`/privacy`、`/support` 都回 200。
-- [x] `/app-config.json` 回 200，提供目前客製 title `定恆人工智能`。
+- [x] 通過 owner-only 存取後，`/`、`/privacy`、`/support` 都回 200；未授權訪客會被拒絕。
+- [x] 通過 owner-only 存取後，`/app-config.json` 回 200，提供客製 title `定恆人工智能`。
 - [x] 發布後 10 分鐘內 Sites Worker error log 無事件。
 - [x] personal token 首次連線不再依賴 legacy `/board`。
-- [ ] 由瀏覽器人工確認：輸入 staging URL 與 personal token 後，重新載入並進入
-  「我的專案」。
-- [ ] 由瀏覽器人工確認主標題與分頁 title 使用 JSON 值。
+- [x] Safari 已進入「我的專案」與 Project Board；Project Board 主標題使用專案名稱。
+- [x] Web 與原生 App 使用 JSON title `定恆人工智能`。
+- [x] 繁中注音 IME 可完成組字，不會因輸入事件重建欄位而中斷。
+- [x] 動態工作流欄位在桌面與 Mobile 都維持單一水平列，不建立上下層級錯覺。
 - [ ] 人工確認線上重新整理、離線 fallback 與 PWA service worker 升級。
 
 限制：iOS/Android 會把 JSON 包入 App，修改後仍需 `pnpm mobile:sync` 與新 build。
 手機桌面圖示下方的 App 名稱是原生 metadata，不能只靠 App 重啟變更。若未來要求已安裝
 App 在不更新版本的情況下取得新 title，需要另外設計公開且可驗證的遠端設定端點。
 
-## P0-2：依計畫實作多專案／多看板 v1
+## P0-2：多專案／單看板 v1（已完成實作）
 
-規格與實作計畫：
+歷史規格、現行角色規格與實作計畫：
 
-- [多專案／多看板管理 v1 規格](./docs/superpowers/specs/2026-07-24-multi-project-multi-board-design.md)
+- [多專案／多看板管理 v1 歷史規格](./docs/superpowers/specs/2026-07-24-multi-project-multi-board-design.md)
 - [多專案／多看板 v1 實作計畫](./docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md)
+- [admin／owner／member 與單 Project 單 Board 規格](./docs/superpowers/specs/2026-08-03-project-admin-owner-member-design.md)
+- [admin／owner／member 實作計畫](./docs/superpowers/plans/2026-08-03-project-admin-owner-member-plan.md)
+
+2026-08-03 起，現行產品規則收斂為「一個 Project 對應一個主要 Board」。舊多看板
+domain、migration 與 archive 能力保留作相容與歷史資料用途，不再作為一般 UI 的建立
+模型。
 
 依計畫的 14 個 Task 實作：
 
@@ -152,9 +172,9 @@ App 在不更新版本的情況下取得新 title，需要另外設計公開且�
 
 完成條件：
 
-- 一位 user 可在不同 Project 擁有不同角色。
+- 一位 user 可加入多個 Project，並在各 Project 擁有獨立角色。
 - 未參與 Project 無法列出、讀取或猜測內容。
-- Project/Board 名稱彼此獨立，一個 Project 可有多個 Board。
+- Project/Board 名稱彼此獨立；每個 Project 只有一個主要 Board。
 - summary 只聚合目前 Project，沒有跨 Project dashboard。
 - 封存後內容、附件與 Log 可讀但不可修改。
 - 舊單一 Board、月報、附件 refs、墓碑與 revision 無資料遺失。
@@ -168,8 +188,8 @@ App 在不更新版本的情況下取得新 title，需要另外設計公開且�
 - [實作計畫](./docs/superpowers/plans/2026-07-30-multi-assignee-tasks-v1.md)
 
 已完成 Card schema v5、Project member 多選、多人名稱顯示、離開成員保留、
-Worker membership validation 與 Activity Log changed fields。待部署 staging Worker 與
-private beta 後進行三角色、雙裝置人工驗收。
+Worker membership validation 與 Activity Log changed fields，並已部署 staging Worker
+與 private Beta。剩餘工作是三角色、雙裝置與附件交互的人工驗收。
 
 ## P0-3：建立完全隔離的 staging（已完成）
 
@@ -187,7 +207,7 @@ private beta 後進行三角色、雙裝置人工驗收。
 1. [x] 建立 `kanban-sync-staging` D1。
 2. [x] 將實際 `database_id` 固定寫回 `worker-sync/wrangler.jsonc` 的 staging binding。
 3. [x] 建立 private `kanban-attachments-staging` R2，未設定公開網域。
-4. [x] 執行 `pnpm sync:migrate:staging`，`0001`、`0002` 均已套用。
+4. [x] 執行 `pnpm sync:migrate:staging`，`0001`～`0004` 均已套用。
 5. [x] 產生只供 staging 使用的高熵 personal token：
    - D1 只儲存 SHA-256 hash。
    - 明文不得進 repo、shell history、CI log、測試快照或前端 bundle。
@@ -207,10 +227,10 @@ private beta 後進行三角色、雙裝置人工驗收。
 | 類型 | 值 |
 | --- | --- |
 | Worker URL | `https://kanban-sync-staging.clerk-wong.workers.dev` |
-| Worker deployment | `2280664a-b7cc-4511-9096-d65a37f1096e` |
+| Worker deployment | `a78e0c42-7557-49b3-9f09-5e27af9ee3de` |
 | D1 | `kanban-sync-staging` / `bcae6724-352b-453d-92e4-28bcf229f76f` |
 | R2 | private `kanban-attachments-staging` |
-| Owner | `a14c7f5d-4c2e-8896-07652625d722` / `Staging Owner` |
+| Owner | `a14c7f5d-4c2e-8896-07652625d722` / `Staging Owner`（現行 Project role：owner） |
 | Token | personal `owner-web`，建立日期 2026-07-27；明文只存本機 Keychain |
 
 驗收證據：
@@ -237,6 +257,9 @@ private beta 後進行三角色、雙裝置人工驗收。
 
 ### 自動化
 
+- [x] `8a44490`／`f007174` 通過 183 個 client tests、56 個 Worker tests、lint、
+  typecheck、Worker types、Web/mobile build、staging dry-run 與雙平台 native build。
+- [x] iOS／Android `1.1.0 (5)` 已完成 final sync、實機覆蓋安裝、啟動與版本核對。
 - [x] `de24a29` fresh clone 在 final mobile sync 後工作樹乾淨，`git diff --check` 通過。
 - [x] `pnpm install --frozen-lockfile` 可從 fresh clone 完成。
 - [x] `pnpm test`（153）、`pnpm worker:test`（48）、lint、typecheck 全綠。
@@ -248,8 +271,12 @@ private beta 後進行三角色、雙裝置人工驗收。
 
 ### Staging API 基線
 
-- Project：`449390b4-b03a-4e60-8873-991eece77f37` / `Staging 驗證專案`，owner 是
-  manager。
+以下 A/B Board 是多看板階段留下的隔離驗證 fixture；現行一般 UI 只允許每個 Project
+一個主要 Board。fixture 僅保留作 migration、archive 與 scope 回歸測試，不代表目前的
+產品建立流程。
+
+- Project：`449390b4-b03a-4e60-8873-991eece77f37` / `Staging 驗證專案`；歷史資料角色
+  `manager` 對應現行 `owner`。
 - Board A：`655c1c1c-e54d-4006-9670-84959b26b58d` / `Web 驗證看板`，revision 1。
 - Board B：`20a59286-a61f-4cbf-a6dc-d14a0d4a0222` / `App 驗證看板`，revision 0。
 - 相同 attachment ID 在 A/B 寫入不同 bytes 後可各自讀回，證明 Board-scoped R2
@@ -275,15 +302,16 @@ git diff --check
 ### 多專案與權限
 
 - [ ] 「我的專案」只顯示呼叫者參與的 Project。
-- [ ] 同一 user 可在 Project A 為 manager、Project B 為 viewer。
+- [ ] 同一 user 可在 Project A 為 owner、Project B 為 member。
 - [ ] workspace admin 未加入 Project 時只能看管理 metadata，不能讀工作內容。
-- [ ] contributor 可改 Card，但不能管理成員或封存 Board。
-- [ ] viewer 可讀 Board、Attachment、summary 與 Log，但不能 mutation。
-- [ ] manager/contributor 可指派多位 Project members；viewer 只能查看負責人。
+- [ ] member 可改 Card、多人指派與任務狀態，但不能管理成員或封存 Project/Board。
+- [ ] owner 可管理 Project 成員與工作流；admin 可建立／封存 Project，但未加入時不能讀工作內容。
+- [ ] legacy viewer 可讀 Board、Attachment、summary 與 Log，但不能 mutation。
+- [ ] owner/member 可指派多位 Project members；legacy viewer 只能查看負責人。
 - [ ] 非 Project member 不能被新指派；成員離開後既有指派保留且可移除。
 - [ ] 多人任務移到完成欄時仍只有一個 Card-level `completedAt`。
 - [ ] Project 與 Board 名稱可不同，改名互不影響。
-- [ ] 同一 Project 的多個 Board revision、離線 cache 與 queue 彼此隔離。
+- [ ] 不同 Project 的 Board revision、離線 cache 與 queue 彼此隔離。
 - [ ] Project summary 不混入其他 Project，預設排除 archived Board。
 - [ ] 封存後唯讀、可看 Log，還原後 revision 與資料不重置。
 
@@ -322,8 +350,10 @@ git diff --check
 
 ### Web/PWA 與客製設定
 
-- [x] private beta v3 仍是 owner-only custom access。
-- [ ] JSON title、metadata、分享預覽與頁面主標題一致。
+- [x] private Beta v15 仍是 owner-only custom access。
+- [x] JSON title、metadata 與登入頁主標題一致；進入 Project 後 H1 改用專案名稱。
+- [ ] 人工確認 Slack／訊息等分享預覽使用最新品牌圖與文字。
+- [x] 動態欄位在桌面與 Mobile 維持同一水平列；溢出時水平捲動。
 - [ ] HTTPS 安裝、離線冷啟動及 service worker 升級正常。
 - [ ] 新版設定線上立即取得，離線仍有可用 fallback。
 - [ ] 瀏覽器附件與麥克風權限拒絕／恢復流程正常。
@@ -347,7 +377,11 @@ git diff --check
 - [x] Project Owner 工作流管理已支援新增欄位、設定 WIP、左右排序與刪除空欄；完成欄與非空欄位不可刪除，member 仍只能編輯／移動任務。
 - [x] 欄位管理已加入 Worker 權限與安全轉換驗證，以及 created／renamed／WIP／moved／deleted audit diff；183 個 Web 測試與 56 個 Worker 測試通過。
 - [x] build 4 已通過 Mobile sync、Android debug、iOS simulator 與 Apple Development 簽署的 iOS device build；產物位於 `outputs/mobile/`。
-- [ ] 將 build 4 覆蓋安裝至 iPhone 12 Pro Max 與 Pixel 9a，驗證欄位管理及既有登入資料保留。
+- [x] build 5 已覆蓋安裝並啟動於 iPhone 12 Pro Max；裝置回報 `1.1.0 (5)`。
+- [x] build 5 已覆蓋安裝並啟動於 Pixel 9a；裝置回報 `versionName 1.1.0`、`versionCode 5`。
+- [x] build 5 的 iOS／Android bundle 均包含水平單列 CSS 與 staging URL；Android APK
+  由 debug keystore 簽署，iOS App 由 Apple Development identity 簽署。
+- [x] Mobile 每欄維持滿版、同一水平列與 mandatory scroll snap；新增第五欄不再換到下方。
 - [x] 補 Mobile bundle 內可離線讀取的支援／隱私面板，內容與 Web 共用。
 - [x] Android debug APK 已由 debug keystore 簽署，可供受控內部測試。
 - [x] 本機已有有效 Apple Development／Distribution identity；iOS Release device
@@ -366,7 +400,7 @@ git diff --check
 - [ ] 相機、相簿、錄音、播放與繁中語音建卡正常。
 - [ ] 權限拒絕後不崩潰，重新授權可恢復。
 - [ ] 背景／前景、斷網、重啟與低儲存空間不遺失 board。
-- [ ] App 內 title 使用候選 JSON 值。
+- [x] App 內 title 使用候選 JSON 值 `定恆人工智能`。
 - [ ] Web ↔ Mobile 多人指派、Board revision 與附件最終收斂。
 
 ## P0-5：production cutover
@@ -454,21 +488,20 @@ git diff --check
 ## 已知限制
 
 - 刪除墓碑只保留 30 天；離線更久的裝置可能讓舊卡片復活。
-- 共用 token 不是個人帳號權限模型；成員離開或裝置遺失需人工撤銷換發。
+- email/password session 是一般使用者入口；personal／legacy token 只保留管理、遷移與
+  相容用途。裝置遺失或 token 外洩時仍需人工撤銷換發。
 - 附件 queue 保證跨重啟保存，並在 App 啟動、上線、回前景、資料變更或手動同步時
   重試；它不是 iOS/Android 的永久背景傳輸程序。
 - JSON title 可在 Web 啟動時重新讀取；原生已安裝 App 的 bundled JSON 與桌面名稱
   仍受 App build 限制。
 - 本機自動化通過不能取代 staging 雙裝置、實機與 production smoke test。
 
-## 建議時程
+## 剩餘工作建議時程
 
 | 階段 | 估計 |
 | --- | --- |
-| title 提交與 private beta v2 | 0.5 天 |
-| 多專案 domain、ACL、API、UI、migration 與測試 | 4–7 天 |
-| staging 資源建立與初始部署 | 0.5–1 天 |
-| 多角色、雙裝置、Web/PWA 與實機驗收 | 2–3 天 |
+| 多角色、雙裝置、附件、離線與 Web/PWA 驗收 | 2–3 天 |
+| TestFlight／Android internal track 與 release signing | 1–2 天 |
 | production 備份、cutover 與觀察 | 1 天 |
 | 商店資料、簽章與審核 | 另案估算 |
 
