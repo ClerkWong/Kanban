@@ -37,7 +37,6 @@ import {
 } from "../../board-model";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  CSSProperties,
   Dispatch,
   FormEvent,
   ReactNode,
@@ -865,7 +864,6 @@ function BoardSurface({
       <section
         className="board"
         aria-label="Kanban 看板"
-        style={{ "--column-count": board.columns.length } as CSSProperties}
       >
         {board.columns.map((column, columnIndex) => {
           const wip = getColumnWip(column);

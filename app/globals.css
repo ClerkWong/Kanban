@@ -363,7 +363,9 @@ textarea {
 
 .board {
   display: grid;
-  grid-template-columns: repeat(var(--column-count, 4), minmax(270px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(270px, 1fr);
+  grid-template-columns: none;
   gap: 12px;
   max-width: 1560px;
   min-height: min(68vh, 760px);
@@ -984,8 +986,6 @@ textarea {
   .board {
     width: 100%;
     grid-auto-columns: 100%;
-    grid-auto-flow: column;
-    grid-template-columns: none;
     min-height: 620px;
     scroll-padding-inline: 0;
     scroll-snap-type: x mandatory;
