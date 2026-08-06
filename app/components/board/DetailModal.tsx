@@ -1,6 +1,12 @@
 "use client";
 
-import { type AttachmentRef, type Label, type Priority, makeId } from "../../board-model";
+import {
+  type AttachmentRef,
+  type Label,
+  type Priority,
+  type ServiceClass,
+  makeId,
+} from "../../board-model";
 import {
   isImeComposing,
   type CardDraft,
@@ -122,7 +128,24 @@ export function DetailModal({
                 onChange={(event) => setDraft({ dueDate: event.target.value })}
               />
             </label>
+            <label className="formField">
+              <span>服務類別</span>
+              <select
+                value={draft.serviceClass}
+                onChange={(event) =>
+                  setDraft({ serviceClass: event.target.value as ServiceClass })
+                }
+              >
+                <option value="standard">標準</option>
+                <option value="expedite">加急</option>
+                <option value="fixedDate">固定日期</option>
+                <option value="intangible">無形</option>
+              </select>
+            </label>
           </div>
+          {draft.serviceClass === "fixedDate" && !draft.dueDate && (
+            <small className="fieldHint">固定日期類別建議設定到期日，未設定仍可儲存。</small>
+          )}
 
           <fieldset className={`fieldGroup blockerFields ${draft.blocked ? "active" : ""}`}>
             <legend>流動狀態</legend>

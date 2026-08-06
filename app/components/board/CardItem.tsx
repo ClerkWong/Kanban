@@ -1,7 +1,8 @@
 "use client";
 
-import type { Card, Label } from "../../board-model";
-import { type StyleWithVars, priorityText } from "./shared";
+import type { BoardSettings, Card, Label } from "../../board-model";
+import { getAgingLevel, getCardAgingDays } from "../../board-model";
+import { type StyleWithVars, priorityText, serviceClassText } from "./shared";
 import type { KeyboardEvent } from "react";
 
 export function CardItem({
@@ -11,6 +12,8 @@ export function CardItem({
   movementDisabled,
   assigneeNames,
   readOnly = false,
+  settings,
+  isDoneColumn,
   onOpen,
   onMove,
   onChecklistToggle,
@@ -26,6 +29,8 @@ export function CardItem({
   /** Undefined for legacy boards; Project boards provide the current member directory. */
   assigneeNames?: Record<string, string>;
   readOnly?: boolean;
+  settings: BoardSettings;
+  isDoneColumn: boolean;
   onOpen: () => void;
   onMove: (direction: "up" | "down" | "left" | "right") => void;
   onChecklistToggle: (itemId: string) => void;
@@ -35,6 +40,8 @@ export function CardItem({
   onDropBefore: () => void;
 }) {
   const doneCount = card.checklist.filter((item) => item.done).length;
+  const agingDays = isDoneColumn ? 0 : getCardAgingDays(card, today);
+  const agingLevel = isDoneColumn ? "normal" : getAgingLevel(agingDays, settings);
   const isOverdue = card.dueDate && card.dueDate < today;
   const cardLabels = labels.filter((label) => card.labelIds.includes(label.id));
   const assignees = assigneeNames === undefined
@@ -67,7 +74,7 @@ export function CardItem({
 
   return (
     <article
-      className="card"
+      className={`card${card.serviceClass === "expedite" ? " expedite" : ""}`}
       draggable={!movementDisabled && !readOnly}
       onDragStart={(event) => {
         if (movementDisabled || readOnly) {
@@ -90,6 +97,11 @@ export function CardItem({
       <button ref={setRef} type="button" className="cardOpen" onClick={onOpen}>
         <span className={`priorityDot ${card.priority}`} aria-hidden="true" />
         <span>{card.title}</span>
+        {card.serviceClass !== "standard" && (
+          <span className={`serviceBadge ${card.serviceClass}`}>
+            {serviceClassText[card.serviceClass]}
+          </span>
+        )}
       </button>
 
       {card.blocked && (
@@ -115,6 +127,11 @@ export function CardItem({
 
       <div id={`card-${card.id}-meta`} className="cardMeta">
         <span>優先級：{priorityText[card.priority]}</span>
+        {!isDoneColumn && (
+          <span className={`agingNote ${agingLevel}`}>
+            此欄 {agingDays} 天{agingLevel !== "normal" ? " · 停留過久" : ""}
+          </span>
+        )}
         {card.dueDate && (
           <span className={isOverdue ? "overdueText" : ""}>到期：{card.dueDate}</span>
         )}

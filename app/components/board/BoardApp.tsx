@@ -1040,6 +1040,8 @@ function BoardSurface({
                       movementDisabled={filtersActive}
                       assigneeNames={assigneeNames}
                       readOnly={!access.canEdit}
+                      settings={board.settings}
+                      isDoneColumn={column.id === DONE_COLUMN_ID}
                       onOpen={() => openEdit(card.id)}
                       onMove={(direction) => moveWithButtons(card.id, direction)}
                       onChecklistToggle={(itemId) => {

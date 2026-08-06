@@ -662,6 +662,43 @@ textarea {
   font-weight: 900;
 }
 
+.serviceBadge {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.serviceBadge.expedite {
+  color: var(--rose);
+  font-weight: 700;
+}
+
+.serviceBadge.fixedDate {
+  color: var(--indigo);
+  font-weight: 700;
+}
+
+.serviceBadge.intangible {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.card.expedite {
+  border: 2px solid var(--rose);
+}
+
+.agingNote.warn {
+  color: var(--amber);
+  font-weight: 700;
+}
+
+.agingNote.alert {
+  color: var(--rose);
+  font-weight: 900;
+}
+
 .checkPreview {
   display: grid;
   gap: 6px;

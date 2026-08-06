@@ -6,6 +6,7 @@ import type {
   Column,
   Filters,
   Priority,
+  ServiceClass,
 } from "../../board-model";
 import type { CSSProperties } from "react";
 
@@ -24,6 +25,7 @@ export type CardDraft = {
   members: string;
   checklist: ChecklistItem[];
   attachments: AttachmentRef[];
+  serviceClass: ServiceClass;
 };
 
 export type DetailState =
@@ -76,6 +78,13 @@ export const priorityText: Record<Priority, string> = {
   low: "低",
 };
 
+export const serviceClassText: Record<ServiceClass, string> = {
+  standard: "標準",
+  expedite: "加急",
+  fixedDate: "固定日期",
+  intangible: "無形",
+};
+
 export function createDraft(): CardDraft {
   return {
     title: "",
@@ -89,6 +98,7 @@ export function createDraft(): CardDraft {
     members: "",
     checklist: [],
     attachments: [],
+    serviceClass: "standard",
   };
 }
 
@@ -105,6 +115,7 @@ export function draftFromCard(card: Card): CardDraft {
     members: card.members.join(", "),
     checklist: card.checklist.map((item) => ({ ...item })),
     attachments: card.attachments.map((ref) => ({ ...ref })),
+    serviceClass: card.serviceClass,
   };
 }
 
@@ -124,6 +135,7 @@ export function draftToCardInput(draft: CardDraft) {
       .filter(Boolean),
     checklist: draft.checklist,
     attachments: draft.attachments,
+    serviceClass: draft.serviceClass,
   };
 }
 
