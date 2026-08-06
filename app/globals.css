@@ -538,7 +538,7 @@ textarea {
 
 .cardOpen {
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr);
+  grid-template-columns: 12px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: start;
   min-height: 44px;
@@ -677,12 +677,10 @@ textarea {
 
 .serviceBadge.fixedDate {
   color: var(--indigo);
-  font-weight: 700;
 }
 
 .serviceBadge.intangible {
   color: var(--muted);
-  font-weight: 700;
 }
 
 .card.expedite {
