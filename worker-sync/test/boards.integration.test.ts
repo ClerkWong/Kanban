@@ -749,6 +749,54 @@ describe("Flow field validation, Board settings guard, and Activity Log flow tra
     });
   });
 
+  it("allows a member to edit a pre-feature board (no settings key) when it carries default settings", async () => {
+    await createBoard(managerToken, projectA, boardA, "Legacy Settings", board(3, "pre-feature"));
+    const memberPut = await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({
+        baseRevision: 0,
+        board: {
+          version: 7,
+          columns: [],
+          cards: {},
+          settings: { agingWarnDays: 3, agingAlertDays: 7, expediteWipLimit: 1 },
+        },
+      }),
+    });
+    expect(memberPut.status).toBe(200);
+  });
+
+  it("forbids a member from introducing non-default settings on a pre-feature board (no settings key)", async () => {
+    await createBoard(managerToken, projectA, boardA, "Legacy Settings", board(3, "pre-feature"));
+    const memberPut = await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({
+        baseRevision: 0,
+        board: {
+          version: 7,
+          columns: [],
+          cards: {},
+          settings: { agingWarnDays: 5, agingAlertDays: 10, expediteWipLimit: 2 },
+        },
+      }),
+    });
+    expect(memberPut.status).toBe(403);
+    expect(await memberPut.json()).toMatchObject({ error: "forbidden" });
+  });
+
+  it("rejects a settings field that is not an object", async () => {
+    await createBoard(managerToken, projectA, boardA, "Settings");
+    const memberPut = await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({
+        baseRevision: 0,
+        board: { version: 7, columns: [], cards: {}, settings: [] },
+      }),
+    });
+    expect(memberPut.status).toBe(400);
+    expect(await memberPut.json()).toMatchObject({ error: "invalid_settings" });
+  });
+
   it("logs serviceClass in card.updated fields when a member changes it", async () => {
     const withCard = {
       version: 6,

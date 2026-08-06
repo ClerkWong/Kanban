@@ -76,6 +76,10 @@ function isValidTimestamp(value: unknown): boolean {
 
 /** v6 舊 client 相容：欄位缺席即通過，出現才驗格式。 */
 function requireValidFlowFields(value: unknown): void {
+  const board = asRecord(value);
+  if (board && board.settings !== undefined && asRecord(board.settings) === null) {
+    throw new RequestError(400, "invalid_settings");
+  }
   const cards = asRecord(asRecord(value)?.cards);
   if (!cards) return;
   for (const raw of Object.values(cards)) {
@@ -105,9 +109,18 @@ function requireValidFlowFields(value: unknown): void {
   }
 }
 
+/** 與 app/board-model.ts 的 DEFAULT_BOARD_SETTINGS 保持一致：無 settings 鍵的舊 board（功能上線前建立）
+ * 在 v7 client 一律會被 normalizeBoard 補上這組預設值，故視為「缺席 = 預設值」，
+ * 否則 member 對這類舊 board 的任何編輯都會被誤判為「變更了 settings」而 403。 */
+const DEFAULT_BOARD_SETTINGS_SIGNATURE = JSON.stringify({
+  agingWarnDays: 3,
+  agingAlertDays: 7,
+  expediteWipLimit: 1,
+});
+
 function settingsSignature(value: unknown): string {
   const settings = asRecord(asRecord(value)?.settings);
-  if (!settings) return "absent";
+  if (!settings) return DEFAULT_BOARD_SETTINGS_SIGNATURE;
   return JSON.stringify({
     agingWarnDays: settings.agingWarnDays,
     agingAlertDays: settings.agingAlertDays,
