@@ -2585,6 +2585,19 @@ textarea {
   color: var(--muted);
 }
 
+.reportFlowRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 4px 0 8px;
+  font-size: 0.8rem;
+  color: var(--ink);
+}
+
+.reportUnmeasured {
+  color: var(--muted);
+}
+
 .reportList {
   display: grid;
   gap: 16px;
@@ -2817,6 +2830,11 @@ textarea {
   .reportChartRow {
     grid-template-columns: 80px minmax(0, 1fr) 30px;
     gap: 8px;
+  }
+
+  .reportFlowRow {
+    gap: 8px;
+    font-size: 0.75rem;
   }
 
   .reportCardRow {

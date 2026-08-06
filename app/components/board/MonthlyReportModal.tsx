@@ -2,8 +2,8 @@
 
 import type { RefObject } from "react";
 import { useEffect } from "react";
-import type { Label, MonthlyCompletion, Priority } from "../../board-model";
-import { isImeComposing } from "./shared";
+import type { Label, MonthlyFlowStats, Priority, ServiceClass } from "../../board-model";
+import { isImeComposing, serviceClassText } from "./shared";
 
 const priorityText: Record<Priority, string> = { high: "高", medium: "中", low: "低" };
 
@@ -13,7 +13,7 @@ export function MonthlyReportModal({
   modalRef,
   onClose,
 }: {
-  stats: MonthlyCompletion[];
+  stats: MonthlyFlowStats[];
   labels: Label[];
   modalRef: RefObject<HTMLDivElement | null>;
   onClose: () => void;
@@ -45,7 +45,7 @@ export function MonthlyReportModal({
       >
         <div className="reportContent">
           <div className="reportHeader">
-            <h2 id="reportTitle">📊 每月完成報表</h2>
+            <h2 id="reportTitle">📊 流動報表</h2>
             <button type="button" className="iconOnly" onClick={onClose} aria-label="關閉">
               ×
             </button>
@@ -58,15 +58,40 @@ export function MonthlyReportModal({
               stats.map((s) => {
                 const widthPercent = maxCount > 0 ? (s.count / maxCount) * 100 : 0;
                 return (
-                  <div key={s.month} className="reportChartRow">
-                    <div className="reportMonthLabel">{s.monthLabel}</div>
-                    <div className="reportBar">
-                      <div
-                        className="reportBarFill"
-                        style={{ "--bar-width": `${widthPercent}%` } as React.CSSProperties}
-                      />
+                  <div key={s.month}>
+                    <div className="reportChartRow">
+                      <div className="reportMonthLabel">{s.monthLabel}</div>
+                      <div className="reportBar">
+                        <div
+                          className="reportBarFill"
+                          style={{ "--bar-width": `${widthPercent}%` } as React.CSSProperties}
+                        />
+                      </div>
+                      <div className="reportCount">{s.count}</div>
                     </div>
-                    <div className="reportCount">{s.count}</div>
+                    <div className="reportFlowRow">
+                      <span>
+                        Cycle Time 中位數：
+                        {s.cycleTimeMedianDays === null ? "—" : `${s.cycleTimeMedianDays} 天`}
+                        {s.cycleTimeAverageDays !== null && `（平均 ${s.cycleTimeAverageDays} 天）`}
+                      </span>
+                      <span>阻塞：{formatBlockedDuration(s.blockedTotalMs)}</span>
+                      <span>
+                        流動效率：
+                        {s.flowEfficiencyMedian === null
+                          ? "—"
+                          : `${Math.round(s.flowEfficiencyMedian * 100)}%`}
+                      </span>
+                      {s.unmeasuredCount > 0 && (
+                        <span className="reportUnmeasured">無度量資料 {s.unmeasuredCount} 張</span>
+                      )}
+                      <span>
+                        {(Object.entries(s.serviceClassCounts) as Array<[ServiceClass, number]>)
+                          .filter(([, count]) => count > 0)
+                          .map(([kind, count]) => `${serviceClassText[kind]} ${count}`)
+                          .join("、")}
+                      </span>
+                    </div>
                   </div>
                 );
               })
@@ -112,6 +137,13 @@ export function MonthlyReportModal({
       </div>
     </div>
   );
+}
+
+function formatBlockedDuration(ms: number): string {
+  if (ms <= 0) return "0 小時";
+  const hours = ms / 3_600_000;
+  if (hours < 24) return `${Math.round(hours * 10) / 10} 小時`;
+  return `${Math.round((hours / 24) * 10) / 10} 天`;
 }
 
 function formatCompletedDate(completedAt: string | null): string {

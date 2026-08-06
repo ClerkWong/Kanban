@@ -17,7 +17,7 @@ import {
   getBoardStats,
   getColumnWip,
   getLocalDateString,
-  getMonthlyCompletionStats,
+  getMonthlyFlowStats,
   isFilterActive,
   makeId,
   moveCard,
@@ -1245,7 +1245,7 @@ function BoardSurface({
 
       {reportOpen && (
         <MonthlyReportModal
-          stats={getMonthlyCompletionStats(board)}
+          stats={getMonthlyFlowStats(board)}
           labels={board.labels}
           modalRef={modalRef}
           onClose={() => setReportOpen(false)}
