@@ -783,7 +783,7 @@ describe("Flow field validation, Board settings guard, and Activity Log flow tra
           title: "Task",
           serviceClass: "standard",
           columnEnteredAt: "2026-07-27T00:00:00.000Z",
-          startedAt: null,
+          startedAt: null as string | null,
           blockedMs: 0,
         },
       },
