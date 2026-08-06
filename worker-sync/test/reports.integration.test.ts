@@ -50,6 +50,25 @@ function card(overrides: Record<string, unknown> = {}) {
   };
 }
 
+async function seedFlowProject(projectId: string, boardId: string, data: string) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO projects (
+       id, workspace_id, name, normalized_name, status, created_by, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)`,
+  ).bind(projectId, workspaceId, `Flow ${projectId.slice(-2)}`, `flow-${projectId.slice(-2)}`, viewerId, now, now).run();
+  await env.DB.prepare(
+    `INSERT INTO project_members (project_id, user_id, role, created_at, updated_at)
+     VALUES (?, ?, 'viewer', ?, ?)`,
+  ).bind(projectId, viewerId, now, now).run();
+  await env.DB.prepare(
+    `INSERT INTO boards (
+       id, project_id, name, normalized_name, status, revision, data,
+       created_by, created_at, updated_at, archived_at, archived_by
+     ) VALUES (?, ?, ?, ?, 'active', 1, ?, ?, ?, ?, NULL, NULL)`,
+  ).bind(boardId, projectId, `Board ${boardId.slice(-2)}`, `board-${boardId.slice(-2)}`, data, viewerId, now, now).run();
+}
+
 async function dispatch(token: string, path: string): Promise<Response> {
   return exports.default.fetch(new Request(`${endpoint}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -192,5 +211,83 @@ describe("Project summary API", () => {
     expect(
       (await dispatch(viewerToken, `/projects/${projectA}/summary?includeArchived=yes`)).status,
     ).toBe(400);
+  });
+
+  it("computes cycle time, blocked time and flow efficiency for a completed card", async () => {
+    const flowProjectId = "72000000-0000-4000-8000-000000000010";
+    const flowBoardId = "73000000-0000-4000-8000-000000000010";
+    await seedFlowProject(flowProjectId, flowBoardId, board({
+      completedCard: card({
+        completedAt: "2026-08-03T09:00:00.000Z",
+        startedAt: "2026-08-01T09:00:00.000Z",
+        blockedMs: 3600000,
+        serviceClass: "expedite",
+      }),
+    }, [], ["completedCard"]));
+
+    const response = await dispatch(viewerToken, `/projects/${flowProjectId}/summary`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      summary: {
+        monthlyCompletions: Array<{
+          cycleTimeMedianDays: number | null;
+          blockedTotalMs: number;
+          flowEfficiencyMedian: number | null;
+          serviceClassCounts: Record<string, number>;
+        }>;
+      };
+    };
+    const current = body.summary.monthlyCompletions.at(-1)!;
+    expect(current.cycleTimeMedianDays).toBe(2);
+    expect(current.blockedTotalMs).toBe(3600000);
+    expect(current.flowEfficiencyMedian).not.toBeNull();
+    expect(current.flowEfficiencyMedian!).toBeGreaterThan(0.97);
+    expect(current.flowEfficiencyMedian!).toBeLessThan(0.99);
+    expect(current.serviceClassCounts.expedite).toBe(1);
+  });
+
+  it("counts a completed card with no startedAt as unmeasured without affecting the median", async () => {
+    const flowProjectId = "72000000-0000-4000-8000-000000000011";
+    const flowBoardId = "73000000-0000-4000-8000-000000000011";
+    await seedFlowProject(flowProjectId, flowBoardId, board({
+      completedCard: card({
+        completedAt: new Date().toISOString(),
+        startedAt: null,
+      }),
+    }, [], ["completedCard"]));
+
+    const response = await dispatch(viewerToken, `/projects/${flowProjectId}/summary`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      summary: {
+        monthlyCompletions: Array<{
+          cycleTimeMedianDays: number | null;
+          unmeasuredCount: number;
+        }>;
+      };
+    };
+    const current = body.summary.monthlyCompletions.at(-1)!;
+    expect(current.unmeasuredCount).toBe(1);
+    expect(current.cycleTimeMedianDays).toBeNull();
+  });
+
+  it("treats v6 boards without flow fields as fully unmeasured with no blocked time", async () => {
+    const flowProjectId = "72000000-0000-4000-8000-000000000012";
+    const flowBoardId = "73000000-0000-4000-8000-000000000012";
+    await seedFlowProject(flowProjectId, flowBoardId, board({
+      legacyCard: card({ completedAt: new Date().toISOString() }),
+    }, [], ["legacyCard"]));
+
+    const response = await dispatch(viewerToken, `/projects/${flowProjectId}/summary`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      summary: {
+        stats: { completed: number };
+        monthlyCompletions: Array<{ unmeasuredCount: number; blockedTotalMs: number }>;
+      };
+    };
+    const current = body.summary.monthlyCompletions.at(-1)!;
+    expect(current.unmeasuredCount).toBe(body.summary.stats.completed);
+    expect(current.blockedTotalMs).toBe(0);
   });
 });

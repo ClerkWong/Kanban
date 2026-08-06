@@ -8,6 +8,35 @@ import { RequestError, parseUuid } from "./validation";
 const REPORT_TIME_ZONE = "Asia/Taipei";
 const RECENT_MONTH_COUNT = 6;
 const DONE_COLUMN_ID = "done";
+const DAY_MS = 24 * 3600 * 1000;
+const SERVICE_CLASSES = ["standard", "expedite", "fixedDate", "intangible"] as const;
+
+function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function roundOrNull(value: number | null): number | null {
+  return value === null ? null : Math.round(value * 10) / 10;
+}
+
+type MonthlyFlowAccumulator = {
+  count: number;
+  cycleTimes: number[];
+  efficiencies: number[];
+  unmeasuredCount: number;
+  blockedTotalMs: number;
+  serviceClassCounts: Record<string, number>;
+};
+
+function emptyAccumulator(): MonthlyFlowAccumulator {
+  return {
+    count: 0, cycleTimes: [], efficiencies: [], unmeasuredCount: 0, blockedTotalMs: 0,
+    serviceClassCounts: Object.fromEntries(SERVICE_CLASSES.map((kind) => [kind, 0])),
+  };
+}
 
 type ReportBoardRow = {
   id: string;
@@ -104,7 +133,7 @@ export function buildProjectSummary(
 ) {
   const today = dateKey(now, timeZone);
   const months = recentMonthKeys(now, RECENT_MONTH_COUNT, timeZone);
-  const monthlyCounts = new Map(months.map((month) => [month, 0]));
+  const monthly = new Map(months.map((month) => [month, emptyAccumulator()]));
   const boards: BoardReport[] = [];
 
   for (const row of rows) {
@@ -122,9 +151,32 @@ export function buildProjectSummary(
     for (const card of Object.values(board.cards)) {
       if (!doneIds.has(card.id) || !card.completedAt) continue;
       const month = monthKey(card.completedAt, timeZone);
-      if (month && monthlyCounts.has(month)) {
-        monthlyCounts.set(month, (monthlyCounts.get(month) ?? 0) + 1);
+      const bucket = month ? monthly.get(month) : undefined;
+      if (!bucket) continue;
+      bucket.count += 1;
+      const kind = SERVICE_CLASSES.includes(card.serviceClass as never)
+        ? card.serviceClass
+        : "standard";
+      bucket.serviceClassCounts[kind] += 1;
+
+      const completed = new Date(card.completedAt).getTime();
+      let blockedTotal = card.blockedMs;
+      if (card.blocked && card.blockedAt) {
+        const since = new Date(card.blockedAt).getTime();
+        if (Number.isFinite(since) && completed > since) {
+          blockedTotal += completed - since;
+        }
       }
+      bucket.blockedTotalMs += blockedTotal;
+
+      const started = card.startedAt ? new Date(card.startedAt).getTime() : Number.NaN;
+      if (!Number.isFinite(started) || completed <= started) {
+        bucket.unmeasuredCount += 1;
+        continue;
+      }
+      const cycleMs = completed - started;
+      bucket.cycleTimes.push(cycleMs / DAY_MS);
+      bucket.efficiencies.push(Math.min(Math.max((cycleMs - blockedTotal) / cycleMs, 0), 1));
     }
   }
 
@@ -141,11 +193,24 @@ export function buildProjectSummary(
     includeArchived,
     boardCount: boards.length,
     stats,
-    monthlyCompletions: months.map((month) => ({
-      month,
-      monthLabel: `${Number(month.slice(0, 4))} 年 ${Number(month.slice(5))} 月`,
-      count: monthlyCounts.get(month) ?? 0,
-    })),
+    monthlyCompletions: months.map((month) => {
+      const bucket = monthly.get(month) ?? emptyAccumulator();
+      return {
+        month,
+        monthLabel: `${Number(month.slice(0, 4))} 年 ${Number(month.slice(5))} 月`,
+        count: bucket.count,
+        cycleTimeMedianDays: roundOrNull(median(bucket.cycleTimes)),
+        cycleTimeAverageDays: roundOrNull(
+          bucket.cycleTimes.length
+            ? bucket.cycleTimes.reduce((sum, value) => sum + value, 0) / bucket.cycleTimes.length
+            : null,
+        ),
+        unmeasuredCount: bucket.unmeasuredCount,
+        blockedTotalMs: bucket.blockedTotalMs,
+        flowEfficiencyMedian: median(bucket.efficiencies),
+        serviceClassCounts: bucket.serviceClassCounts,
+      };
+    }),
     boards,
     generatedAt: now.toISOString(),
     timeZone,
