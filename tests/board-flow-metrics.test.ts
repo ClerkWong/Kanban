@@ -126,3 +126,37 @@ test("unblocking accumulates blockedMs across cycles", () => {
     new Date("2026-08-05T11:30:00.000Z"));
   assert.equal(board.cards["card-roadmap"].blockedMs, 3600_000 + 1800_000);
 });
+
+test("expedite cards stay at the front of each column", () => {
+  let board = createDemoBoard(new Date(2026, 7, 5));
+  // doing 欄目前為 ["card-analytics", "card-copy"]
+  board = updateCard(board, "card-copy", { serviceClass: "expedite" });
+  assert.deepEqual(
+    board.columns.find((column) => column.id === "doing")?.cardIds,
+    ["card-copy", "card-analytics"],
+  );
+
+  // 拖放企圖把非加急卡放到加急卡前面：normalizeBoard 拉回
+  const dragged = moveCard(board, "card-analytics", "doing", 0);
+  assert.deepEqual(
+    dragged.columns.find((column) => column.id === "doing")?.cardIds,
+    ["card-copy", "card-analytics"],
+  );
+
+  // 解除加急：回到非加急區段最前
+  const cleared = updateCard(board, "card-copy", { serviceClass: "standard" });
+  assert.deepEqual(
+    cleared.columns.find((column) => column.id === "doing")?.cardIds,
+    ["card-copy", "card-analytics"],
+  );
+});
+
+test("becoming expedite lands at the end of the expedite segment", () => {
+  let board = createDemoBoard(new Date(2026, 7, 5));
+  board = updateCard(board, "card-analytics", { serviceClass: "expedite" }); // doing: [analytics, copy]
+  board = updateCard(board, "card-copy", { serviceClass: "expedite" });
+  assert.deepEqual(
+    board.columns.find((column) => column.id === "doing")?.cardIds,
+    ["card-analytics", "card-copy"],
+  );
+});

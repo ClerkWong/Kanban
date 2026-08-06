@@ -1034,11 +1034,17 @@ function normalizeColumns(columns: Column[], cards: Record<string, Card>): Colum
         })
       : [];
 
+    // 穩定分割：加急卡恆在非加急卡之前，兩區段內保持原相對順序。
+    const orderedCardIds = [
+      ...cardIds.filter((cardId) => cards[cardId]?.serviceClass === "expedite"),
+      ...cardIds.filter((cardId) => cards[cardId]?.serviceClass !== "expedite"),
+    ];
+
     return {
       id,
       title: normalizeColumnTitle(column.title) ?? "未命名",
       wipLimit: id === DONE_COLUMN_ID ? null : normalizeWipLimit(column.wipLimit),
-      cardIds,
+      cardIds: orderedCardIds,
     };
   });
 }
