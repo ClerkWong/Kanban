@@ -103,6 +103,7 @@ export type BoardStats = {
   active: number;
   completed: number;
   overdue: number;
+  expedite: number;
 };
 
 export const STORAGE_KEY = "kanban-pwa-board-v1";
@@ -319,6 +320,9 @@ export function getBoardStats(
     completed: doneIds.size,
     overdue: cards.filter(
       (card) => card.dueDate && card.dueDate < today && !doneIds.has(card.id),
+    ).length,
+    expedite: cards.filter(
+      (card) => card.serviceClass === "expedite" && !doneIds.has(card.id),
     ).length,
   };
 }
@@ -948,6 +952,91 @@ export function getMonthlyCompletionStats(
   });
 }
 
+export type AgingLevel = "normal" | "warn" | "alert";
+
+export function getCardAgingDays(card: Card, today = getLocalDateString()): number {
+  const entered = toValidDate(card.columnEnteredAt);
+  if (!entered) return 0;
+  return Math.max(0, diffLocalDays(getLocalDateString(entered), today));
+}
+
+export function getAgingLevel(days: number, settings: BoardSettings): AgingLevel {
+  if (days >= settings.agingAlertDays) return "alert";
+  if (days >= settings.agingWarnDays) return "warn";
+  return "normal";
+}
+
+export function getCardBlockedTotalMs(card: Card, now = new Date()): number {
+  let total = card.blockedMs;
+  if (card.blocked) {
+    const since = toValidDate(card.blockedAt);
+    if (since) {
+      const completed = toValidDate(card.completedAt);
+      const until = completed && completed.getTime() < now.getTime() ? completed : now;
+      total += Math.max(0, until.getTime() - since.getTime());
+    }
+  }
+  return Math.min(total, MAX_BLOCKED_MS);
+}
+
+export type MonthlyFlowStats = MonthlyCompletion & {
+  cycleTimeMedianDays: number | null;
+  cycleTimeAverageDays: number | null;
+  unmeasuredCount: number;
+  blockedTotalMs: number;
+  flowEfficiencyMedian: number | null;
+  serviceClassCounts: Record<ServiceClass, number>;
+};
+
+export function getMonthlyFlowStats(
+  board: BoardState,
+  recentMonths = 6,
+  now = new Date(),
+): MonthlyFlowStats[] {
+  return getMonthlyCompletionStats(board, recentMonths, now).map((month) => {
+    const cycleTimes: number[] = [];
+    const efficiencies: number[] = [];
+    let unmeasuredCount = 0;
+    let blockedTotalMs = 0;
+    const serviceClassCounts: Record<ServiceClass, number> = {
+      standard: 0, expedite: 0, fixedDate: 0, intangible: 0,
+    };
+    for (const card of month.cards) {
+      serviceClassCounts[card.serviceClass] += 1;
+      const blocked = getCardBlockedTotalMs(card, now);
+      blockedTotalMs += blocked;
+      const started = toValidDate(card.startedAt);
+      const completed = toValidDate(card.completedAt);
+      if (!started || !completed || completed.getTime() <= started.getTime()) {
+        unmeasuredCount += 1;
+        continue;
+      }
+      const cycleMs = completed.getTime() - started.getTime();
+      cycleTimes.push(cycleMs / DAY_MS);
+      efficiencies.push(clamp((cycleMs - blocked) / cycleMs, 0, 1));
+    }
+    return {
+      ...month,
+      cycleTimeMedianDays: roundOrNull(median(cycleTimes)),
+      cycleTimeAverageDays: roundOrNull(average(cycleTimes)),
+      unmeasuredCount,
+      blockedTotalMs,
+      flowEfficiencyMedian: median(efficiencies),
+      serviceClassCounts,
+    };
+  });
+}
+
+export function updateBoardSettings(
+  board: BoardState,
+  patch: Partial<BoardSettings>,
+  now = new Date(),
+): BoardState {
+  const next = cloneBoard(board);
+  next.settings = normalizeBoardSettings({ ...board.settings, ...patch });
+  return normalizeBoard(touch(next, now));
+}
+
 function createSeedCard(input: {
   id: string;
   title: string;
@@ -1312,4 +1401,29 @@ function getRecentMonthKeys(referenceDate: Date, count: number): string[] {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+const DAY_MS = 24 * 3600 * 1000;
+
+function diffLocalDays(fromDateOnly: string, toDateOnly: string): number {
+  const [fromYear, fromMonth, fromDay] = fromDateOnly.split("-").map(Number);
+  const [toYear, toMonth, toDay] = toDateOnly.split("-").map(Number);
+  const from = new Date(fromYear, fromMonth - 1, fromDay);
+  const to = new Date(toYear, toMonth - 1, toDay);
+  return Math.round((to.getTime() - from.getTime()) / DAY_MS);
+}
+
+function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function average(values: number[]): number | null {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function roundOrNull(value: number | null): number | null {
+  return value === null ? null : Math.round(value * 10) / 10;
 }
