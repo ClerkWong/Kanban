@@ -312,6 +312,7 @@ textarea {
 
 .workflowToolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
   justify-content: space-between;
@@ -321,6 +322,26 @@ textarea {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(255, 253, 248, 0.82);
+}
+
+.boardSettingsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+.boardSettingsRow label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.boardSettingsRow input {
+  min-height: 42px;
+  width: 92px;
 }
 
 .workflowToolbar > div {
@@ -1007,6 +1028,14 @@ textarea {
   }
 
   .workflowToolbar > button {
+    width: 100%;
+  }
+
+  .boardSettingsRow {
+    width: 100%;
+  }
+
+  .boardSettingsRow input {
     width: 100%;
   }
 

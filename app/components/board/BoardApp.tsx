@@ -26,6 +26,7 @@ import {
   parsePersistedBoard,
   serializeBoard,
   toggleChecklistItem,
+  updateBoardSettings,
   updateColumnTitle,
   updateCard,
   updateWipLimit,
@@ -433,22 +434,32 @@ function BoardSurface({
     removeAttachmentFiles(removed);
     if (detail.mode === "add") {
       const nextId = makeId("card");
-      setBoard((current) =>
-        addCard(current, detail.columnId, {
-          ...input,
-          id: nextId,
-          title: input.title,
-        }),
-      );
+      const nextBoard = addCard(board, detail.columnId, {
+        ...input,
+        id: nextId,
+        title: input.title,
+      });
+      setBoard(nextBoard);
       sync.queueUploads(input.attachments);
       setPendingFocusId(nextId);
       setLiveMessage(`已新增「${input.title}」。`);
+      warnIfExpediteOverLimit(nextBoard);
     } else {
-      setBoard((current) => updateCard(current, detail.cardId, input));
+      const nextBoard = updateCard(board, detail.cardId, input);
+      setBoard(nextBoard);
       setPendingFocusId(detail.cardId);
       setLiveMessage(`已更新「${input.title}」。`);
+      warnIfExpediteOverLimit(nextBoard);
     }
     setDetail(null);
+  }
+
+  function warnIfExpediteOverLimit(nextBoard: BoardState) {
+    const limit = nextBoard.settings.expediteWipLimit;
+    if (limit === null) return;
+    if (getBoardStats(nextBoard, today).expedite > limit) {
+      setLiveMessage("加急卡已超過上限，請優先完成加急工作。");
+    }
   }
 
   function requestDelete(cardId: string) {
@@ -632,6 +643,18 @@ function BoardSurface({
           <Stat label="進行中" value={stats.active} />
           <Stat label="完成" value={stats.completed} />
           <Stat label="逾期" value={stats.overdue} tone={stats.overdue ? "danger" : "ok"} />
+          <Stat
+            label={board.settings.expediteWipLimit === null
+              ? "加急"
+              : `加急（上限 ${board.settings.expediteWipLimit}）`}
+            value={stats.expedite}
+            tone={
+              board.settings.expediteWipLimit !== null &&
+              stats.expedite > board.settings.expediteWipLimit
+                ? "danger"
+                : "ok"
+            }
+          />
         </div>
 
         <div className="topBarActions">
@@ -874,6 +897,40 @@ function BoardSurface({
               ＋ 新增欄位
             </button>
           )}
+
+          <div className="boardSettingsRow">
+            <label>
+              <span>老化警示（天）</span>
+              <input
+                type="number" min={1} max={365}
+                value={board.settings.agingWarnDays}
+                onChange={(event) => setBoard((current) =>
+                  updateBoardSettings(current, { agingWarnDays: Number(event.target.value) }))}
+              />
+            </label>
+            <label>
+              <span>老化嚴重（天）</span>
+              <input
+                type="number" min={1} max={365}
+                value={board.settings.agingAlertDays}
+                onChange={(event) => setBoard((current) =>
+                  updateBoardSettings(current, { agingAlertDays: Number(event.target.value) }))}
+              />
+            </label>
+            <label>
+              <span>加急上限（空白為不限）</span>
+              <input
+                type="number" min={1} max={99}
+                value={board.settings.expediteWipLimit ?? ""}
+                onChange={(event) => setBoard((current) =>
+                  updateBoardSettings(current, {
+                    expediteWipLimit: event.target.value === ""
+                      ? null
+                      : Number(event.target.value),
+                  }))}
+              />
+            </label>
+          </div>
         </section>
       )}
 
