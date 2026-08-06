@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   BOARD_SCHEMA_VERSION,
   DEFAULT_BOARD_SETTINGS,
+  DONE_COLUMN_ID,
   MAX_BLOCKED_MS,
   addCard,
   createDemoBoard,
@@ -158,5 +159,37 @@ test("becoming expedite lands at the end of the expedite segment", () => {
   assert.deepEqual(
     board.columns.find((column) => column.id === "doing")?.cardIds,
     ["card-analytics", "card-copy"],
+  );
+});
+
+test("orphaned expedite card rejoins the front of the first column", () => {
+  const board = updateCard(createDemoBoard(new Date(2026, 7, 5)), "card-copy", {
+    serviceClass: "expedite",
+  });
+  // 模擬孤兒卡：從所有欄位的 cardIds 移除，但卡片本身仍存在於 cards 中。
+  const withOrphan: BoardState = {
+    ...board,
+    columns: board.columns.map((column) => ({
+      ...column,
+      cardIds: column.cardIds.filter((id) => id !== "card-copy"),
+    })),
+  };
+  const normalized = normalizeBoard(withOrphan);
+  assert.deepEqual(
+    normalized.columns.find((column) => column.id === "todo")?.cardIds,
+    ["card-copy", "card-roadmap", "card-onboarding"],
+  );
+
+  // normalizeBoard 必須冪等：再次 normalize 不應改變順序。
+  assert.deepEqual(normalizeBoard(normalized), normalized);
+});
+
+test("done column also enforces expedite-first order", () => {
+  let board = createDemoBoard(new Date(2026, 7, 5));
+  board = updateCard(board, "card-review", { serviceClass: "expedite" });
+  board = moveCard(board, "card-review", DONE_COLUMN_ID, 1); // 附加在 card-done 之後
+  assert.deepEqual(
+    board.columns.find((column) => column.id === DONE_COLUMN_ID)?.cardIds,
+    ["card-review", "card-done"],
   );
 });

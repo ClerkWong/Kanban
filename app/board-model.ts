@@ -836,11 +836,16 @@ export function normalizeBoard(board: BoardState): BoardState {
   const assigned = new Set(columns.flatMap((column) => column.cardIds));
   const firstColumn = columns[0];
 
+  let orphanAdded = false;
   for (const cardId of Object.keys(cards)) {
     if (!assigned.has(cardId)) {
       firstColumn.cardIds.push(cardId);
       assigned.add(cardId);
+      orphanAdded = true;
     }
+  }
+  if (orphanAdded) {
+    firstColumn.cardIds = partitionExpediteFirst(firstColumn.cardIds, cards);
   }
 
   return {
@@ -1018,6 +1023,15 @@ function findCardPosition(
   return null;
 }
 
+// 穩定分割：加急卡恆在非加急卡之前，兩區段內保持原相對順序。
+// normalizeColumns 與 normalizeBoard 的孤兒卡補回都需要此不變量，故抽成共用函式。
+function partitionExpediteFirst(cardIds: string[], cards: Record<string, Card>): string[] {
+  return [
+    ...cardIds.filter((cardId) => cards[cardId]?.serviceClass === "expedite"),
+    ...cardIds.filter((cardId) => cards[cardId]?.serviceClass !== "expedite"),
+  ];
+}
+
 function normalizeColumns(columns: Column[], cards: Record<string, Card>): Column[] {
   const seen = new Set<string>();
   const source = Array.isArray(columns) && columns.length ? columns : createDemoBoard().columns;
@@ -1034,17 +1048,11 @@ function normalizeColumns(columns: Column[], cards: Record<string, Card>): Colum
         })
       : [];
 
-    // 穩定分割：加急卡恆在非加急卡之前，兩區段內保持原相對順序。
-    const orderedCardIds = [
-      ...cardIds.filter((cardId) => cards[cardId]?.serviceClass === "expedite"),
-      ...cardIds.filter((cardId) => cards[cardId]?.serviceClass !== "expedite"),
-    ];
-
     return {
       id,
       title: normalizeColumnTitle(column.title) ?? "未命名",
       wipLimit: id === DONE_COLUMN_ID ? null : normalizeWipLimit(column.wipLimit),
-      cardIds: orderedCardIds,
+      cardIds: partitionExpediteFirst(cardIds, cards),
     };
   });
 }
