@@ -25,6 +25,7 @@ import {
   moveColumnRelative,
   parsePersistedBoard,
   serializeBoard,
+  normalizeBoardSettings,
   toggleChecklistItem,
   updateBoardSettings,
   updateColumnTitle,
@@ -34,6 +35,7 @@ import {
   validateColumnTitle,
   validateNewColumnTitle,
   type AttachmentRef,
+  type BoardSettings,
   type BoardState,
 } from "../../board-model";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -643,26 +645,33 @@ function BoardSurface({
     setLiveMessage(`已刪除空欄位「${title}」。`);
   }
 
-  function commitAgingWarnDays() {
+  function commitBoardSetting(patch: Partial<BoardSettings>) {
     if (!access.canConfigureWorkflow) return;
-    setBoard((current) =>
-      updateBoardSettings(current, { agingWarnDays: Number(boardSettingsDraft.agingWarnDays) }),
-    );
+    const normalized = normalizeBoardSettings({ ...board.settings, ...patch });
+    setBoardSettingsDraft({
+      agingWarnDays: String(normalized.agingWarnDays),
+      agingAlertDays: String(normalized.agingAlertDays),
+      expediteWipLimit: normalized.expediteWipLimit === null ? "" : String(normalized.expediteWipLimit),
+    });
+    const unchanged =
+      normalized.agingWarnDays === board.settings.agingWarnDays &&
+      normalized.agingAlertDays === board.settings.agingAlertDays &&
+      normalized.expediteWipLimit === board.settings.expediteWipLimit;
+    if (unchanged) return;
+    setBoard((current) => updateBoardSettings(current, patch));
+  }
+
+  function commitAgingWarnDays() {
+    commitBoardSetting({ agingWarnDays: Number(boardSettingsDraft.agingWarnDays) });
   }
 
   function commitAgingAlertDays() {
-    if (!access.canConfigureWorkflow) return;
-    setBoard((current) =>
-      updateBoardSettings(current, { agingAlertDays: Number(boardSettingsDraft.agingAlertDays) }),
-    );
+    commitBoardSetting({ agingAlertDays: Number(boardSettingsDraft.agingAlertDays) });
   }
 
   function commitExpediteWipLimit() {
-    if (!access.canConfigureWorkflow) return;
     const raw = boardSettingsDraft.expediteWipLimit.trim();
-    setBoard((current) =>
-      updateBoardSettings(current, { expediteWipLimit: raw === "" ? null : Number(raw) }),
-    );
+    commitBoardSetting({ expediteWipLimit: raw === "" ? null : Number(raw) });
   }
 
   const noVisibleCards =
@@ -952,6 +961,7 @@ function BoardSurface({
                 })}
                 onBlur={commitAgingWarnDays}
                 onKeyDown={(event) => {
+                  if (isImeComposing(event.nativeEvent)) return;
                   if (event.key === "Enter") {
                     event.preventDefault();
                     event.currentTarget.blur();
@@ -970,6 +980,7 @@ function BoardSurface({
                 })}
                 onBlur={commitAgingAlertDays}
                 onKeyDown={(event) => {
+                  if (isImeComposing(event.nativeEvent)) return;
                   if (event.key === "Enter") {
                     event.preventDefault();
                     event.currentTarget.blur();
@@ -988,6 +999,7 @@ function BoardSurface({
                 })}
                 onBlur={commitExpediteWipLimit}
                 onKeyDown={(event) => {
+                  if (isImeComposing(event.nativeEvent)) return;
                   if (event.key === "Enter") {
                     event.preventDefault();
                     event.currentTarget.blur();
