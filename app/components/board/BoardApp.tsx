@@ -253,6 +253,26 @@ function BoardSurface({
     wipLimit: number;
     error: string;
   } | null>(null);
+  const [boardSettingsDraft, setBoardSettingsDraft] = useState({
+    agingWarnDays: String(board.settings.agingWarnDays),
+    agingAlertDays: String(board.settings.agingAlertDays),
+    expediteWipLimit:
+      board.settings.expediteWipLimit === null ? "" : String(board.settings.expediteWipLimit),
+  });
+  const [syncedBoardSettings, setSyncedBoardSettings] = useState(board.settings);
+  if (
+    syncedBoardSettings.agingWarnDays !== board.settings.agingWarnDays ||
+    syncedBoardSettings.agingAlertDays !== board.settings.agingAlertDays ||
+    syncedBoardSettings.expediteWipLimit !== board.settings.expediteWipLimit
+  ) {
+    setSyncedBoardSettings(board.settings);
+    setBoardSettingsDraft({
+      agingWarnDays: String(board.settings.agingWarnDays),
+      agingAlertDays: String(board.settings.agingAlertDays),
+      expediteWipLimit:
+        board.settings.expediteWipLimit === null ? "" : String(board.settings.expediteWipLimit),
+    });
+  }
   const cardRefs = useRef(new Map<string, HTMLButtonElement>());
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -623,6 +643,28 @@ function BoardSurface({
     setLiveMessage(`已刪除空欄位「${title}」。`);
   }
 
+  function commitAgingWarnDays() {
+    if (!access.canConfigureWorkflow) return;
+    setBoard((current) =>
+      updateBoardSettings(current, { agingWarnDays: Number(boardSettingsDraft.agingWarnDays) }),
+    );
+  }
+
+  function commitAgingAlertDays() {
+    if (!access.canConfigureWorkflow) return;
+    setBoard((current) =>
+      updateBoardSettings(current, { agingAlertDays: Number(boardSettingsDraft.agingAlertDays) }),
+    );
+  }
+
+  function commitExpediteWipLimit() {
+    if (!access.canConfigureWorkflow) return;
+    const raw = boardSettingsDraft.expediteWipLimit.trim();
+    setBoard((current) =>
+      updateBoardSettings(current, { expediteWipLimit: raw === "" ? null : Number(raw) }),
+    );
+  }
+
   const noVisibleCards =
     board.columns.reduce((count, column) => count + visibleCards[column.id].length, 0) === 0;
   const currentUserId = sync.session?.user.id ?? "";
@@ -903,31 +945,54 @@ function BoardSurface({
               <span>老化警示（天）</span>
               <input
                 type="number" min={1} max={365}
-                value={board.settings.agingWarnDays}
-                onChange={(event) => setBoard((current) =>
-                  updateBoardSettings(current, { agingWarnDays: Number(event.target.value) }))}
+                value={boardSettingsDraft.agingWarnDays}
+                onChange={(event) => setBoardSettingsDraft({
+                  ...boardSettingsDraft,
+                  agingWarnDays: event.target.value,
+                })}
+                onBlur={commitAgingWarnDays}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }
+                }}
               />
             </label>
             <label>
               <span>老化嚴重（天）</span>
               <input
                 type="number" min={1} max={365}
-                value={board.settings.agingAlertDays}
-                onChange={(event) => setBoard((current) =>
-                  updateBoardSettings(current, { agingAlertDays: Number(event.target.value) }))}
+                value={boardSettingsDraft.agingAlertDays}
+                onChange={(event) => setBoardSettingsDraft({
+                  ...boardSettingsDraft,
+                  agingAlertDays: event.target.value,
+                })}
+                onBlur={commitAgingAlertDays}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }
+                }}
               />
             </label>
             <label>
               <span>加急上限（空白為不限）</span>
               <input
                 type="number" min={1} max={99}
-                value={board.settings.expediteWipLimit ?? ""}
-                onChange={(event) => setBoard((current) =>
-                  updateBoardSettings(current, {
-                    expediteWipLimit: event.target.value === ""
-                      ? null
-                      : Number(event.target.value),
-                  }))}
+                value={boardSettingsDraft.expediteWipLimit}
+                onChange={(event) => setBoardSettingsDraft({
+                  ...boardSettingsDraft,
+                  expediteWipLimit: event.target.value,
+                })}
+                onBlur={commitExpediteWipLimit}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }
+                }}
               />
             </label>
           </div>
