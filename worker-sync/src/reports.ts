@@ -9,6 +9,7 @@ const REPORT_TIME_ZONE = "Asia/Taipei";
 const RECENT_MONTH_COUNT = 6;
 const DONE_COLUMN_ID = "done";
 const DAY_MS = 24 * 3600 * 1000;
+const MAX_BLOCKED_MS = 100 * 365 * 24 * 3600 * 1000;
 const SERVICE_CLASSES = ["standard", "expedite", "fixedDate", "intangible"] as const;
 
 function median(values: number[]): number | null {
@@ -154,7 +155,7 @@ export function buildProjectSummary(
       const bucket = month ? monthly.get(month) : undefined;
       if (!bucket) continue;
       bucket.count += 1;
-      const kind = SERVICE_CLASSES.includes(card.serviceClass as never)
+      const kind = (SERVICE_CLASSES as readonly string[]).includes(card.serviceClass)
         ? card.serviceClass
         : "standard";
       bucket.serviceClassCounts[kind] += 1;
@@ -167,6 +168,7 @@ export function buildProjectSummary(
           blockedTotal += completed - since;
         }
       }
+      blockedTotal = Math.max(0, Math.min(blockedTotal, MAX_BLOCKED_MS));
       bucket.blockedTotalMs += blockedTotal;
 
       const started = card.startedAt ? new Date(card.startedAt).getTime() : Number.NaN;

@@ -35,6 +35,19 @@ function board(
   });
 }
 
+const DAY_MS = 24 * 3600 * 1000;
+
+function currentTaipeiMonthKey(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? "";
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  return `${year}-${month}`;
+}
+
 function card(overrides: Record<string, unknown> = {}) {
   return {
     title: "Card",
@@ -216,10 +229,12 @@ describe("Project summary API", () => {
   it("computes cycle time, blocked time and flow efficiency for a completed card", async () => {
     const flowProjectId = "72000000-0000-4000-8000-000000000010";
     const flowBoardId = "73000000-0000-4000-8000-000000000010";
+    const completedAt = new Date();
+    const startedAt = new Date(completedAt.getTime() - 2 * DAY_MS);
     await seedFlowProject(flowProjectId, flowBoardId, board({
       completedCard: card({
-        completedAt: "2026-08-03T09:00:00.000Z",
-        startedAt: "2026-08-01T09:00:00.000Z",
+        completedAt: completedAt.toISOString(),
+        startedAt: startedAt.toISOString(),
         blockedMs: 3600000,
         serviceClass: "expedite",
       }),
@@ -230,6 +245,7 @@ describe("Project summary API", () => {
     const body = await response.json() as {
       summary: {
         monthlyCompletions: Array<{
+          month: string;
           cycleTimeMedianDays: number | null;
           blockedTotalMs: number;
           flowEfficiencyMedian: number | null;
@@ -237,21 +253,24 @@ describe("Project summary API", () => {
         }>;
       };
     };
-    const current = body.summary.monthlyCompletions.at(-1)!;
-    expect(current.cycleTimeMedianDays).toBe(2);
-    expect(current.blockedTotalMs).toBe(3600000);
-    expect(current.flowEfficiencyMedian).not.toBeNull();
-    expect(current.flowEfficiencyMedian!).toBeGreaterThan(0.97);
-    expect(current.flowEfficiencyMedian!).toBeLessThan(0.99);
-    expect(current.serviceClassCounts.expedite).toBe(1);
+    const monthKey = currentTaipeiMonthKey(completedAt);
+    const current = body.summary.monthlyCompletions.find((item) => item.month === monthKey);
+    expect(current).toBeDefined();
+    expect(current!.cycleTimeMedianDays).toBe(2);
+    expect(current!.blockedTotalMs).toBe(3600000);
+    expect(current!.flowEfficiencyMedian).not.toBeNull();
+    expect(current!.flowEfficiencyMedian!).toBeGreaterThan(0.97);
+    expect(current!.flowEfficiencyMedian!).toBeLessThan(0.99);
+    expect(current!.serviceClassCounts.expedite).toBe(1);
   });
 
   it("counts a completed card with no startedAt as unmeasured without affecting the median", async () => {
     const flowProjectId = "72000000-0000-4000-8000-000000000011";
     const flowBoardId = "73000000-0000-4000-8000-000000000011";
+    const completedAt = new Date();
     await seedFlowProject(flowProjectId, flowBoardId, board({
       completedCard: card({
-        completedAt: new Date().toISOString(),
+        completedAt: completedAt.toISOString(),
         startedAt: null,
       }),
     }, [], ["completedCard"]));
@@ -261,21 +280,25 @@ describe("Project summary API", () => {
     const body = await response.json() as {
       summary: {
         monthlyCompletions: Array<{
+          month: string;
           cycleTimeMedianDays: number | null;
           unmeasuredCount: number;
         }>;
       };
     };
-    const current = body.summary.monthlyCompletions.at(-1)!;
-    expect(current.unmeasuredCount).toBe(1);
-    expect(current.cycleTimeMedianDays).toBeNull();
+    const monthKey = currentTaipeiMonthKey(completedAt);
+    const current = body.summary.monthlyCompletions.find((item) => item.month === monthKey);
+    expect(current).toBeDefined();
+    expect(current!.unmeasuredCount).toBe(1);
+    expect(current!.cycleTimeMedianDays).toBeNull();
   });
 
-  it("treats v6 boards without flow fields as fully unmeasured with no blocked time", async () => {
+  it("treats boards without flow fields (legacy schema) as fully unmeasured with no blocked time", async () => {
     const flowProjectId = "72000000-0000-4000-8000-000000000012";
     const flowBoardId = "73000000-0000-4000-8000-000000000012";
+    const completedAt = new Date();
     await seedFlowProject(flowProjectId, flowBoardId, board({
-      legacyCard: card({ completedAt: new Date().toISOString() }),
+      legacyCard: card({ completedAt: completedAt.toISOString() }),
     }, [], ["legacyCard"]));
 
     const response = await dispatch(viewerToken, `/projects/${flowProjectId}/summary`);
@@ -283,11 +306,13 @@ describe("Project summary API", () => {
     const body = await response.json() as {
       summary: {
         stats: { completed: number };
-        monthlyCompletions: Array<{ unmeasuredCount: number; blockedTotalMs: number }>;
+        monthlyCompletions: Array<{ month: string; unmeasuredCount: number; blockedTotalMs: number }>;
       };
     };
-    const current = body.summary.monthlyCompletions.at(-1)!;
-    expect(current.unmeasuredCount).toBe(body.summary.stats.completed);
-    expect(current.blockedTotalMs).toBe(0);
+    const monthKey = currentTaipeiMonthKey(completedAt);
+    const current = body.summary.monthlyCompletions.find((item) => item.month === monthKey);
+    expect(current).toBeDefined();
+    expect(current!.unmeasuredCount).toBe(body.summary.stats.completed);
+    expect(current!.blockedTotalMs).toBe(0);
   });
 });
