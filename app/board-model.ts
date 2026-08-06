@@ -890,6 +890,18 @@ export function assertBoardInvariants(board: BoardState): void {
       throw new Error(`Card ${cardId} is missing from columns.`);
     }
   }
+  for (const column of board.columns) {
+    let sawNonExpedite = false;
+    for (const cardId of column.cardIds) {
+      const isExpedite = board.cards[cardId]?.serviceClass === "expedite";
+      if (isExpedite && sawNonExpedite) {
+        throw new Error(
+          `Column ${column.id} has an expedite card after a non-expedite card.`,
+        );
+      }
+      if (!isExpedite) sawNonExpedite = true;
+    }
+  }
 }
 
 export function diffAttachmentRefs(
