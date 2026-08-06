@@ -604,3 +604,212 @@ describe("Single-board Project content APIs", () => {
     expect(await blocked.json()).toMatchObject({ error: "migration_required" });
   });
 });
+
+type MetadataChange = { kind: string; fields?: string[] };
+
+async function latestBoardContentMetadata(boardId: string): Promise<{ changes: MetadataChange[] }> {
+  const row = await env.DB.prepare(
+    `SELECT metadata FROM activity_logs
+     WHERE board_id = ? AND action = 'board.content_updated'
+     ORDER BY occurred_at DESC, id DESC LIMIT 1`,
+  ).bind(boardId).first<{ metadata: string }>();
+  return JSON.parse(row!.metadata) as { changes: MetadataChange[] };
+}
+
+describe("Flow field validation, Board settings guard, and Activity Log flow tracking", () => {
+  it("rejects a card with a serviceClass outside the fixed enum", async () => {
+    await createBoard(managerToken, projectA, boardA, "Flow");
+    const response = await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({
+        baseRevision: 0,
+        board: {
+          version: 6,
+          columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1"] }],
+          cards: { "task-1": { title: "Task", serviceClass: "urgent" } },
+        },
+      }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_flow_fields" });
+  });
+
+  it("rejects a negative or non-numeric blockedMs", async () => {
+    await createBoard(managerToken, projectA, boardA, "Flow");
+    const negative = await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({
+        baseRevision: 0,
+        board: {
+          version: 6,
+          columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1"] }],
+          cards: { "task-1": { title: "Task", blockedMs: -5 } },
+        },
+      }),
+    });
+    expect(negative.status).toBe(400);
+    expect(await negative.json()).toMatchObject({ error: "invalid_flow_fields" });
+
+    const notANumber = await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({
+        baseRevision: 0,
+        board: {
+          version: 6,
+          columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1"] }],
+          cards: { "task-1": { title: "Task", blockedMs: "5" } },
+        },
+      }),
+    });
+    expect(notANumber.status).toBe(400);
+    expect(await notANumber.json()).toMatchObject({ error: "invalid_flow_fields" });
+  });
+
+  it("rejects a columnEnteredAt that is not a valid timestamp", async () => {
+    await createBoard(managerToken, projectA, boardA, "Flow");
+    const response = await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({
+        baseRevision: 0,
+        board: {
+          version: 6,
+          columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1"] }],
+          cards: { "task-1": { title: "Task", columnEnteredAt: "not-a-date" } },
+        },
+      }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_flow_fields" });
+  });
+
+  it("accepts a v6 client payload with none of the new flow fields", async () => {
+    await createBoard(managerToken, projectA, boardA, "Flow", board(3, "v6-legacy"));
+    const response = await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({ baseRevision: 0, board: board(4, "v6-legacy-updated") }),
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("forbids a member from changing Board settings the owner set", async () => {
+    await createBoard(managerToken, projectA, boardA, "Settings");
+    const withSettings = {
+      version: 6,
+      columns: [],
+      cards: {},
+      settings: { agingWarnDays: 3, agingAlertDays: 5, expediteWipLimit: 2 },
+    };
+    const ownerPut = await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({ baseRevision: 0, board: withSettings }),
+    });
+    expect(ownerPut.status).toBe(200);
+
+    const differentSettings = {
+      ...withSettings,
+      settings: { agingWarnDays: 10, agingAlertDays: 20, expediteWipLimit: 5 },
+    };
+    const memberPut = await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({ baseRevision: 1, board: differentSettings }),
+    });
+    expect(memberPut.status).toBe(403);
+    expect(await memberPut.json()).toMatchObject({ error: "forbidden" });
+  });
+
+  it("preserves owner-set Board settings when a member PUTs a board without settings", async () => {
+    await createBoard(managerToken, projectA, boardA, "Settings");
+    const withSettings = {
+      version: 6,
+      columns: [],
+      cards: {},
+      settings: { agingWarnDays: 3, agingAlertDays: 5, expediteWipLimit: 2 },
+    };
+    expect((await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({ baseRevision: 0, board: withSettings }),
+    })).status).toBe(200);
+
+    const noSettings = { version: 6, columns: [], cards: {}, marker: "no-settings" };
+    const memberPut = await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({ baseRevision: 1, board: noSettings }),
+    });
+    expect(memberPut.status).toBe(200);
+
+    const detail = await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}`);
+    expect(await detail.json()).toMatchObject({
+      board: {
+        content: {
+          board: {
+            settings: { agingWarnDays: 3, agingAlertDays: 5, expediteWipLimit: 2 },
+          },
+        },
+      },
+    });
+  });
+
+  it("logs serviceClass in card.updated fields when a member changes it", async () => {
+    const withCard = {
+      version: 6,
+      columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1"] }],
+      cards: { "task-1": { title: "Task", serviceClass: "standard" } },
+    };
+    await createBoard(managerToken, projectA, boardA, "Cards", withCard);
+    const updated = {
+      ...withCard,
+      cards: { "task-1": { title: "Task", serviceClass: "expedite" } },
+    };
+    const response = await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({ baseRevision: 0, board: updated }),
+    });
+    expect(response.status).toBe(200);
+
+    const metadata = await latestBoardContentMetadata(boardA);
+    const cardUpdated = metadata.changes.find((change) => change.kind === "card.updated");
+    expect(cardUpdated?.fields).toContain("serviceClass");
+  });
+
+  it("does not report columnEnteredAt/startedAt/blockedMs churn as a card.updated field when only moving a card", async () => {
+    const moveBase = {
+      version: 6,
+      columns: [
+        { id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1"] },
+        { id: "doing", title: "進行中", wipLimit: null, cardIds: [] },
+      ],
+      cards: {
+        "task-1": {
+          title: "Task",
+          serviceClass: "standard",
+          columnEnteredAt: "2026-07-27T00:00:00.000Z",
+          startedAt: null,
+          blockedMs: 0,
+        },
+      },
+    };
+    await createBoard(managerToken, projectA, boardA, "Move", moveBase);
+    const moved = structuredClone(moveBase);
+    (moved.columns[0] as { cardIds: string[] }).cardIds = [];
+    (moved.columns[1] as { cardIds: string[] }).cardIds = ["task-1"];
+    moved.cards = {
+      "task-1": {
+        title: "Task",
+        serviceClass: "standard",
+        columnEnteredAt: "2026-07-27T01:00:00.000Z",
+        startedAt: "2026-07-27T01:00:00.000Z",
+        blockedMs: 120_000,
+      },
+    };
+    const response = await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({ baseRevision: 0, board: moved }),
+    });
+    expect(response.status).toBe(200);
+
+    const metadata = await latestBoardContentMetadata(boardA);
+    expect(metadata.changes.some((change) => change.kind === "card.moved")).toBe(true);
+    const cardUpdated = metadata.changes.find((change) => change.kind === "card.updated");
+    expect(cardUpdated).toBeUndefined();
+  });
+});

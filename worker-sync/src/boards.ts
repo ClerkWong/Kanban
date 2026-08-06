@@ -19,6 +19,8 @@ const MAX_ASSIGNEES_PER_BOARD = 100;
 const MAX_WORKFLOW_COLUMNS = 20;
 const MAX_COLUMN_TITLE_LENGTH = 40;
 const DONE_COLUMN_ID = "done";
+const SERVICE_CLASSES = new Set(["standard", "expedite", "fixedDate", "intangible"]);
+const MAX_BLOCKED_MS = 100 * 365 * 24 * 3600 * 1000;
 
 type BoardListRow = Omit<BoardRow, "data">;
 type LegacyBoardRow = {
@@ -68,6 +70,61 @@ function collectAssigneeUserIds(value: unknown, strict: boolean): Set<string> {
   return result;
 }
 
+function isValidTimestamp(value: unknown): boolean {
+  return typeof value === "string" && !Number.isNaN(new Date(value).getTime());
+}
+
+/** v6 舊 client 相容：欄位缺席即通過，出現才驗格式。 */
+function requireValidFlowFields(value: unknown): void {
+  const cards = asRecord(asRecord(value)?.cards);
+  if (!cards) return;
+  for (const raw of Object.values(cards)) {
+    const card = asRecord(raw);
+    if (!card) continue;
+    if (card.serviceClass !== undefined && !SERVICE_CLASSES.has(card.serviceClass as string)) {
+      throw new RequestError(400, "invalid_flow_fields");
+    }
+    if (card.columnEnteredAt !== undefined && !isValidTimestamp(card.columnEnteredAt)) {
+      throw new RequestError(400, "invalid_flow_fields");
+    }
+    if (
+      card.startedAt !== undefined && card.startedAt !== null &&
+      !isValidTimestamp(card.startedAt)
+    ) {
+      throw new RequestError(400, "invalid_flow_fields");
+    }
+    if (card.blockedMs !== undefined) {
+      const blockedMs = card.blockedMs;
+      if (
+        typeof blockedMs !== "number" || !Number.isFinite(blockedMs) ||
+        blockedMs < 0 || blockedMs > MAX_BLOCKED_MS
+      ) {
+        throw new RequestError(400, "invalid_flow_fields");
+      }
+    }
+  }
+}
+
+function settingsSignature(value: unknown): string {
+  const settings = asRecord(asRecord(value)?.settings);
+  if (!settings) return "absent";
+  return JSON.stringify({
+    agingWarnDays: settings.agingWarnDays,
+    agingAlertDays: settings.agingAlertDays,
+    expediteWipLimit: settings.expediteWipLimit,
+  });
+}
+
+/** 舊 client 送出的 board 沒有 settings 時，保留前一版設定，避免被剝除。 */
+function preserveBoardSettings(previousBoard: unknown, nextBoard: unknown): unknown {
+  const next = asRecord(nextBoard);
+  const previous = asRecord(previousBoard);
+  if (!next || next.settings !== undefined || !previous || previous.settings === undefined) {
+    return nextBoard;
+  }
+  return { ...next, settings: previous.settings };
+}
+
 function workflowSignature(value: unknown): string | null {
   const columns = asRecord(value)?.columns;
   if (!Array.isArray(columns)) return null;
@@ -92,6 +149,9 @@ function requireWorkflowManagement(
   const previous = workflowSignature(previousBoard);
   const next = workflowSignature(nextBoard);
   if (previous === null || next === null || previous !== next) {
+    throw new RequestError(403, "forbidden");
+  }
+  if (settingsSignature(previousBoard) !== settingsSignature(nextBoard)) {
     throw new RequestError(403, "forbidden");
   }
 }
@@ -311,6 +371,7 @@ async function createBoard(context: ApiContext, projectId: string): Promise<Resp
   if (!parseBoardPutPayload({ baseRevision: 0, board: body.board })) {
     throw new RequestError(400, "invalid_payload");
   }
+  requireValidFlowFields(body.board);
   await requireNewAssigneesAreProjectMembers(
     context.env.DB,
     projectId,
@@ -601,14 +662,16 @@ async function putBoardContent(
   if (payload.baseRevision !== row.revision) {
     return boardConflict(row, context.requestId);
   }
+  requireValidFlowFields(payload.board);
   const previousBoard = JSON.parse(row.data) as unknown;
-  requireWorkflowManagement(access, previousBoard, payload.board);
-  requireSafeWorkflowTransition(previousBoard, payload.board);
+  const effectiveBoard = preserveBoardSettings(previousBoard, payload.board);
+  requireWorkflowManagement(access, previousBoard, effectiveBoard);
+  requireSafeWorkflowTransition(previousBoard, effectiveBoard);
   await requireNewAssigneesAreProjectMembers(
     context.env.DB,
     projectId,
     previousBoard,
-    payload.board,
+    effectiveBoard,
   );
   const project = await getProject(context.env.DB, projectId);
   const nextRevision = row.revision + 1;
@@ -616,10 +679,10 @@ async function putBoardContent(
   const next: BoardRow = {
     ...row,
     revision: nextRevision,
-    data: JSON.stringify(payload.board),
+    data: JSON.stringify(effectiveBoard),
     updated_at: now,
   };
-  const diff = diffBoardStates(previousBoard, payload.board);
+  const diff = diffBoardStates(previousBoard, effectiveBoard);
   const results = await context.env.DB.batch([
     context.env.DB.prepare(
       `UPDATE boards SET revision = ?, data = ?, updated_at = ?
@@ -693,6 +756,7 @@ async function putLegacyRow(context: ApiContext): Promise<Response> {
   if (!payload) {
     return json(400, { error: "invalid payload", requestId: context.requestId }, context.requestId);
   }
+  requireValidFlowFields(payload.board);
   const row = await getLegacyBoard(context.env.DB);
   if (payload.baseRevision !== (row?.revision ?? 0)) {
     return row

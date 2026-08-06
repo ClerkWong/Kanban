@@ -30,7 +30,8 @@ export type CardField =
   | "blockedReason"
   | "blockedAt"
   | "members"
-  | "completedAt";
+  | "completedAt"
+  | "serviceClass";
 
 type AttachmentSnapshot = {
   id: string;
@@ -52,6 +53,9 @@ export type CardSnapshot = {
   members: unknown[];
   attachments: AttachmentSnapshot[];
   completedAt: string | null;
+  serviceClass: string;
+  startedAt: string | null;
+  blockedMs: number;
 };
 
 export type BoardSnapshot = {
@@ -176,6 +180,9 @@ export function parseBoardSnapshot(value: unknown): BoardSnapshot | null {
       members: safeArray(card.members),
       attachments: parseAttachments(card.attachments),
       completedAt: typeof card.completedAt === "string" ? card.completedAt : null,
+      serviceClass: typeof card.serviceClass === "string" ? card.serviceClass : "standard",
+      startedAt: typeof card.startedAt === "string" ? card.startedAt : null,
+      blockedMs: Number.isFinite(Number(card.blockedMs)) ? Number(card.blockedMs) : 0,
     };
   }
 
@@ -225,6 +232,7 @@ function changedFields(before: CardSnapshot, after: CardSnapshot): CardField[] {
   }
   if (before.blocked !== after.blocked) fields.push("blocked");
   if (before.blockedReason !== after.blockedReason) fields.push("blockedReason");
+  if (before.serviceClass !== after.serviceClass) fields.push("serviceClass");
   if (before.blockedAt !== after.blockedAt) fields.push("blockedAt");
   if (!sameValue(before.members, after.members)) fields.push("members");
   if (
