@@ -67,6 +67,7 @@ export const emptyFilters: Filters = {
   due: "all",
   assigneeUserId: "",
   blocked: "all",
+  serviceClass: "all",
 };
 
 export const priorityText: Record<Priority, string> = {

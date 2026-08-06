@@ -741,6 +741,22 @@ function BoardSurface({
             <option value="unblocked">未卡住</option>
           </select>
         </label>
+        <label>
+          <span>服務類別</span>
+          <select
+            value={filters.serviceClass}
+            onChange={(event) => setFilters({
+              ...filters,
+              serviceClass: event.target.value as Filters["serviceClass"],
+            })}
+          >
+            <option value="all">全部</option>
+            <option value="expedite">加急</option>
+            <option value="fixedDate">固定日期</option>
+            <option value="standard">標準</option>
+            <option value="intangible">無形</option>
+          </select>
+        </label>
         <button type="button" className="secondaryButton" onClick={() => setFilters(emptyFilters)}>
           清除
         </button>

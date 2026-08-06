@@ -7,11 +7,13 @@ import {
   MAX_BLOCKED_MS,
   addCard,
   createDemoBoard,
+  filterCards,
   getAgingLevel,
   getBoardStats,
   getCardAgingDays,
   getCardBlockedTotalMs,
   getMonthlyFlowStats,
+  isFilterActive,
   moveCard,
   moveCardRelative,
   normalizeBoard,
@@ -263,4 +265,17 @@ test("updateBoardSettings normalizes and persists", () => {
   assert.equal(next.settings.agingAlertDays, 11);
   const cleared = updateBoardSettings(next, { expediteWipLimit: null });
   assert.equal(cleared.settings.expediteWipLimit, null);
+});
+
+test("service class filter uses AND semantics", () => {
+  let board = createDemoBoard(new Date(2026, 7, 5));
+  board = updateCard(board, "card-copy", { serviceClass: "expedite" });
+  const filters = {
+    query: "", labelId: "", priority: "all" as const, due: "all" as const,
+    assigneeUserId: "", blocked: "all" as const, serviceClass: "expedite" as const,
+  };
+  assert.equal(isFilterActive(filters), true);
+  const visible = filterCards(board, filters, "2026-08-05");
+  assert.deepEqual(visible["doing"].map((card) => card.id), ["card-copy"]);
+  assert.equal(visible["todo"].length, 0);
 });

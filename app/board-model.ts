@@ -94,6 +94,7 @@ export type Filters = {
   due: DueFilter;
   assigneeUserId: string;
   blocked: "all" | "blocked" | "unblocked";
+  serviceClass: "all" | ServiceClass;
 };
 
 export const UNASSIGNED_FILTER_VALUE = "__unassigned__";
@@ -301,7 +302,8 @@ export function isFilterActive(filters: Filters): boolean {
       filters.priority !== "all" ||
       filters.due !== "all" ||
       filters.assigneeUserId ||
-      filters.blocked !== "all",
+      filters.blocked !== "all" ||
+      filters.serviceClass !== "all",
   );
 }
 
@@ -377,9 +379,11 @@ export function filterCards(
         const blockedMatches =
           filters.blocked === "all" ||
           (filters.blocked === "blocked" ? card.blocked : !card.blocked);
+        const serviceClassMatches =
+          filters.serviceClass === "all" || card.serviceClass === filters.serviceClass;
 
         return textMatches && labelMatches && priorityMatches && dueMatches &&
-          assigneeMatches && blockedMatches;
+          assigneeMatches && blockedMatches && serviceClassMatches;
       });
   }
 

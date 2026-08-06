@@ -90,6 +90,7 @@ test("WIP warnings come from canonical unfiltered state", () => {
       due: "all",
       assigneeUserId: "",
       blocked: "all",
+      serviceClass: "all",
     },
     "2026-07-10",
   );
@@ -248,6 +249,7 @@ test("assignee and blocked filters compose without changing canonical order", ()
     due: "all",
     assigneeUserId: "user-b",
     blocked: "blocked",
+    serviceClass: "all",
   }, "2026-07-10");
 
   assert.deepEqual(filtered.todo.map((card) => card.id), ["card-roadmap"]);
