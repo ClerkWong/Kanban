@@ -18,6 +18,7 @@ D1、附件存入 R2，供多裝置共用。
 - 照片、錄音與原生繁中語音建卡。
 - 選用的 D1 看板同步與 R2 附件同步；Bearer token 只由使用者在裝置端輸入。
 - PWA manifest、service worker、隱私與支援頁。
+- 卡片欄位停留老化、Cycle Time／阻塞時長／流動效率流動報表、服務類別與加急 WIP 上限。
 
 ## 架構
 
@@ -208,6 +209,8 @@ create 只從隱藏提示或 stdin 讀取明文，list 不查詢 token hash，pr
 - 附件 queue 會跨重啟保留，並依同步服務 origin 隔離；不持久化 token。
 - 同步服務網址必須使用 HTTPS，只有 localhost/loopback 開發環境可使用 HTTP。
 - token 儲存在裝置本機，仍屬敏感憑證；裝置遺失、成員離開或疑似外洩時必須撤銷換發。
+- 卡片阻塞累計時長（blockedMs）在多裝置併發編輯時取最後寫入者，可能少算一段阻塞時間；
+  這是為了維持卡片級 LWW 合併簡單性所接受的精度損失。
 
 ## 相關文件
 

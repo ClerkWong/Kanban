@@ -46,6 +46,7 @@
 | production Worker/D1 | 既有 3a 上線 | 尚未部署本次 3b Worker |
 | production R2 | **尚未建立** | 必須等 staging 驗收全數通過 |
 | iOS/Android | `1.1.0 (5)` 已部署實機，未完成正式分發 | 最新資產已覆蓋安裝並啟動於 iPhone 12 Pro Max 與 Pixel 9a；兩台裝置皆回報 build 5，尚缺完整功能 smoke、TestFlight／internal track 與正式簽章分發 |
+| 流動度量與服務類別 v1 | 已完成實作，待 staging 驗收 | Card schema v7：欄位進入／開工時間、累計阻塞、服務類別與加急 WIP；卡面老化與流動報表；Worker 驗證與 summary 流動度量 |
 
 ### 已完成的驗證
 
@@ -314,6 +315,12 @@ git diff --check
 - [ ] 不同 Project 的 Board revision、離線 cache 與 queue 彼此隔離。
 - [ ] Project summary 不混入其他 Project，預設排除 archived Board。
 - [ ] 封存後唯讀、可看 Log，還原後 revision 與資料不重置。
+- [ ] 卡片跨欄移動後老化天數歸零；同欄重排不歸零。
+- [ ] v6 舊資料升級後報表顯示「無度量資料」，`completedAt` 未變。
+- [ ] member 可改服務類別；member 不能改老化門檻與加急上限（Worker 403）。
+- [ ] 舊版 client（無 settings payload）儲存看板不會清掉 owner 設定。
+- [ ] 加急卡在桌面與 Mobile 都固定排在欄位前段；超過上限時警告不阻擋。
+- [ ] 雙裝置的 Cycle Time／阻塞時長在同步收斂後一致。
 
 ### 3a 看板同步
 
