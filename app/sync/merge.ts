@@ -93,5 +93,6 @@ export function mergeBoards(local: BoardState, remote: BoardState): BoardState {
     columns,
     deletedCards,
     lastSavedAt: winner.lastSavedAt >= loser.lastSavedAt ? winner.lastSavedAt : loser.lastSavedAt,
+    settings: winner.settings ?? loser.settings,
   });
 }

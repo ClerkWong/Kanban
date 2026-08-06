@@ -1,4 +1,20 @@
-export const BOARD_SCHEMA_VERSION = 6;
+export const BOARD_SCHEMA_VERSION = 7;
+
+export type ServiceClass = "standard" | "expedite" | "fixedDate" | "intangible";
+export const SERVICE_CLASSES = ["standard", "expedite", "fixedDate", "intangible"] as const;
+export const MAX_BLOCKED_MS = 100 * 365 * 24 * 3600 * 1000;
+
+export type BoardSettings = {
+  agingWarnDays: number;
+  agingAlertDays: number;
+  expediteWipLimit: number | null;
+};
+
+export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
+  agingWarnDays: 3,
+  agingAlertDays: 7,
+  expediteWipLimit: 1,
+};
 
 export type Priority = "low" | "medium" | "high";
 export type DueFilter = "all" | "overdue" | "today" | "upcoming" | "none";
@@ -39,6 +55,13 @@ export type Card = {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  /** 進入目前欄位的時間；跨欄移動時更新，同欄重排不更新。 */
+  columnEnteredAt: string;
+  /** 首次離開第一欄的時間；只設定一次，移回第一欄不清除。 */
+  startedAt: string | null;
+  /** 已解除的阻塞累計毫秒數，不含進行中的阻塞。 */
+  blockedMs: number;
+  serviceClass: ServiceClass;
 };
 
 export type Column = {
@@ -61,6 +84,7 @@ export type BoardState = {
   labels: Label[];
   deletedCards: Record<string, string>;
   lastSavedAt: string;
+  settings: BoardSettings;
 };
 
 export type Filters = {
@@ -232,6 +256,7 @@ export function createDemoBoard(now = new Date()): BoardState {
       },
     ],
     lastSavedAt: new Date().toISOString(),
+    settings: { ...DEFAULT_BOARD_SETTINGS },
   };
 }
 
@@ -387,6 +412,10 @@ export function addCard(
       columnId === DONE_COLUMN_ID
         ? normalizeTimestamp(input.completedAt) ?? timestamp
         : null,
+    columnEnteredAt: normalizeTimestamp(input.columnEnteredAt) ?? timestamp,
+    startedAt: normalizeTimestamp(input.startedAt),
+    blockedMs: normalizeBlockedMs(input.blockedMs),
+    serviceClass: isServiceClass(input.serviceClass) ? input.serviceClass : "standard",
   };
 
   if (!card.title) {
@@ -731,6 +760,7 @@ export function parsePersistedBoard(raw: string | null): {
         version !== 3 &&
         version !== 4 &&
         version !== 5 &&
+        version !== 6 &&
         version !== BOARD_SCHEMA_VERSION)
     ) {
       return {
@@ -790,6 +820,7 @@ export function normalizeBoard(board: BoardState): BoardState {
     deletedCards: normalizeDeletedCards(board.deletedCards, cards),
     columns,
     lastSavedAt: board.lastSavedAt || new Date().toISOString(),
+    settings: normalizeBoardSettings((board as { settings?: unknown }).settings),
   };
 }
 
@@ -913,6 +944,10 @@ function createSeedCard(input: {
     createdAt: "2026-07-01T09:00:00.000Z",
     updatedAt: "2026-07-01T09:00:00.000Z",
     completedAt: input.id === "card-done" ? "2026-07-01T09:00:00.000Z" : null,
+    columnEnteredAt: "2026-07-01T09:00:00.000Z",
+    startedAt: input.id === "card-done" ? "2026-06-28T09:00:00.000Z" : null,
+    blockedMs: 0,
+    serviceClass: "standard",
   };
 }
 
@@ -1019,6 +1054,16 @@ function normalizeCards(cards: Record<string, Card>): Record<string, Card> {
       updatedAt:
         typeof raw.updatedAt === "string" ? raw.updatedAt : new Date().toISOString(),
       completedAt: normalizeTimestamp((raw as { completedAt?: unknown }).completedAt),
+      columnEnteredAt:
+        normalizeTimestamp((raw as { columnEnteredAt?: unknown }).columnEnteredAt) ??
+        normalizeTimestamp(raw.updatedAt) ??
+        normalizeTimestamp(raw.createdAt) ??
+        new Date().toISOString(),
+      startedAt: normalizeTimestamp((raw as { startedAt?: unknown }).startedAt),
+      blockedMs: normalizeBlockedMs((raw as { blockedMs?: unknown }).blockedMs),
+      serviceClass: isServiceClass((raw as { serviceClass?: unknown }).serviceClass)
+        ? (raw as { serviceClass: ServiceClass }).serviceClass
+        : "standard",
     };
   }
 
@@ -1120,6 +1165,36 @@ function normalizeWipLimit(value: unknown): number | null {
   return clamp(numberValue, 1, 99);
 }
 
+function isServiceClass(value: unknown): value is ServiceClass {
+  return (SERVICE_CLASSES as readonly string[]).includes(value as string);
+}
+
+function normalizeBlockedMs(value: unknown): number {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue < 0) return 0;
+  return Math.min(Math.round(numberValue), MAX_BLOCKED_MS);
+}
+
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  const numberValue = Math.round(Number(value));
+  return Number.isFinite(numberValue) ? clamp(numberValue, min, max) : fallback;
+}
+
+export function normalizeBoardSettings(value: unknown): BoardSettings {
+  const raw = value && typeof value === "object"
+    ? (value as Partial<Record<keyof BoardSettings, unknown>>)
+    : {};
+  const agingWarnDays = clampInt(raw.agingWarnDays, 1, 365, DEFAULT_BOARD_SETTINGS.agingWarnDays);
+  let agingAlertDays = clampInt(raw.agingAlertDays, 1, 365, DEFAULT_BOARD_SETTINGS.agingAlertDays);
+  if (agingWarnDays >= agingAlertDays) {
+    agingAlertDays = Math.min(agingWarnDays + 1, 365);
+  }
+  const expediteWipLimit = raw.expediteWipLimit === null
+    ? null
+    : clampInt(raw.expediteWipLimit, 1, 99, DEFAULT_BOARD_SETTINGS.expediteWipLimit ?? 1);
+  return { agingWarnDays, agingAlertDays, expediteWipLimit };
+}
+
 function uniqueStrings(values: unknown[]): string[] {
   return [...new Set(values.filter((value): value is string => typeof value === "string"))]
     .map((value) => value.trim())
@@ -1141,6 +1216,7 @@ function isBoardLike(value: unknown): value is BoardState {
 function cloneBoard(board: BoardState): BoardState {
   return {
     ...board,
+    settings: { ...board.settings },
     labels: board.labels.map((label) => ({ ...label })),
     deletedCards: { ...board.deletedCards },
     columns: board.columns.map((column) => ({
