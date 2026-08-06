@@ -392,6 +392,7 @@ export function addCard(
   const timestamp = normalizeTimestamp(now) ?? new Date().toISOString();
   const blockedReason = normalizeBlockedReason(input.blockedReason);
   const blocked = Boolean(input.blocked && blockedReason);
+  const firstColumnId = board.columns[0]?.id;
   const card: Card = {
     id,
     title: input.title.trim(),
@@ -413,7 +414,9 @@ export function addCard(
         ? normalizeTimestamp(input.completedAt) ?? timestamp
         : null,
     columnEnteredAt: normalizeTimestamp(input.columnEnteredAt) ?? timestamp,
-    startedAt: normalizeTimestamp(input.startedAt),
+    startedAt:
+      normalizeTimestamp(input.startedAt) ??
+      (columnId !== firstColumnId ? timestamp : null),
     blockedMs: normalizeBlockedMs(input.blockedMs),
     serviceClass: isServiceClass(input.serviceClass) ? input.serviceClass : "standard",
   };
@@ -459,6 +462,15 @@ export function updateCard(
     patch.blockedReason ?? existing.blockedReason,
   );
   const blocked = Boolean((patch.blocked ?? existing.blocked) && blockedReason);
+  const wasBlocked = existing.blocked;
+  let blockedMs = normalizeBlockedMs(patch.blockedMs ?? existing.blockedMs);
+  if (wasBlocked && !blocked) {
+    const since = toValidDate(existing.blockedAt);
+    const until = toValidDate(timestamp);
+    if (since && until && until.getTime() > since.getTime()) {
+      blockedMs = Math.min(blockedMs + (until.getTime() - since.getTime()), MAX_BLOCKED_MS);
+    }
+  }
   next.cards[cardId] = {
     ...existing,
     ...patch,
@@ -478,6 +490,14 @@ export function updateCard(
       : null,
     members: uniqueStrings(patch.members ?? existing.members),
     attachments: normalizeAttachments(patch.attachments ?? existing.attachments),
+    blockedMs,
+    serviceClass: isServiceClass(patch.serviceClass ?? existing.serviceClass)
+      ? (patch.serviceClass ?? existing.serviceClass)
+      : "standard",
+    columnEnteredAt: existing.columnEnteredAt,
+    startedAt: patch.startedAt !== undefined
+      ? normalizeTimestamp(patch.startedAt)
+      : existing.startedAt,
     updatedAt: timestamp,
   };
 
@@ -531,11 +551,21 @@ export function moveCard(
     return { ...column, cardIds };
   });
 
-  if (sourceIsDone !== targetIsDone) {
+  const sourceColumn =
+    sourceColumnId !== undefined ? board.columns[sourceColumnId] : undefined;
+  const crossColumn = sourceColumn !== undefined && sourceColumn.id !== targetColumnId;
+
+  if (crossColumn) {
     const timestamp = normalizeTimestamp(now) ?? new Date().toISOString();
+    const card = next.cards[cardId];
+    const firstColumnId = board.columns[0]?.id;
+    const leavesFirstColumn =
+      sourceColumn.id === firstColumnId && targetColumnId !== firstColumnId;
     next.cards[cardId] = {
-      ...next.cards[cardId],
-      completedAt: targetIsDone ? timestamp : null,
+      ...card,
+      columnEnteredAt: timestamp,
+      startedAt: card.startedAt ?? (leavesFirstColumn ? timestamp : null),
+      completedAt: targetIsDone ? timestamp : sourceIsDone ? null : card.completedAt,
       updatedAt: timestamp,
     };
   }

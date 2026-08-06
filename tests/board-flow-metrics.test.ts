@@ -4,10 +4,14 @@ import {
   BOARD_SCHEMA_VERSION,
   DEFAULT_BOARD_SETTINGS,
   MAX_BLOCKED_MS,
+  addCard,
   createDemoBoard,
+  moveCard,
+  moveCardRelative,
   normalizeBoard,
   parsePersistedBoard,
   serializeBoard,
+  updateCard,
   type BoardState,
 } from "../app/board-model";
 
@@ -66,4 +70,59 @@ test("normalize clamps invalid flow values", () => {
   assert.equal(normalized.settings.agingWarnDays, 365);
   assert.equal(normalized.settings.agingAlertDays, 365);
   assert.equal(normalized.settings.expediteWipLimit, 99);
+});
+
+test("cross-column move updates columnEnteredAt; same-column reorder does not", () => {
+  const board = createDemoBoard(new Date(2026, 7, 5));
+  const before = board.cards["card-analytics"].columnEnteredAt; // 位於 doing
+  const moveTime = new Date("2026-08-05T10:00:00.000Z");
+  const moved = moveCard(board, "card-analytics", "review", 0, moveTime);
+  assert.equal(moved.cards["card-analytics"].columnEnteredAt, moveTime.toISOString());
+  assert.equal(moved.cards["card-analytics"].updatedAt, moveTime.toISOString());
+
+  const reordered = moveCardRelative(moved, "card-review", "down");
+  assert.equal(reordered.cards["card-review"].columnEnteredAt, board.cards["card-review"].columnEnteredAt);
+  void before;
+});
+
+test("startedAt is set once when leaving the first column", () => {
+  const board = createDemoBoard(new Date(2026, 7, 5));
+  assert.equal(board.cards["card-roadmap"].startedAt, null); // 位於 todo
+  const startTime = new Date("2026-08-05T09:00:00.000Z");
+  const started = moveCard(board, "card-roadmap", "doing", 0, startTime);
+  assert.equal(started.cards["card-roadmap"].startedAt, startTime.toISOString());
+
+  const back = moveCard(started, "card-roadmap", "todo", 0, new Date("2026-08-05T11:00:00.000Z"));
+  assert.equal(back.cards["card-roadmap"].startedAt, startTime.toISOString());
+  const again = moveCard(back, "card-roadmap", "doing", 0, new Date("2026-08-05T12:00:00.000Z"));
+  assert.equal(again.cards["card-roadmap"].startedAt, startTime.toISOString());
+});
+
+test("addCard in a non-first column sets startedAt at creation", () => {
+  const board = createDemoBoard(new Date(2026, 7, 5));
+  const inDoing = addCard(board, "doing", { title: "直接開工" }, new Date("2026-08-05T08:00:00.000Z"));
+  const created = Object.values(inDoing.cards).find((card) => card.title === "直接開工");
+  assert.ok(created);
+  assert.equal(created.startedAt, "2026-08-05T08:00:00.000Z");
+  assert.equal(created.columnEnteredAt, "2026-08-05T08:00:00.000Z");
+
+  const inTodo = addCard(board, "todo", { title: "先排隊" }, new Date("2026-08-05T08:00:00.000Z"));
+  const queued = Object.values(inTodo.cards).find((card) => card.title === "先排隊");
+  assert.ok(queued);
+  assert.equal(queued.startedAt, null);
+});
+
+test("unblocking accumulates blockedMs across cycles", () => {
+  let board = createDemoBoard(new Date(2026, 7, 5));
+  board = updateCard(board, "card-roadmap", { blocked: true, blockedReason: "等待回覆" },
+    new Date("2026-08-05T09:00:00.000Z"));
+  board = updateCard(board, "card-roadmap", { blocked: false },
+    new Date("2026-08-05T10:00:00.000Z"));
+  assert.equal(board.cards["card-roadmap"].blockedMs, 3600_000);
+
+  board = updateCard(board, "card-roadmap", { blocked: true, blockedReason: "又卡住" },
+    new Date("2026-08-05T11:00:00.000Z"));
+  board = updateCard(board, "card-roadmap", { blocked: false },
+    new Date("2026-08-05T11:30:00.000Z"));
+  assert.equal(board.cards["card-roadmap"].blockedMs, 3600_000 + 1800_000);
 });
