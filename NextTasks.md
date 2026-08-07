@@ -46,7 +46,7 @@
 | production Worker/D1 | 既有 3a 上線 | 尚未部署本次 3b Worker |
 | production R2 | **尚未建立** | 必須等 staging 驗收全數通過 |
 | iOS/Android | `1.1.0 (5)` 已部署實機，未完成正式分發 | 最新資產已覆蓋安裝並啟動於 iPhone 12 Pro Max 與 Pixel 9a；兩台裝置皆回報 build 5，尚缺完整功能 smoke、TestFlight／internal track 與正式簽章分發 |
-| 流動度量與服務類別 v1 | 已完成實作，待 staging 驗收 | Card schema v7：欄位進入／開工時間、累計阻塞、服務類別與加急 WIP；卡面老化與流動報表；Worker 驗證與 summary 流動度量 |
+| 流動度量與服務類別 v1 | Worker 已部署 staging，待 Web Beta 發布與驗收 | Card schema v7：欄位進入／開工時間、累計阻塞、服務類別與加急 WIP；卡面老化與流動報表；Worker 驗證與 summary 流動度量。已推送 `3329721`；staging Worker version `8070b48c-4ee6-4544-a069-b7a1f23f54be`，無 token／錯 token 均回 401；Web Beta v16 待從 Sites 發布 |
 
 ### 已完成的驗證
 
