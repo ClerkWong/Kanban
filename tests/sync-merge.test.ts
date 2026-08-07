@@ -159,3 +159,133 @@ test("合併結果通過不變量且冪等", () => {
     { cards: Object.keys(merged.cards).sort(), deleted: Object.keys(merged.deletedCards).sort() },
   );
 });
+
+test("合併保留敗方獨有且含卡片的欄位", () => {
+  const base = createDemoBoard(new Date(2026, 7, 1));
+  // 遠端（敗方）：新增欄位並放入一張卡
+  const remote = {
+    ...base,
+    cards: {
+      ...base.cards,
+      "card-review": {
+        ...base.cards["card-review"],
+        updatedAt: later(base.cards["card-review"].updatedAt, 5000),
+      },
+    },
+    columns: [
+      ...base.columns.slice(0, 3),
+      {
+        id: "column-mobile-added",
+        title: "行動端新欄",
+        wipLimit: null,
+        cardIds: ["card-review"],
+      },
+      base.columns[3],
+    ].map((column) =>
+      column.id === "review"
+        ? { ...column, cardIds: column.cardIds.filter((id) => id !== "card-review") }
+        : column,
+    ),
+  };
+  // 本機（勝方）：lastSavedAt 較新，仍是原本四欄
+  const local = { ...base, lastSavedAt: later(base.lastSavedAt, 60_000) };
+
+  const merged = mergeBoards(local, remote);
+
+  assertBoardInvariants(merged);
+  const added = merged.columns.find((column) => column.id === "column-mobile-added");
+  assert.ok(added, "敗方獨有欄位不得被合併丟棄");
+  assert.deepEqual(added?.cardIds, ["card-review"]);
+  const doneIndex = merged.columns.findIndex((column) => column.id === "done");
+  const addedIndex = merged.columns.findIndex((column) => column.id === "column-mobile-added");
+  assert.ok(addedIndex < doneIndex, "保留欄位應插在完成欄之前");
+});
+
+test("合併不復活敗方獨有的空欄位", () => {
+  const base = createDemoBoard(new Date(2026, 7, 1));
+  const remote = {
+    ...base,
+    columns: [
+      ...base.columns.slice(0, 3),
+      { id: "column-empty-old", title: "已刪空欄", wipLimit: null, cardIds: [] },
+      base.columns[3],
+    ],
+  };
+  const local = { ...base, lastSavedAt: later(base.lastSavedAt, 60_000) };
+
+  const merged = mergeBoards(local, remote);
+
+  assertBoardInvariants(merged);
+  assert.equal(
+    merged.columns.some((column) => column.id === "column-empty-old"),
+    false,
+    "空的敗方獨有欄位視為已刪除，不應復活",
+  );
+});
+
+test("合併時敗方獨有欄位標題撞名會加後綴", () => {
+  const base = createDemoBoard(new Date(2026, 7, 1));
+  const remote = {
+    ...base,
+    cards: {
+      ...base.cards,
+      "card-review": {
+        ...base.cards["card-review"],
+        updatedAt: later(base.cards["card-review"].updatedAt, 5000),
+      },
+    },
+    columns: [
+      ...base.columns.slice(0, 3),
+      // 標題與既有「審核中」欄相同（NFKC 大小寫不敏感比對）
+      { id: "column-dup-title", title: "審核中", wipLimit: null, cardIds: ["card-review"] },
+      base.columns[3],
+    ].map((column) =>
+      column.id === "review"
+        ? { ...column, cardIds: column.cardIds.filter((id) => id !== "card-review") }
+        : column,
+    ),
+  };
+  const local = { ...base, lastSavedAt: later(base.lastSavedAt, 60_000) };
+
+  const merged = mergeBoards(local, remote);
+
+  assertBoardInvariants(merged);
+  const kept = merged.columns.find((column) => column.id === "column-dup-title");
+  assert.ok(kept, "撞名欄位仍應保留");
+  assert.notEqual(kept?.title, "審核中", "標題應調整以避免與既有欄位重複");
+  const titles = merged.columns.map((column) => column.title.trim().normalize("NFKC").toLocaleLowerCase("zh-TW"));
+  assert.equal(new Set(titles).size, titles.length, "合併後欄位標題不得重複");
+});
+
+test("卡片位置跟隨卡片級 LWW 來源欄位", () => {
+  const base = createDemoBoard(new Date(2026, 7, 1));
+  // 遠端把 card-analytics 從 doing 移到 review，並 bump updatedAt（v7 跨欄移動行為）
+  const remote = {
+    ...base,
+    cards: {
+      ...base.cards,
+      "card-analytics": {
+        ...base.cards["card-analytics"],
+        updatedAt: later(base.cards["card-analytics"].updatedAt, 5000),
+      },
+    },
+    columns: base.columns.map((column) => {
+      if (column.id === "doing") {
+        return { ...column, cardIds: column.cardIds.filter((id) => id !== "card-analytics") };
+      }
+      if (column.id === "review") {
+        return { ...column, cardIds: [...column.cardIds, "card-analytics"] };
+      }
+      return column;
+    }),
+  };
+  const local = { ...base, lastSavedAt: later(base.lastSavedAt, 60_000) };
+
+  const merged = mergeBoards(local, remote);
+
+  assertBoardInvariants(merged);
+  assert.ok(
+    merged.columns.find((column) => column.id === "review")?.cardIds.includes("card-analytics"),
+    "遠端較新的跨欄移動應在合併結果中生效",
+  );
+});

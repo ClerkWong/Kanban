@@ -1299,7 +1299,7 @@ function normalizeColumnTitle(value: unknown): string | null {
   return title || null;
 }
 
-function columnTitleKey(value: string): string {
+export function columnTitleKey(value: string): string {
   return value.trim().normalize("NFKC").toLocaleLowerCase("zh-TW");
 }
 
