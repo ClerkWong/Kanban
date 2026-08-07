@@ -385,6 +385,9 @@ git diff --check
 - [x] 欄位管理已加入 Worker 權限與安全轉換驗證，以及 created／renamed／WIP／moved／deleted audit diff；183 個 Web 測試與 56 個 Worker 測試通過。
 - [x] build 4 已通過 Mobile sync、Android debug、iOS simulator 與 Apple Development 簽署的 iOS device build；產物位於 `outputs/mobile/`。
 - [x] build 5 已覆蓋安裝並啟動於 iPhone 12 Pro Max；裝置回報 `1.1.0 (5)`。
+- [x] build 6（含流動度量與服務類別 v1、schema v7）已以 Release＋Apple Development
+  簽章覆蓋安裝並啟動於 iPhone 12 Pro Max；bundle 版本 `1.1.0 (6)`。Android
+  versionCode 已同步跳 6，尚未產出 Android build 6。
 - [x] build 5 已覆蓋安裝並啟動於 Pixel 9a；裝置回報 `versionName 1.1.0`、`versionCode 5`。
 - [x] build 5 的 iOS／Android bundle 均包含水平單列 CSS 與 staging URL；Android APK
   由 debug keystore 簽署，iOS App 由 Apple Development identity 簽署。
