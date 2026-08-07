@@ -386,8 +386,11 @@ git diff --check
 - [x] build 4 已通過 Mobile sync、Android debug、iOS simulator 與 Apple Development 簽署的 iOS device build；產物位於 `outputs/mobile/`。
 - [x] build 5 已覆蓋安裝並啟動於 iPhone 12 Pro Max；裝置回報 `1.1.0 (5)`。
 - [x] build 6（含流動度量與服務類別 v1、schema v7）已以 Release＋Apple Development
-  簽章覆蓋安裝並啟動於 iPhone 12 Pro Max；bundle 版本 `1.1.0 (6)`。Android
-  versionCode 已同步跳 6，尚未產出 Android build 6。
+  簽章覆蓋安裝並啟動於 iPhone 12 Pro Max；bundle 版本 `1.1.0 (6)`。iOS 已人工驗證
+  加急卡正常同步到 Web。
+- [x] Android build 6 debug APK 已覆蓋安裝並啟動於 Pixel 9a；裝置回報
+  `versionName 1.1.0`、`versionCode 6`。注意：本機 gradle 需 `JAVA_HOME`
+  指向 JDK 21（Homebrew `openjdk@21`）；CocoaPods 需 `LANG=en_US.UTF-8`。
 - [x] build 5 已覆蓋安裝並啟動於 Pixel 9a；裝置回報 `versionName 1.1.0`、`versionCode 5`。
 - [x] build 5 的 iOS／Android bundle 均包含水平單列 CSS 與 staging URL；Android APK
   由 debug keystore 簽署，iOS App 由 Apple Development identity 簽署。
