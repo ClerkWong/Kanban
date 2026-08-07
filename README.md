@@ -5,7 +5,9 @@ React 看板介面；資料先寫入裝置，使用者可選擇連接 Cloudflare
 D1、附件存入 R2，供多裝置共用。
 
 目前正式環境只上線既有的看板同步（3a）。新版月報、附件同步（3b）與 Web/PWA 已完成
-本機整合，Web private beta 也已發布；仍須先完成獨立 staging 後端、雙裝置與實機驗收，
+本機整合；Web private Beta 託管於 Cloudflare Workers
+（<https://kanban-beta.wongchamber.com>，Cloudflare Access 保護，
+以 `pnpm web:deploy:beta` 發布）。仍須先完成雙裝置與實機驗收，
 才可切換正式資源。完整狀態、順序與停止條件見 [NextTasks.md](./NextTasks.md)。
 
 ## 功能

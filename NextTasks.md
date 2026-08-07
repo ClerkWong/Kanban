@@ -39,8 +39,8 @@
 | 輸入與響應式看板 | 已完成並發布 Beta v15 | 修正繁中注音 IME 組字；桌面與 Mobile 欄位固定同一水平列，溢出時水平捲動，Mobile 滿版吸附 |
 | staging 設定 | 已建立並部署 | staging Worker、D1、private R2、migration、owner 與 personal token 已完成；待 RC 多角色／多裝置驗收 |
 | CI | 已完成 | PR/main 會驗證 Web、Worker、Android debug 與 iOS simulator |
-| Web/PWA | private Beta v15 已發布 | [Kanban Beta](https://kanban-beta-liddlefang.clerk-wong.chatgpt.site) 已更新至 `f007174`；包含登入、平台／專案入口、多人指派、阻塞狀態、動態工作流欄位、IME 修正與水平單列排版，目前僅擁有者可存取 |
-| Sites 關聯 | 已完成 beta 關聯 | `.openai/hosting.json` 已保存 beta `project_id`；Sites 本身不擁有同步 D1/R2 |
+| Web/PWA | 已搬遷 Cloudflare Workers | [Kanban Beta](https://kanban-beta.wongchamber.com) 由 `kanban-beta` Worker 託管（custom domain＋Cloudflare Access email OTP 白名單），以 `pnpm web:deploy:beta` 發布；含流動度量與服務類別 v1（schema v7），已通過瀏覽器驗收 |
+| Sites 關聯 | 已退場 | 舊 chatgpt.site Beta（v15）已停用；`.openai/hosting.json` 與 sites build plugin 已自 repo 移除 |
 | 客製 title | 已完成並發布 Beta | `public/app-config.json` 控制畫面與 WebView title；Beta v15 與 Mobile build 5 使用 `定恆人工智能` |
 | staging Worker/D1/R2/token | 已建立 | 和 production 完全隔離；URL 與非敏感 inventory 見 staging runbook |
 | production Worker/D1 | 既有 3a 上線 | 尚未部署本次 3b Worker |
@@ -416,8 +416,9 @@ git diff --check
 
 - staging 上述清單全部通過並記錄證據。
 - multi-project migration、legacy alias、個人 token 與角色授權均已通過 staging。
-- 決定既有 beta Sites project 是否沿用並綁正式 custom domain；不要臨時覆寫
-  `.openai/hosting.json` 的 project 關聯。
+- 正式站規劃為 `kanban.wongchamber.com`（zone 已在 Cloudflare）：cutover 時另建
+  production Worker（與 `kanban-beta` 分離）、掛 custom domain，並決定 Access
+  白名單或公開登入策略。
 - 準備 production token 發放與撤銷名單。
 - 決定行動版版本號、build number、簽章與回退版本。
 
@@ -430,7 +431,7 @@ git diff --check
 5. 部署 production Worker。
 6. 先驗證既有 3a `/board` GET、PUT、401 與 409 行為。
 7. 再驗證 3b attachment PUT、GET、DELETE、404、413 與錯誤 envelope。
-8. 儲存並發布 private production Web/PWA version。
+8. 建立 production Web Worker 並掛 `kanban.wongchamber.com`，發布 production Web/PWA version。
 9. 驗證 Web/PWA、分享 metadata、客製 title、離線啟動與 service worker 升級。
 10. 在相同 release commit 上執行 final mobile sync、簽章與實機 smoke test。
 11. 逐步發放，持續觀察 Worker errors、D1/R2 用量及同步失敗率。
@@ -441,7 +442,7 @@ git diff --check
 - migration 必須採向前、向後相容方式；資料修復與程式 rollback 分開處理。
 - D1 restore 是覆寫資料庫的事故操作，執行前必須保存當下 bookmark。
 - R2 已寫入或刪除的物件不會隨 Worker rollback 自動還原。
-- 保留上一個穩定 Worker version、Sites version 與行動版安裝包。
+- 保留上一個穩定 sync Worker version、Web Worker version 與行動版安裝包。
 
 ### 立即停止條件
 
