@@ -58,8 +58,13 @@
 在 `"sync:deploy:staging"` 附近加入：
 
 ```json
-"web:deploy:beta": "pnpm build && WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler deploy -c wrangler.jsonc",
+"web:deploy:beta": "pnpm build && WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler deploy -c dist/server/wrangler.json",
 ```
+
+（執行時修正：`worker/index.ts` 的 `virtual:vinext-rsc-entry` 需由
+`@cloudflare/vite-plugin` 解析，wrangler 不能直接 bundle 根設定。vite.config.ts 的
+cloudflare plugin 會在 `pnpm build` 時讀取根 `wrangler.jsonc` 並輸出可部署的
+`dist/server/wrangler.json`（main 為編譯後 index.js、no_bundle），部署一律指向該檔。）
 
 - [ ] **Step 3: 刪除 app/chatgpt-auth.ts**
 
@@ -79,7 +84,7 @@ pnpm test && pnpm lint && pnpm typecheck && pnpm build
 - [ ] **Step 5: dry-run 驗證根設定**
 
 ```bash
-WRANGLER_LOG_PATH=.wrangler/wrangler.log pnpm exec wrangler deploy --dry-run -c wrangler.jsonc
+WRANGLER_LOG_PATH=.wrangler/wrangler.log pnpm exec wrangler deploy --dry-run -c dist/server/wrangler.json
 ```
 
 預期：bindings 只有 ASSETS，routes 顯示 custom domain。
