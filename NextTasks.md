@@ -472,6 +472,11 @@ git diff --check
 - 建立 R2 orphan 掃描與保守清理流程。
 - 對 Worker 5xx、同步失敗率、D1/R2 用量建立監控與告警。
 - 評估 token rate limit；保留 CORS `*` 時記錄其理由與風險。
+- 合併殘餘邊界：勝方已滿 20 欄且敗方有非空獨有欄時，「欄數上限」與「前版非空欄
+  不得消失」互斥，推送會被拒但卡片不遺失、可刪欄自癒；徹底解需 Worker 放寬
+  已清空欄位的刪除判定。
+- 行動版 build 6 仍載有舊版 mergeBoards（欄位聯集修正前）；下一次 mobile build
+  必須帶入 `100260a` 的合併修正，在此之前手機端合併仍可能丟棄另一側新增的欄位。
 - 在獨立 PR 更新 Wrangler、Workers types 與 compatibility date；不要和 production
   cutover 放在同一個不可拆部署。
 - 若需要已安裝 App 即時更新 title，設計具完整性驗證、cache fallback 與版本欄位的
