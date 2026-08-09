@@ -2,6 +2,7 @@ import {
   BOARD_SCHEMA_VERSION,
   COLUMN_TITLE_MAX_LENGTH,
   DONE_COLUMN_ID,
+  MAX_BOARD_COLUMNS,
   type BoardState,
   type Card,
   type Column,
@@ -27,8 +28,14 @@ export function mergeBoards(local: BoardState, remote: BoardState): BoardState {
   for (const cardId of allIds) {
     const mine = local.cards[cardId];
     const theirs = remote.cards[cardId];
+    // updatedAt 平手時判給勝方（而非固定判給 local），確保兩台裝置以相反順序
+    // 合併仍收斂到同一結果，位置不會在裝置間永久互推。
     const source =
-      !mine ? remote : !theirs ? local : mine.updatedAt >= theirs.updatedAt ? local : remote;
+      !mine ? remote
+      : !theirs ? local
+      : mine.updatedAt > theirs.updatedAt ? local
+      : theirs.updatedAt > mine.updatedAt ? remote
+      : winner;
     const candidate = source.cards[cardId];
     const tombstone = deletedCards[cardId];
     if (tombstone && tombstone >= candidate.updatedAt) {
@@ -43,14 +50,19 @@ export function mergeBoards(local: BoardState, remote: BoardState): BoardState {
 
   const winnerColumnIds = new Set(winner.columns.map((column) => column.id));
 
-  // 敗方獨有欄位不能默默丟棄：欄裡仍有卡片時必須保留，否則同步 Worker 會以
-  // column_not_empty 拒絕後續推送。合併後仍為空的敗方獨有欄位視為勝方已刪除。
+  // 敗方獨有欄位不能默默丟棄：只要在敗方板上仍有卡片，同步 Worker 就會以
+  // column_not_empty 拒絕缺少該欄的推送——即使卡片在合併後全被移走或刪除，
+  // 欄位本身也必須保留（成為空欄，之後可正常刪除）。敗方板上已是空欄的
+  // 獨有欄位視為勝方已刪除，不復活。欄位總數不得超過 MAX_BOARD_COLUMNS，
+  // 超額的敗方獨有欄位不保留，其卡片回到勝方所在欄，兩側皆無處可放才落第一欄。
+  const columns: Column[] = winner.columns.map((column) => ({ ...column, cardIds: [] }));
+  const capacity = Math.max(0, MAX_BOARD_COLUMNS - columns.length);
   const loserOnlyColumns: Column[] = loser.columns
-    .filter((column) => !winnerColumnIds.has(column.id))
+    .filter((column) => !winnerColumnIds.has(column.id) && column.cardIds.length > 0)
+    .slice(0, capacity)
     .map((column) => ({ ...column, cardIds: [] }));
   const loserOnlyIds = new Set(loserOnlyColumns.map((column) => column.id));
 
-  const columns: Column[] = winner.columns.map((column) => ({ ...column, cardIds: [] }));
   const doneIndex = columns.findIndex((column) => column.id === DONE_COLUMN_ID);
   columns.splice(doneIndex >= 0 ? doneIndex : columns.length, 0, ...loserOnlyColumns);
   const columnById = new Map(columns.map((column) => [column.id, column]));
@@ -119,18 +131,14 @@ export function mergeBoards(local: BoardState, remote: BoardState): BoardState {
     }
   }
 
-  const survivingColumns = columns.filter(
-    (column) => !loserOnlyIds.has(column.id) || column.cardIds.length > 0,
-  );
-
   // 兩側可能各自新增同名欄位；Worker 對欄位標題有唯一性驗證，撞名的保留欄位
   // 需加後綴改名，避免合併結果被拒。
   const usedTitleKeys = new Set(
-    survivingColumns
+    columns
       .filter((column) => !loserOnlyIds.has(column.id))
       .map((column) => columnTitleKey(column.title)),
   );
-  for (const column of survivingColumns) {
+  for (const column of columns) {
     if (!loserOnlyIds.has(column.id)) continue;
     let title = column.title;
     let counter = 2;
@@ -147,7 +155,7 @@ export function mergeBoards(local: BoardState, remote: BoardState): BoardState {
     version: BOARD_SCHEMA_VERSION,
     labels: winner.labels,
     cards,
-    columns: survivingColumns,
+    columns,
     deletedCards,
     lastSavedAt: winner.lastSavedAt >= loser.lastSavedAt ? winner.lastSavedAt : loser.lastSavedAt,
     settings: winner.settings ?? loser.settings,

@@ -289,3 +289,191 @@ test("卡片位置跟隨卡片級 LWW 來源欄位", () => {
     "遠端較新的跨欄移動應在合併結果中生效",
   );
 });
+
+test("敗方非空欄位在卡片移走後保留為空欄", () => {
+  const base = createDemoBoard(new Date(2026, 7, 1));
+  // 敗方（遠端舊資料）：欄 X 仍持有 card-review
+  const remote = {
+    ...base,
+    columns: [
+      ...base.columns.slice(0, 3),
+      { id: "column-x", title: "離線舊欄", wipLimit: null, cardIds: ["card-review"] },
+      base.columns[3],
+    ].map((column) =>
+      column.id === "review"
+        ? { ...column, cardIds: column.cardIds.filter((id) => id !== "card-review") }
+        : column,
+    ),
+  };
+  // 勝方（本機較新）：已把 card-review 移回 review 欄（updatedAt 較新），且沒有欄 X
+  const local = {
+    ...base,
+    cards: {
+      ...base.cards,
+      "card-review": {
+        ...base.cards["card-review"],
+        updatedAt: later(base.cards["card-review"].updatedAt, 5000),
+      },
+    },
+    lastSavedAt: later(base.lastSavedAt, 60_000),
+  };
+
+  const merged = mergeBoards(local, remote);
+
+  assertBoardInvariants(merged);
+  const kept = merged.columns.find((column) => column.id === "column-x");
+  assert.ok(kept, "敗方板上非空的欄位必須保留（即使合併後變空），否則 Worker 會拒絕推送");
+  assert.deepEqual(kept?.cardIds, []);
+  assert.ok(
+    merged.columns.find((column) => column.id === "review")?.cardIds.includes("card-review"),
+  );
+});
+
+test("欄位聯集不超過上限，超額敗方欄位的卡片落回第一欄", () => {
+  const base = createDemoBoard(new Date(2026, 7, 1));
+  // 勝方撐滿 20 欄
+  const fillerCount = 20 - base.columns.length;
+  const local = {
+    ...base,
+    columns: [
+      ...base.columns.slice(0, 3),
+      ...Array.from({ length: fillerCount }, (_, i) => ({
+        id: `column-filler-${i}`,
+        title: `補位欄 ${i + 1}`,
+        wipLimit: null,
+        cardIds: [],
+      })),
+      base.columns[3],
+    ],
+    lastSavedAt: later(base.lastSavedAt, 60_000),
+  };
+  // 敗方另有一個非空獨有欄
+  const remote = {
+    ...base,
+    cards: {
+      ...base.cards,
+      "card-review": {
+        ...base.cards["card-review"],
+        updatedAt: later(base.cards["card-review"].updatedAt, 5000),
+      },
+    },
+    columns: [
+      ...base.columns.slice(0, 3),
+      { id: "column-overflow", title: "超額欄", wipLimit: null, cardIds: ["card-review"] },
+      base.columns[3],
+    ].map((column) =>
+      column.id === "review"
+        ? { ...column, cardIds: column.cardIds.filter((id) => id !== "card-review") }
+        : column,
+    ),
+  };
+
+  const merged = mergeBoards(local, remote);
+
+  assertBoardInvariants(merged);
+  assert.ok(merged.columns.length <= 20, "合併結果不得超過欄位上限");
+  assert.equal(merged.columns.some((column) => column.id === "column-overflow"), false);
+  assert.ok(
+    merged.columns.find((column) => column.id === "review")?.cardIds.includes("card-review"),
+    "被捨棄欄位的卡片應回到勝方持有它的欄位",
+  );
+});
+
+test("撞名後綴在滿長標題下仍唯一且不超過長度上限", () => {
+  const base = createDemoBoard(new Date(2026, 7, 1));
+  const longTitle = "甲".repeat(40);
+  const withLong = {
+    ...base,
+    columns: base.columns.map((column) =>
+      column.id === "review" ? { ...column, title: longTitle } : column,
+    ),
+  };
+  const remote = {
+    ...withLong,
+    cards: {
+      ...withLong.cards,
+      "card-review": {
+        ...withLong.cards["card-review"],
+        updatedAt: later(withLong.cards["card-review"].updatedAt, 5000),
+      },
+    },
+    columns: [
+      ...withLong.columns.slice(0, 3),
+      { id: "column-long-dup", title: longTitle, wipLimit: null, cardIds: ["card-review"] },
+      withLong.columns[3],
+    ].map((column) =>
+      column.id === "review"
+        ? { ...column, cardIds: column.cardIds.filter((id) => id !== "card-review") }
+        : column,
+    ),
+  };
+  const local = { ...withLong, lastSavedAt: later(withLong.lastSavedAt, 60_000) };
+
+  const merged = mergeBoards(local, remote);
+
+  assertBoardInvariants(merged);
+  const titles = merged.columns.map((column) =>
+    column.title.trim().normalize("NFKC").toLocaleLowerCase("zh-TW"),
+  );
+  assert.equal(new Set(titles).size, titles.length);
+  for (const column of merged.columns) {
+    assert.ok(column.title.length <= 40, `標題超長：${column.title}`);
+  }
+});
+
+test("兩台裝置以相反順序合併收斂到同一結果", () => {
+  const base = createDemoBoard(new Date(2026, 7, 1));
+  // 裝置 A：移動 card-analytics 到 review（較新）
+  const a = {
+    ...base,
+    cards: {
+      ...base.cards,
+      "card-analytics": {
+        ...base.cards["card-analytics"],
+        updatedAt: later(base.cards["card-analytics"].updatedAt, 5000),
+      },
+    },
+    columns: base.columns.map((column) => {
+      if (column.id === "doing") {
+        return { ...column, cardIds: column.cardIds.filter((id) => id !== "card-analytics") };
+      }
+      if (column.id === "review") {
+        return { ...column, cardIds: [...column.cardIds, "card-analytics"] };
+      }
+      return column;
+    }),
+    lastSavedAt: later(base.lastSavedAt, 60_000),
+  };
+  // 裝置 B：新增欄位並移入 card-copy（updatedAt 較新但 lastSavedAt 較舊）
+  const b = {
+    ...base,
+    cards: {
+      ...base.cards,
+      "card-copy": {
+        ...base.cards["card-copy"],
+        updatedAt: later(base.cards["card-copy"].updatedAt, 3000),
+      },
+    },
+    columns: [
+      ...base.columns.slice(0, 3),
+      { id: "column-b-new", title: "B 新欄", wipLimit: null, cardIds: ["card-copy"] },
+      base.columns[3],
+    ].map((column) =>
+      column.id === "doing"
+        ? { ...column, cardIds: column.cardIds.filter((id) => id !== "card-copy") }
+        : column,
+    ),
+    lastSavedAt: later(base.lastSavedAt, 30_000),
+  };
+
+  const ab = mergeBoards(a, b);
+  const ba = mergeBoards(b, a);
+
+  assertBoardInvariants(ab);
+  assertBoardInvariants(ba);
+  assert.deepEqual(
+    { columns: ab.columns, cards: ab.cards, deletedCards: ab.deletedCards },
+    { columns: ba.columns, cards: ba.cards, deletedCards: ba.deletedCards },
+    "相反順序合併必須收斂",
+  );
+});
