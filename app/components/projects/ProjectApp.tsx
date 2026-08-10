@@ -328,19 +328,37 @@ function ProjectRouteView({
         if (cancelled) return;
         const allBoards = [...activeBoards, ...archivedBoards];
         if (route.kind === "board" && !boardBelongsToRoute(route, allBoards)) {
+          window.sessionStorage.setItem(
+            "kanban-board-access-notice",
+            "您已不在此看板，已回到可用的看板清單。",
+          );
           window.location.hash = serializeProjectRoute({
             kind: "project",
             projectId: route.projectId,
           });
           return;
         }
+        if (
+          route.kind === "project" &&
+          detail.myRole === "member" &&
+          activeBoards.length === 1
+        ) {
+          window.location.hash = serializeProjectRoute({
+            kind: "board",
+            projectId: route.projectId,
+            boardId: activeBoards[0].id,
+          });
+          return;
+        }
+        const notice = window.sessionStorage.getItem("kanban-board-access-notice");
+        if (notice) window.sessionStorage.removeItem("kanban-board-access-notice");
         setState({
           detail,
           report,
           members,
           activeBoards,
           allBoards,
-          error: "",
+          error: notice ?? "",
         });
       })
       .catch((error: unknown) => {
