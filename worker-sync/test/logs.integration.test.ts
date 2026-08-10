@@ -83,6 +83,30 @@ async function insertLog(
   ).bind(id, workspaceId, projectId, boardId, managerId, boardId ?? projectId, occurredAt).run();
 }
 
+/** 重現 projects.ts createProject 落的 project.created 事件形狀：project-level
+ *（board_id 為 NULL），但 metadata 挾帶初始看板的 boardId／boardName（見
+ *  Task 3 審查回合 1 發現的洩漏）。 */
+async function insertProjectCreatedLog(
+  id: string,
+  projectId: string,
+  embeddedBoardId: string,
+  embeddedBoardName: string,
+  occurredAt: string,
+) {
+  await env.DB.prepare(
+    `INSERT INTO activity_logs (
+       id, workspace_id, project_id, board_id, actor_user_id, action,
+       entity_type, entity_id, revision, metadata, occurred_at
+     ) VALUES (?, ?, ?, NULL, ?, 'project.created', 'project', ?, NULL, ?, ?)`,
+  ).bind(
+    id, workspaceId, projectId, managerId, projectId,
+    JSON.stringify({
+      name: "Alpha", boardId: embeddedBoardId, boardName: embeddedBoardName, ownerUserId: managerId,
+    }),
+    occurredAt,
+  ).run();
+}
+
 beforeAll(async () => {
   const statements = [
     "CREATE TABLE IF NOT EXISTS user_accounts (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
@@ -361,5 +385,36 @@ describe("Activity Log board visibility (Task 3)", () => {
       "85000000-0000-4000-8000-000000000011",
       "85000000-0000-4000-8000-000000000012",
     ].sort());
+  });
+
+  it("strips an invisible Board's name and id from project-level event metadata for a contributor, but not for the owner", async () => {
+    // project.created 是 project-level 事件（board_id 為 NULL），row 層級的可見性
+    // 過濾對它一律放行；洩漏藏在 metadata.boardId/boardName 這個內嵌欄位，只能在
+    // 序列化前額外處理。這裡把 metadata 指向 boardA（contributor 不可見）。
+    const logId = "85000000-0000-4000-8000-000000000020";
+    await insertProjectCreatedLog(
+      logId, projectA, boardA, "Secret Initial Board Name", "2026-07-27T06:20:00.000Z",
+    );
+
+    const contributorView = await dispatch(contributorToken, `/projects/${projectA}/logs`);
+    expect(contributorView.status).toBe(200);
+    const contributorBody = await contributorView.json() as {
+      logs: Array<{ id: string; metadata: Record<string, unknown> }>;
+    };
+    expect(JSON.stringify(contributorBody)).not.toContain("Secret Initial Board Name");
+    expect(JSON.stringify(contributorBody)).not.toContain(boardA);
+    const contributorEntry = contributorBody.logs.find((log) => log.id === logId);
+    expect(contributorEntry).toBeDefined();
+    expect(contributorEntry?.metadata).toEqual({ name: "Alpha", ownerUserId: managerId });
+
+    const ownerView = await dispatch(managerToken, `/projects/${projectA}/logs`);
+    expect(ownerView.status).toBe(200);
+    const ownerBody = await ownerView.json() as {
+      logs: Array<{ id: string; metadata: Record<string, unknown> }>;
+    };
+    const ownerEntry = ownerBody.logs.find((log) => log.id === logId);
+    expect(ownerEntry?.metadata).toEqual({
+      name: "Alpha", boardId: boardA, boardName: "Secret Initial Board Name", ownerUserId: managerId,
+    });
   });
 });

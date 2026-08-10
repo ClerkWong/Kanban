@@ -249,9 +249,18 @@ describe("Project/Board-scoped Attachment API", () => {
       })).status,
     ).toBe(403);
     // Board 可見性 v1：contributor 對無指派列、非主要看板的 boardA 沒有可見權，
-    // 一樣要在碰 R2 之前被擋下。
+    // 一樣要在碰 R2 之前被擋下——GET／PUT／DELETE 三個方法都要覆蓋，不能只靠共用
+    // getAttachmentResource 的結構保證。
     expect(
       (await dispatch(contributorToken, attachmentPath(projectA, boardA))).status,
+    ).toBe(404);
+    expect(
+      (await upload(contributorToken, new Uint8Array([1]), projectA, boardA)).status,
+    ).toBe(404);
+    expect(
+      (await dispatch(contributorToken, attachmentPath(projectA, boardA), {
+        method: "DELETE",
+      })).status,
     ).toBe(404);
     expect(get).not.toHaveBeenCalled();
     expect(put).not.toHaveBeenCalled();

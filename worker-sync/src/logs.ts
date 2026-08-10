@@ -83,7 +83,24 @@ function parseMetadata(value: string): Record<string, unknown> {
   }
 }
 
-function logJson(row: ActivityLogRow) {
+function logJson(row: ActivityLogRow, visible: Set<string> | null) {
+  const metadata = parseMetadata(row.metadata);
+  // Board 可見性 v1（審查回合 1 修正）：project-level 事件（board_id 為 NULL，例如
+  // project.created）仍可能在 metadata 裡挾帶「這件事跟哪塊看板有關」的
+  // boardId／boardName（初始看板名稱）。row 層級的可見性過濾只看 activity_logs
+  // 自己的 board_id 欄位，管不到 metadata 內嵌欄位；這裡補第二層：metadata.boardId
+  // 不在可見集合（或不是字串）時剔除 boardId／boardName，同一事件其餘欄位
+  // （name／ownerUserId 等）不受影響。board.created 事件已用 activity_logs.board_id
+  // 欄位獨立記錄同一份資訊，剔除 metadata 副本不會丟失稽核資料。owner／viewer
+  // （visible 為 null）不受影響，維持完整 metadata；既有 D1 列不需要資料清洗，
+  // 這層在每次讀取時套用。
+  if (row.board_id === null && visible) {
+    const boardId = metadata.boardId;
+    if (typeof boardId !== "string" || !visible.has(boardId)) {
+      delete metadata.boardId;
+      delete metadata.boardName;
+    }
+  }
   return {
     id: row.id,
     workspaceId: row.workspace_id,
@@ -94,7 +111,7 @@ function logJson(row: ActivityLogRow) {
     entityType: row.entity_type,
     entityId: row.entity_id,
     revision: row.revision,
-    metadata: parseMetadata(row.metadata),
+    metadata,
     occurredAt: row.occurred_at,
   };
 }
@@ -154,7 +171,7 @@ async function listLogs(
     ? rows.filter((row) => row.board_id === null || visible.has(row.board_id))
     : rows;
   return json(200, {
-    logs: visibleRows.map(logJson),
+    logs: visibleRows.map((row) => logJson(row, visible)),
     nextCursor: result.results.length > limit && last
       ? encodeCursor({ occurredAt: last.occurred_at, id: last.id })
       : null,
