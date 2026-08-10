@@ -1,6 +1,7 @@
 import { json } from "./http";
 import { handleAttachmentRequest } from "./attachments";
 import { handleBoardRequest } from "./boards";
+import { handleMemberBoardsRequest } from "./member-boards";
 import { handleMembershipRequest } from "./memberships";
 import { handleLogRequest } from "./logs";
 import { handleProjectRequest, type ApiContext } from "./projects";
@@ -19,6 +20,10 @@ type Route = {
 const ROUTES: readonly Route[] = [
   { capability: "authenticated", handle: handleAuthenticatedAuthRequest },
   { capability: "authenticated", handle: handleUserRequest },
+  // handleMemberBoardsRequest 必須排在 handleMembershipRequest 之前：即使目前
+  // membership 的 regex 有 `$` 錨定不會誤吃 `/boards` 後綴，這個順序仍是防止未來
+  // membership regex 變動時吃掉本路徑的第一道防線。
+  { capability: "authenticated", handle: handleMemberBoardsRequest },
   { capability: "authenticated", handle: handleMembershipRequest },
   { capability: "authenticated", handle: handleBoardRequest },
   { capability: "authenticated", handle: handleReportRequest },
