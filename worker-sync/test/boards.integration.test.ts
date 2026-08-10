@@ -191,11 +191,13 @@ describe("Single-board Project content APIs", () => {
     ).toBe(403);
   });
 
-  it("enforces role capabilities, one active Board, and revision conflicts", async () => {
+  it("enforces role capabilities, allows a second active Board, and revision conflicts", async () => {
     await createBoard(managerToken, projectA, boardA, "A", board(3, "A0"));
-    const duplicateBoard = await createBoard(managerToken, projectA, boardB, "B", board(3, "B0"));
-    expect(duplicateBoard.status).toBe(409);
-    expect(await duplicateBoard.json()).toMatchObject({ error: "project_board_exists" });
+    // 多看板 v1（migration 0005）取代了「每專案僅一個 active Board」的舊假設：
+    // 同專案、不同名稱的第二個 Board 現在應該建立成功，不再是 409 project_board_exists。
+    const secondBoard = await createBoard(managerToken, projectA, boardB, "B", board(3, "B0"));
+    expect(secondBoard.status).toBe(201);
+    expect((await secondBoard.json() as { board: { id: string } }).board.id).toBe(boardB);
 
     const viewerGet = await dispatch(viewerToken, `/projects/${projectA}/boards/${boardA}`);
     expect(viewerGet.status).toBe(200);
@@ -224,10 +226,11 @@ describe("Single-board Project content APIs", () => {
       revision: 1,
       board: { marker: "A1" },
     });
+    // 兩個 Board（A、B）都維持 active——多看板 v1 下這是預期狀態。
     expect(
       await env.DB.prepare("SELECT COUNT(*) AS count FROM boards WHERE project_id = ? AND status = 'active'")
         .bind(projectA).first<number>("count"),
-    ).toBe(1);
+    ).toBe(2);
   });
 
   it("allows only managers to change workflow column settings", async () => {

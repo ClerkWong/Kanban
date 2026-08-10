@@ -408,10 +408,8 @@ async function createBoard(context: ApiContext, projectId: string): Promise<Resp
     }
     throw new RequestError(409, "board_id_conflict");
   }
-  const activeBoardId = await context.env.DB.prepare(
-    "SELECT id FROM boards WHERE project_id = ? AND status = 'active'",
-  ).bind(projectId).first<string>("id");
-  if (activeBoardId) throw new RequestError(409, "project_board_exists");
+  // 多看板 v1：專案不再限制只能有一個 active Board（migration 0005 已移除
+  // boards_one_active_per_project_unique）；仍以 name 唯一索引避免同專案同名。
   const project = await getProject(context.env.DB, projectId);
   const now = new Date().toISOString();
   const row: BoardRow = {
@@ -577,7 +575,12 @@ async function changeBoardStatus(
   const row = await getBoard(context.env.DB, projectId, boardId);
   const target = action === "archive" ? "archived" : "active";
   if (action === "archive" && row.status === "active") {
-    throw new RequestError(409, "single_board_required");
+    // 多看板 v1：不再是「唯一 active Board 恆不可封存」，改為「專案必須保留至少
+    // 一個 active Board」——只在封存後會清空 active Board 時才擋下。
+    const otherActiveBoardId = await context.env.DB.prepare(
+      "SELECT id FROM boards WHERE project_id = ? AND status = 'active' AND id != ?",
+    ).bind(projectId, boardId).first<string>("id");
+    if (!otherActiveBoardId) throw new RequestError(409, "single_board_required");
   }
   if (row.status === target) {
     return json(200, { board: boardMetadata(row), requestId: context.requestId }, context.requestId);
@@ -643,10 +646,9 @@ async function changeBoardStatus(
     }
   } catch (error) {
     if (isConstraintConflict(error)) {
-      const activeBoardId = await context.env.DB.prepare(
-        "SELECT id FROM boards WHERE project_id = ? AND status = 'active' AND id != ?",
-      ).bind(projectId, boardId).first<string>("id");
-      throw new RequestError(409, activeBoardId ? "project_board_exists" : "name_conflict");
+      // 多看板 v1：status='active' 範圍內唯一還會衝突的索引只剩名稱唯一索引
+      // （boards_one_active_per_project_unique 已被 0005 移除），恆為 name_conflict。
+      throw new RequestError(409, "name_conflict");
     }
     throw error;
   }
