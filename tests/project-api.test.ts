@@ -488,13 +488,15 @@ test("member board assignment client rejects malformed boardIds payloads", async
     globalThis.fetch = async () => json({ requestId: "r" });
     await assert.rejects(
       () => listMemberBoards(config, context.projectId, userId),
-      (error: unknown) => error instanceof Error && /回應格式不正確/.test(error.message),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
     );
 
     globalThis.fetch = async () => json({ boardIds: [1], requestId: "r" });
     await assert.rejects(
       () => putMemberBoards(config, context.projectId, userId, [context.boardId]),
-      (error: unknown) => error instanceof Error && /回應格式不正確/.test(error.message),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
     );
   } finally {
     globalThis.fetch = originalFetch;

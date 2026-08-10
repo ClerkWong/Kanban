@@ -818,7 +818,7 @@ export async function removeProjectMember(
 function parseBoardIdsResponse(value: unknown, operation: string): string[] {
   const raw = (value as { boardIds?: unknown } | null)?.boardIds;
   if (!Array.isArray(raw) || raw.some((entry) => typeof entry !== "string" || !entry)) {
-    throw new Error(`${operation} 回應格式不正確。`);
+    throw invalidResponse(operation);
   }
   return raw as string[];
 }
