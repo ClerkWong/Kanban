@@ -1,5 +1,6 @@
 import { prepareAuditEvent } from "./audit";
 import { authorizeProject, type ProjectAccess } from "./authorization";
+import { requireBoardVisible, resolveVisibleBoardIds } from "./board-access";
 import { diffBoardStates } from "./board-diff";
 import type { BoardRow, MigrationStateRow, ProjectRow } from "./db-types";
 import { json } from "./http";
@@ -352,7 +353,7 @@ function requireActive(access: ProjectAccess, board?: BoardRow): void {
 }
 
 async function listBoards(context: ApiContext, projectId: string): Promise<Response> {
-  await authorizeProject(context.env.DB, context.user.id, projectId, "read");
+  const access = await authorizeProject(context.env.DB, context.user.id, projectId, "read");
   const rawStatus = new URL(context.request.url).searchParams.get("status") ?? "active";
   if (rawStatus !== "active" && rawStatus !== "archived") {
     throw new RequestError(400, "invalid_status");
@@ -364,8 +365,17 @@ async function listBoards(context: ApiContext, projectId: string): Promise<Respo
      WHERE project_id = ? AND status = ?
      ORDER BY updated_at DESC, id DESC`,
   ).bind(projectId, rawStatus).all<BoardListRow>();
+  const visible = await resolveVisibleBoardIds(
+    context.env.DB,
+    projectId,
+    context.user.id,
+    access,
+  );
+  const rows = visible
+    ? result.results.filter((row) => visible.has(row.id))
+    : result.results;
   return json(200, {
-    boards: result.results.map(boardMetadata),
+    boards: rows.map(boardMetadata),
     requestId: context.requestId,
   }, context.requestId);
 }
@@ -490,7 +500,8 @@ async function getBoardDetail(
   projectId: string,
   boardId: string,
 ): Promise<Response> {
-  await authorizeProject(context.env.DB, context.user.id, projectId, "read");
+  const access = await authorizeProject(context.env.DB, context.user.id, projectId, "read");
+  await requireBoardVisible(context.env.DB, projectId, boardId, context.user.id, access);
   const row = await getBoard(context.env.DB, projectId, boardId);
   return json(200, {
     board: boardDetail(row),
@@ -676,6 +687,7 @@ async function putBoardContent(
   boardId: string,
 ): Promise<Response> {
   const access = await authorizeProject(context.env.DB, context.user.id, projectId, "edit");
+  await requireBoardVisible(context.env.DB, projectId, boardId, context.user.id, access);
   const row = await getBoard(context.env.DB, projectId, boardId);
   requireActive(access, row);
   const body = await readJsonObject(
@@ -846,7 +858,8 @@ async function handleLegacyAlias(context: ApiContext): Promise<Response | null> 
   const projectId = parseUuid(state.legacy_project_id, "project_id");
   const boardId = parseUuid(state.legacy_board_id, "board_id");
   if (context.request.method === "GET") {
-    await authorizeProject(context.env.DB, context.user.id, projectId, "read");
+    const access = await authorizeProject(context.env.DB, context.user.id, projectId, "read");
+    await requireBoardVisible(context.env.DB, projectId, boardId, context.user.id, access);
     const row = await getBoard(context.env.DB, projectId, boardId);
     return json(200, {
       revision: row.revision,

@@ -46,11 +46,14 @@ beforeAll(async () => {
     "CREATE TABLE IF NOT EXISTS boards (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, normalized_name TEXT NOT NULL, status TEXT NOT NULL, revision INTEGER NOT NULL, data TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT, archived_by TEXT)",
     "CREATE TABLE IF NOT EXISTS activity_logs (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, project_id TEXT NOT NULL, board_id TEXT, actor_user_id TEXT NOT NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, revision INTEGER, metadata TEXT NOT NULL, occurred_at TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS migration_state (id INTEGER PRIMARY KEY, status TEXT NOT NULL, default_workspace_id TEXT NOT NULL, legacy_project_id TEXT NOT NULL, legacy_board_id TEXT NOT NULL, locked_at TEXT, completed_at TEXT, updated_at TEXT NOT NULL, error TEXT)",
+    // migration 0005：看板指派表。Task 2 起 board-access.ts 的 resolveVisibleBoardIds
+    // 會查詢此表，即使本檔沒有測試指派情境，缺了這張表 contributor 的請求就會 500。
+    "CREATE TABLE IF NOT EXISTS project_member_boards (project_id TEXT NOT NULL, user_id TEXT NOT NULL, board_id TEXT NOT NULL, assigned_by TEXT NOT NULL, assigned_at TEXT NOT NULL, PRIMARY KEY (project_id, user_id, board_id))",
   ]) await env.DB.prepare(sql).run();
 });
 
 beforeEach(async () => {
-  for (const table of ["activity_logs", "boards", "board", "project_members", "projects", "workspace_members", "workspaces", "access_tokens", "user_accounts", "migration_state"]) {
+  for (const table of ["project_member_boards", "activity_logs", "boards", "board", "project_members", "projects", "workspace_members", "workspaces", "access_tokens", "user_accounts", "migration_state"]) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
   const now = "2026-07-27T00:00:00.000Z";

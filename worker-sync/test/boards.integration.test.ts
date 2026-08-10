@@ -91,6 +91,15 @@ async function createBoard(
   });
 }
 
+/** 直接寫入指派列，模擬 Task 5 指派 API 落地前的指派狀態
+ *（沿用 board-access.integration.test.ts 的既有慣例）。 */
+async function assignBoard(projectId: string, userId: string, boardId: string) {
+  await env.DB.prepare(
+    `INSERT INTO project_member_boards (project_id, user_id, board_id, assigned_by, assigned_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).bind(projectId, userId, boardId, managerId, "2026-07-27T00:00:00.000Z").run();
+}
+
 beforeAll(async () => {
   const statements = [
     "CREATE TABLE IF NOT EXISTS user_accounts (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
@@ -103,14 +112,29 @@ beforeAll(async () => {
     "CREATE TABLE IF NOT EXISTS activity_logs (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, project_id TEXT NOT NULL, board_id TEXT, actor_user_id TEXT NOT NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, revision INTEGER, metadata TEXT NOT NULL, occurred_at TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS migration_state (id INTEGER PRIMARY KEY, status TEXT NOT NULL, default_workspace_id TEXT NOT NULL, legacy_project_id TEXT NOT NULL, legacy_board_id TEXT NOT NULL, locked_at TEXT, completed_at TEXT, updated_at TEXT NOT NULL, error TEXT)",
     "CREATE UNIQUE INDEX IF NOT EXISTS task6_board_name_unique ON boards(project_id, normalized_name) WHERE status = 'active'",
+    // migration 0005：看板指派表（Task 2 起 listBoards/getBoardDetail/putBoardContent
+    // 會透過 board-access.ts 查詢此表決定 contributor 可見範圍）。
+    `CREATE TABLE IF NOT EXISTS project_member_boards (
+       project_id TEXT NOT NULL,
+       user_id TEXT NOT NULL,
+       board_id TEXT NOT NULL,
+       assigned_by TEXT NOT NULL,
+       assigned_at TEXT NOT NULL,
+       PRIMARY KEY (project_id, user_id, board_id),
+       FOREIGN KEY (project_id, user_id)
+         REFERENCES project_members(project_id, user_id) ON DELETE CASCADE,
+       FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
+       FOREIGN KEY (assigned_by) REFERENCES user_accounts(id) ON DELETE RESTRICT
+     )`,
+    "CREATE INDEX IF NOT EXISTS task6_project_member_boards_user_idx ON project_member_boards(project_id, user_id)",
   ];
   for (const sql of statements) await env.DB.prepare(sql).run();
 });
 
 beforeEach(async () => {
   for (const table of [
-    "activity_logs", "boards", "project_members", "projects", "workspace_members",
-    "workspaces", "access_tokens", "user_accounts", "migration_state",
+    "project_member_boards", "activity_logs", "boards", "project_members", "projects",
+    "workspace_members", "workspaces", "access_tokens", "user_accounts", "migration_state",
   ]) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
@@ -198,6 +222,9 @@ describe("Single-board Project content APIs", () => {
     const secondBoard = await createBoard(managerToken, projectA, boardB, "B", board(3, "B0"));
     expect(secondBoard.status).toBe(201);
     expect((await secondBoard.json() as { board: { id: string } }).board.id).toBe(boardB);
+    // Board 可見性 v1：B 較新，是無指派 contributor 的 fallback 主要看板，A 反而不可見。
+    // 這裡要測的是能力檢查與 revision 衝突，與可見性無關，故明確指派 contributor 到 A。
+    await assignBoard(projectA, contributorId, boardA);
 
     const viewerGet = await dispatch(viewerToken, `/projects/${projectA}/boards/${boardA}`);
     expect(viewerGet.status).toBe(200);
@@ -522,6 +549,10 @@ describe("Single-board Project content APIs", () => {
         content: { revision: 1, board: { marker: "saved" } },
       },
     });
+    // Board 可見性 v1：A 現在是唯一但已封存的 Board，沒有 active Board 可供 fallback，
+    // 無指派的 contributor 會直接 404（不可見）。這裡要測的是「已封存即唯讀」
+    // （resource_archived），與可見性無關，故明確指派 contributor 到 A。
+    await assignBoard(projectA, contributorId, boardA);
     const blocked = await dispatch(
       contributorToken,
       `/projects/${projectA}/boards/${boardA}/content`,
@@ -612,6 +643,103 @@ describe("Single-board Project content APIs", () => {
     const blocked = await dispatch(viewerToken, `/projects/${projectA}/boards`);
     expect(blocked.status).toBe(503);
     expect(await blocked.json()).toMatchObject({ error: "migration_required" });
+  });
+
+  it("scopes an unassigned contributor to the primary (most recently updated) Board", async () => {
+    expect((await createBoard(managerToken, projectA, boardA, "Older", board(3, "older"))).status)
+      .toBe(201);
+    expect((await createBoard(managerToken, projectA, boardB, "Newer", board(3, "newer"))).status)
+      .toBe(201);
+
+    const list = await dispatch(contributorToken, `/projects/${projectA}/boards?status=active`);
+    expect(list.status).toBe(200);
+    expect(
+      (await list.json() as { boards: Array<{ id: string }> }).boards.map((item) => item.id),
+    ).toEqual([boardB]);
+
+    expect(
+      (await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}`)).status,
+    ).toBe(404);
+    expect((await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}/content`, {
+      method: "PUT",
+      body: JSON.stringify({ baseRevision: 0, board: board(4, "blocked") }),
+    })).status).toBe(404);
+    expect(
+      (await dispatch(contributorToken, `/projects/${projectA}/boards/${boardB}`)).status,
+    ).toBe(200);
+  });
+
+  it("shows exactly the assigned Board to a contributor once an assignment row exists", async () => {
+    await createBoard(managerToken, projectA, boardA, "Older", board(3, "older"));
+    await createBoard(managerToken, projectA, boardB, "Newer", board(3, "newer"));
+    await assignBoard(projectA, contributorId, boardA);
+
+    expect(
+      (await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}`)).status,
+    ).toBe(200);
+    expect(
+      (await dispatch(contributorToken, `/projects/${projectA}/boards/${boardB}`)).status,
+    ).toBe(404);
+
+    const list = await dispatch(contributorToken, `/projects/${projectA}/boards?status=active`);
+    expect(
+      (await list.json() as { boards: Array<{ id: string }> }).boards.map((item) => item.id),
+    ).toEqual([boardA]);
+  });
+
+  it("keeps the owner fully visible across every Board regardless of assignment rows", async () => {
+    await createBoard(managerToken, projectA, boardA, "Older", board(3, "older"));
+    await createBoard(managerToken, projectA, boardB, "Newer", board(3, "newer"));
+    await assignBoard(projectA, contributorId, boardA);
+
+    expect(
+      (await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}`)).status,
+    ).toBe(200);
+    expect(
+      (await dispatch(managerToken, `/projects/${projectA}/boards/${boardB}`)).status,
+    ).toBe(200);
+
+    const list = await dispatch(managerToken, `/projects/${projectA}/boards?status=active`);
+    expect(
+      (await list.json() as { boards: Array<{ id: string }> }).boards.map((item) => item.id).sort(),
+    ).toEqual([boardA, boardB].sort());
+  });
+
+  it("keeps an archived assigned Board visible and read-only to its contributor", async () => {
+    await createBoard(managerToken, projectA, boardA, "Older", board(3, "older"));
+    await createBoard(managerToken, projectA, boardB, "Newer", board(3, "newer"));
+    await assignBoard(projectA, contributorId, boardA);
+
+    const archive = await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/archive`, {
+      method: "POST",
+    });
+    expect(archive.status).toBe(200);
+    expect((await archive.json() as { board: { id: string; status: string } }).board)
+      .toMatchObject({ id: boardA, status: "archived" });
+    expect(
+      await env.DB.prepare("SELECT status FROM boards WHERE id = ?")
+        .bind(boardA).first<string>("status"),
+    ).toBe("archived");
+
+    const list = await dispatch(contributorToken, `/projects/${projectA}/boards?status=archived`);
+    expect(list.status).toBe(200);
+    expect(
+      (await list.json() as { boards: Array<{ id: string }> }).boards.map((item) => item.id),
+    ).toEqual([boardA]);
+
+    expect(
+      (await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}`)).status,
+    ).toBe(200);
+    const blockedWrite = await dispatch(
+      contributorToken,
+      `/projects/${projectA}/boards/${boardA}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ baseRevision: 0, board: board(4, "blocked-write") }),
+      },
+    );
+    expect(blockedWrite.status).toBe(409);
+    expect(await blockedWrite.json()).toMatchObject({ error: "resource_archived" });
   });
 });
 
