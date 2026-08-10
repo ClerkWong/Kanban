@@ -12,10 +12,12 @@ import {
   getProjectSummary,
   listBoards,
   listBoardLogs,
+  listMemberBoards,
   listProjectLogs,
   listProjectMembers,
   listAdminProjects,
   listProjects,
+  putMemberBoards,
   requestJson,
   restoreBoard,
 } from "../app/projects/api";
@@ -439,6 +441,60 @@ test("rejects malformed Project, Board, conflict, and list payloads", async () =
       () => getProjectSummary(config, context.projectId),
       (error: unknown) =>
         error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("member board assignment client fetches and updates the boardIds array", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; method: string; body: unknown }> = [];
+  globalThis.fetch = async (input, init) => {
+    const method = init?.method ?? "GET";
+    const requestBody = typeof init?.body === "string"
+      ? JSON.parse(init.body) as unknown
+      : null;
+    requests.push({ url: String(input), method, body: requestBody });
+    return json({ boardIds: [context.boardId], requestId: "r" });
+  };
+  try {
+    const listed = await listMemberBoards(config, context.projectId, userId);
+    assert.deepEqual(listed, [context.boardId]);
+
+    const updated = await putMemberBoards(config, context.projectId, userId, [context.boardId]);
+    assert.deepEqual(updated, [context.boardId]);
+
+    assert.deepEqual(requests, [
+      {
+        url: `https://sync.example/projects/${context.projectId}/members/${userId}/boards`,
+        method: "GET",
+        body: null,
+      },
+      {
+        url: `https://sync.example/projects/${context.projectId}/members/${userId}/boards`,
+        method: "PUT",
+        body: { boardIds: [context.boardId] },
+      },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("member board assignment client rejects malformed boardIds payloads", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => json({ requestId: "r" });
+    await assert.rejects(
+      () => listMemberBoards(config, context.projectId, userId),
+      (error: unknown) => error instanceof Error && /回應格式不正確/.test(error.message),
+    );
+
+    globalThis.fetch = async () => json({ boardIds: [1], requestId: "r" });
+    await assert.rejects(
+      () => putMemberBoards(config, context.projectId, userId, [context.boardId]),
+      (error: unknown) => error instanceof Error && /回應格式不正確/.test(error.message),
     );
   } finally {
     globalThis.fetch = originalFetch;

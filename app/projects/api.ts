@@ -815,6 +815,51 @@ export async function removeProjectMember(
   );
 }
 
+function parseBoardIdsResponse(value: unknown, operation: string): string[] {
+  const raw = (value as { boardIds?: unknown } | null)?.boardIds;
+  if (!Array.isArray(raw) || raw.some((entry) => typeof entry !== "string" || !entry)) {
+    throw new Error(`${operation} 回應格式不正確。`);
+  }
+  return raw as string[];
+}
+
+export async function listMemberBoards(
+  config: SyncConfig,
+  projectId: string,
+  userId: string,
+): Promise<string[]> {
+  assertResourceId(projectId, "project_id");
+  assertResourceId(userId, "user_id");
+  return parseBoardIdsResponse(
+    await requestJson(
+      config,
+      apiPath("projects", projectId, "members", userId, "boards"),
+      "讀取成員看板指派",
+    ),
+    "讀取成員看板指派",
+  );
+}
+
+export async function putMemberBoards(
+  config: SyncConfig,
+  projectId: string,
+  userId: string,
+  boardIds: string[],
+): Promise<string[]> {
+  assertResourceId(projectId, "project_id");
+  assertResourceId(userId, "user_id");
+  for (const boardId of boardIds) assertResourceId(boardId, "board_id");
+  return parseBoardIdsResponse(
+    await requestJson(
+      config,
+      apiPath("projects", projectId, "members", userId, "boards"),
+      "更新成員看板指派",
+      { method: "PUT", body: JSON.stringify({ boardIds }) },
+    ),
+    "更新成員看板指派",
+  );
+}
+
 export async function listProjectLogs(
   config: SyncConfig,
   projectId: string,
