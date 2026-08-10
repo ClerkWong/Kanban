@@ -1,6 +1,7 @@
 import type { AuthenticatedUser } from "./auth";
 import { prepareAuditEvent } from "./audit";
 import { AuthorizationError, authorizeProject } from "./authorization";
+import { resolveVisibleBoardIds } from "./board-access";
 import {
   DEFAULT_WORKSPACE_ID,
   toPublicProjectRole,
@@ -93,6 +94,43 @@ function audit(row: ProjectRow, actorUserId: string, action: string, metadata: R
   };
 }
 
+/** listProjects 的代表看板欄位（board_id／board_name）原本用相關子查詢挑「專案裡
+ *  最近更新的看板」，完全不管呼叫者是否看得到——對 contributor 只可見指派看板／
+ *  fallback 主要看板時，這會洩漏其他看板的名稱。manager／viewer 恆全可見，直接
+ *  沿用 SQL 已選好的值，不多查一次表。contributor 才呼叫
+ *  resolveVisibleBoardIds：SQL 選出的看板若在可見集合內就沿用，否則從可見集合裡
+ *  重新選一個代表看板（套用與原查詢相同的「優先 active、次新 updated_at、id 降序」
+ *  排序）；可見集合為空（例如專案沒有任何 active 看板）時回 null，而不是猜一個。 */
+async function visibleBoardReference(
+  database: D1Database,
+  row: ProjectListRow,
+  userId: string,
+): Promise<{ boardId: string | null; boardName: string | null }> {
+  if (row.my_role !== "contributor") {
+    return { boardId: row.board_id, boardName: row.board_name };
+  }
+  const visible = await resolveVisibleBoardIds(database, row.id, userId, {
+    workspaceRole: null,
+    projectRole: row.my_role,
+    projectStatus: row.status,
+  });
+  // contributor 這個分支 resolveVisibleBoardIds 實作上恆回傳 Set（見其註解），
+  // 這裡仍對 null 做 fail-closed 處理，不依賴這個保證。
+  if (!visible || visible.size === 0) return { boardId: null, boardName: null };
+  if (row.board_id && visible.has(row.board_id)) {
+    return { boardId: row.board_id, boardName: row.board_name };
+  }
+  const visibleIds = [...visible];
+  const placeholders = visibleIds.map(() => "?").join(",");
+  const representative = await database.prepare(
+    `SELECT id, name FROM boards
+     WHERE project_id = ? AND id IN (${placeholders})
+     ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, updated_at DESC, id DESC
+     LIMIT 1`,
+  ).bind(row.id, ...visibleIds).first<{ id: string; name: string }>();
+  return { boardId: representative?.id ?? null, boardName: representative?.name ?? null };
+}
+
 async function listProjects(context: ApiContext): Promise<Response> {
   const includeArchived = new URL(context.request.url).searchParams.get("status") === "archived";
   const result = await context.env.DB.prepare(
@@ -114,15 +152,18 @@ async function listProjects(context: ApiContext): Promise<Response> {
      WHERE project_members.user_id = ? AND projects.status = ?
      ORDER BY projects.updated_at DESC, projects.id DESC`,
   ).bind(context.user.id, includeArchived ? "archived" : "active").all<ProjectListRow>();
+  const boardReferences = await Promise.all(
+    result.results.map((row) => visibleBoardReference(context.env.DB, row, context.user.id)),
+  );
   return json(200, {
-    projects: result.results.map((row) => ({
+    projects: result.results.map((row, index) => ({
       id: row.id,
       name: row.name,
       status: row.status,
       myRole: toPublicProjectRole(row.my_role),
       activeBoardCount: Number(row.active_board_count),
-      boardId: row.board_id,
-      boardName: row.board_name,
+      boardId: boardReferences[index].boardId,
+      boardName: boardReferences[index].boardName,
       lastActivityAt: row.last_activity_at,
     })),
     requestId: context.requestId,

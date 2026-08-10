@@ -48,14 +48,29 @@ beforeAll(async () => {
     "CREATE TABLE IF NOT EXISTS activity_logs (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, project_id TEXT NOT NULL, board_id TEXT, actor_user_id TEXT NOT NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, revision INTEGER, metadata TEXT NOT NULL, occurred_at TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS migration_state (id INTEGER PRIMARY KEY, status TEXT NOT NULL)",
     "CREATE UNIQUE INDEX IF NOT EXISTS task5_project_name_unique ON projects(workspace_id, normalized_name) WHERE status = 'active'",
+    // migration 0005：看板指派表（listProjects 透過 board-access.ts 的
+    // resolveVisibleBoardIds 查詢此表，修正 contributor 的代表看板欄位）。
+    `CREATE TABLE IF NOT EXISTS project_member_boards (
+       project_id TEXT NOT NULL,
+       user_id TEXT NOT NULL,
+       board_id TEXT NOT NULL,
+       assigned_by TEXT NOT NULL,
+       assigned_at TEXT NOT NULL,
+       PRIMARY KEY (project_id, user_id, board_id),
+       FOREIGN KEY (project_id, user_id)
+         REFERENCES project_members(project_id, user_id) ON DELETE CASCADE,
+       FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
+       FOREIGN KEY (assigned_by) REFERENCES user_accounts(id) ON DELETE RESTRICT
+     )`,
+    "CREATE INDEX IF NOT EXISTS task4b_project_member_boards_user_idx ON project_member_boards(project_id, user_id)",
   ];
   for (const sql of statements) await env.DB.prepare(sql).run();
 });
 
 beforeEach(async () => {
   for (const table of [
-    "activity_logs", "boards", "project_members", "projects", "workspace_members",
-    "workspaces", "access_tokens", "user_accounts", "migration_state",
+    "project_member_boards", "activity_logs", "boards", "project_members", "projects",
+    "workspace_members", "workspaces", "access_tokens", "user_accounts", "migration_state",
   ]) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
@@ -111,6 +126,66 @@ describe("Project and membership APIs", () => {
     expect(new Map(body.projects.map((row) => [row.id, row.myRole]))).toEqual(
       new Map([[projectA, "viewer"], [projectB, "member"]]),
     );
+  });
+
+  it("scopes listProjects' representative board to what each contributor can see, leaving owner/viewer untouched", async () => {
+    const boardOld = "20000000-0000-4000-8000-000000000030";
+    const boardNew = "20000000-0000-4000-8000-000000000031";
+    const contributorAssignedId = "10000000-0000-4000-8000-000000000006";
+    const contributorFallbackId = "10000000-0000-4000-8000-000000000007";
+    const contributorAssignedToken = "task5-contributor-assigned-runtime-token-long-value";
+    const contributorFallbackToken = "task5-contributor-fallback-runtime-token-long-value";
+    await insertUser(contributorAssignedId, contributorAssignedToken);
+    await insertUser(contributorFallbackId, contributorFallbackToken);
+
+    const olderUpdatedAt = "2026-07-26T00:00:00.000Z";
+    const newerUpdatedAt = "2026-07-26T01:00:00.000Z";
+    await env.DB.prepare(
+      `INSERT INTO boards (
+         id, project_id, name, normalized_name, status, revision, data,
+         created_by, created_at, updated_at, archived_at, archived_by
+       ) VALUES (?, ?, 'Board Old', 'board-old', 'active', 1, '{}', ?, ?, ?, NULL, NULL),
+                (?, ?, 'Board New', 'board-new', 'active', 1, '{}', ?, ?, ?, NULL, NULL)`,
+    ).bind(
+      boardOld, projectA, managerId, olderUpdatedAt, olderUpdatedAt,
+      boardNew, projectA, managerId, newerUpdatedAt, newerUpdatedAt,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO project_members (project_id, user_id, role, created_at, updated_at)
+       VALUES (?, ?, 'contributor', ?, ?), (?, ?, 'contributor', ?, ?)`,
+    ).bind(
+      projectA, contributorAssignedId, newerUpdatedAt, newerUpdatedAt,
+      projectA, contributorFallbackId, newerUpdatedAt, newerUpdatedAt,
+    ).run();
+    // 只指派 boardOld——刻意不是 listProjects 原本挑出的「全專案最新看板」boardNew。
+    await env.DB.prepare(
+      `INSERT INTO project_member_boards (project_id, user_id, board_id, assigned_by, assigned_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind(projectA, contributorAssignedId, boardOld, managerId, newerUpdatedAt).run();
+
+    type ListProjectsBody = {
+      projects: Array<{ id: string; boardId: string | null; boardName: string | null }>;
+    };
+    const findProjectA = (body: ListProjectsBody) =>
+      body.projects.find((row) => row.id === projectA);
+
+    // owner／viewer：與修改前完全一致——代表看板恆是全專案最新的 boardNew。
+    const managerBody = await (await dispatch(managerToken, "/projects")).json() as ListProjectsBody;
+    expect(findProjectA(managerBody)).toMatchObject({ boardId: boardNew, boardName: "Board New" });
+
+    const viewerBody = await (await dispatch(viewerToken, "/projects")).json() as ListProjectsBody;
+    expect(findProjectA(viewerBody)).toMatchObject({ boardId: boardNew, boardName: "Board New" });
+
+    // 有指派列的 contributor：代表看板是他被指派的 boardOld，且整份回應完全不含
+    // 他看不到的 boardNew 名稱字串。
+    const assignedRawText = await (await dispatch(contributorAssignedToken, "/projects")).text();
+    expect(assignedRawText).not.toContain("Board New");
+    const assignedBody = JSON.parse(assignedRawText) as ListProjectsBody;
+    expect(findProjectA(assignedBody)).toMatchObject({ boardId: boardOld, boardName: "Board Old" });
+
+    // 無指派列的 contributor：fallback 到主要看板，即全專案最新的 boardNew。
+    const fallbackBody = await (await dispatch(contributorFallbackToken, "/projects")).json() as ListProjectsBody;
+    expect(findProjectA(fallbackBody)).toMatchObject({ boardId: boardNew, boardName: "Board New" });
   });
 
   it("returns identity and an admin registry without project content", async () => {
