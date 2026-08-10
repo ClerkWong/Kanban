@@ -1,4 +1,5 @@
 import { authorizeProject } from "./authorization";
+import { resolveVisibleBoardIds } from "./board-access";
 import { parseBoardSnapshot, type BoardSnapshot } from "./board-diff";
 import type { ResourceStatus } from "./db-types";
 import { json } from "./http";
@@ -226,7 +227,7 @@ export async function handleReportRequest(context: ApiContext): Promise<Response
   if (context.request.method !== "GET") return null;
   await requireMigrationComplete(context.env.DB);
   const projectId = parseUuid(match[1], "project_id");
-  await authorizeProject(context.env.DB, context.user.id, projectId, "read");
+  const access = await authorizeProject(context.env.DB, context.user.id, projectId, "read");
   const rawIncludeArchived = url.searchParams.get("includeArchived");
   if (
     rawIncludeArchived !== null &&
@@ -242,9 +243,18 @@ export async function handleReportRequest(context: ApiContext): Promise<Response
      WHERE project_id = ? AND (? = 1 OR status = 'active')
      ORDER BY updated_at DESC, id DESC`,
   ).bind(projectId, includeArchived ? 1 : 0).all<ReportBoardRow>();
+  const visible = await resolveVisibleBoardIds(
+    context.env.DB,
+    projectId,
+    context.user.id,
+    access,
+  );
+  const rows = visible
+    ? result.results.filter((row) => visible.has(row.id))
+    : result.results;
   return json(200, {
     projectId,
-    summary: buildProjectSummary(result.results, includeArchived),
+    summary: buildProjectSummary(rows, includeArchived),
     requestId: context.requestId,
   }, context.requestId);
 }

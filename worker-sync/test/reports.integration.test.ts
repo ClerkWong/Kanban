@@ -109,14 +109,29 @@ beforeAll(async () => {
     "CREATE TABLE IF NOT EXISTS boards (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, normalized_name TEXT NOT NULL, status TEXT NOT NULL, revision INTEGER NOT NULL, data TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT, archived_by TEXT)",
     "CREATE TABLE IF NOT EXISTS activity_logs (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, project_id TEXT NOT NULL, board_id TEXT, actor_user_id TEXT NOT NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, revision INTEGER, metadata TEXT NOT NULL, occurred_at TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS migration_state (id INTEGER PRIMARY KEY, status TEXT NOT NULL, default_workspace_id TEXT, legacy_project_id TEXT, legacy_board_id TEXT, locked_at TEXT, completed_at TEXT, updated_at TEXT, error TEXT)",
+    // migration 0005：看板指派表（reports.ts 透過 board-access.ts 的
+    // resolveVisibleBoardIds 查詢此表，決定 contributor 可見的看板範圍）。
+    `CREATE TABLE IF NOT EXISTS project_member_boards (
+       project_id TEXT NOT NULL,
+       user_id TEXT NOT NULL,
+       board_id TEXT NOT NULL,
+       assigned_by TEXT NOT NULL,
+       assigned_at TEXT NOT NULL,
+       PRIMARY KEY (project_id, user_id, board_id),
+       FOREIGN KEY (project_id, user_id)
+         REFERENCES project_members(project_id, user_id) ON DELETE CASCADE,
+       FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
+       FOREIGN KEY (assigned_by) REFERENCES user_accounts(id) ON DELETE RESTRICT
+     )`,
+    "CREATE INDEX IF NOT EXISTS task4_project_member_boards_user_idx ON project_member_boards(project_id, user_id)",
   ];
   for (const sql of statements) await env.DB.prepare(sql).run();
 });
 
 beforeEach(async () => {
   for (const table of [
-    "activity_logs", "boards", "project_members", "projects", "workspace_members",
-    "workspaces", "access_tokens", "user_accounts", "migration_state",
+    "project_member_boards", "activity_logs", "boards", "project_members", "projects",
+    "workspace_members", "workspaces", "access_tokens", "user_accounts", "migration_state",
   ]) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
@@ -314,5 +329,86 @@ describe("Project summary API", () => {
     expect(current).toBeDefined();
     expect(current!.unmeasuredCount).toBe(body.summary.stats.completed);
     expect(current!.blockedTotalMs).toBe(0);
+  });
+
+  it("scopes a contributor without assignment rows to the primary board, while an owner sees every board", async () => {
+    const scopedProjectId = "72000000-0000-4000-8000-000000000020";
+    const boardA = "73000000-0000-4000-8000-000000000020";
+    const boardB = "73000000-0000-4000-8000-000000000021";
+    const ownerId = "71000000-0000-4000-8000-000000000004";
+    const contributorId = "71000000-0000-4000-8000-000000000005";
+    const ownerToken = "task4-summary-owner-runtime-token-long-value";
+    const contributorToken = "task4-summary-contributor-runtime-token-long-value";
+    await insertUser(ownerId, ownerToken);
+    await insertUser(contributorId, contributorToken);
+
+    const now = new Date();
+    const completedAt = now.toISOString();
+    // boardB 是較晚更新的 active board，依 primaryBoardId 規則（updated_at DESC,
+    // id DESC）成為無指派列 contributor 的 fallback 主要看板。
+    const olderUpdatedAt = new Date(now.getTime() - DAY_MS).toISOString();
+    const newerUpdatedAt = now.toISOString();
+
+    await env.DB.prepare(
+      `INSERT INTO projects (
+         id, workspace_id, name, normalized_name, status, created_by, created_at, updated_at
+       ) VALUES (?, ?, 'Scoped', 'scoped', 'active', ?, ?, ?)`,
+    ).bind(scopedProjectId, workspaceId, ownerId, newerUpdatedAt, newerUpdatedAt).run();
+    await env.DB.prepare(
+      `INSERT INTO project_members (project_id, user_id, role, created_at, updated_at)
+       VALUES (?, ?, 'manager', ?, ?), (?, ?, 'contributor', ?, ?)`,
+    ).bind(
+      scopedProjectId, ownerId, newerUpdatedAt, newerUpdatedAt,
+      scopedProjectId, contributorId, newerUpdatedAt, newerUpdatedAt,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO boards (
+         id, project_id, name, normalized_name, status, revision, data,
+         created_by, created_at, updated_at, archived_at, archived_by
+       ) VALUES (?, ?, 'Board A', 'board-a-scoped', 'active', 1, ?, ?, ?, ?, NULL, NULL),
+                (?, ?, 'Board B', 'board-b-scoped', 'active', 1, ?, ?, ?, ?, NULL, NULL)`,
+    ).bind(
+      boardA, scopedProjectId,
+      board({ cardA: card({ completedAt }) }, [], ["cardA"]), ownerId, olderUpdatedAt, olderUpdatedAt,
+      boardB, scopedProjectId,
+      board({ cardB: card({ completedAt }) }, [], ["cardB"]), ownerId, newerUpdatedAt, newerUpdatedAt,
+    ).run();
+
+    type SummaryBody = {
+      summary: {
+        boardCount: number;
+        boards: Array<{ id: string }>;
+        stats: { completed: number };
+        monthlyCompletions: Array<{ month: string; count: number }>;
+      };
+    };
+    const monthKey = currentTaipeiMonthKey(now);
+
+    const contributorResponse = await dispatch(
+      contributorToken,
+      `/projects/${scopedProjectId}/summary`,
+    );
+    expect(contributorResponse.status).toBe(200);
+    const contributorBody = await contributorResponse.json() as SummaryBody;
+    expect(contributorBody.summary.boardCount).toBe(1);
+    expect(contributorBody.summary.boards.map((item) => item.id)).toEqual([boardB]);
+    expect(contributorBody.summary.stats.completed).toBe(1);
+    const contributorMonth = contributorBody.summary.monthlyCompletions.find(
+      (item) => item.month === monthKey,
+    );
+    expect(contributorMonth).toBeDefined();
+    expect(contributorMonth!.count).toBe(1);
+
+    const ownerResponse = await dispatch(ownerToken, `/projects/${scopedProjectId}/summary`);
+    expect(ownerResponse.status).toBe(200);
+    const ownerBody = await ownerResponse.json() as SummaryBody;
+    expect(ownerBody.summary.boardCount).toBe(2);
+    expect(ownerBody.summary.boards.map((item) => item.id).sort()).toEqual([boardA, boardB].sort());
+    expect(ownerBody.summary.stats.completed).toBe(2);
+    const ownerMonth = ownerBody.summary.monthlyCompletions.find(
+      (item) => item.month === monthKey,
+    );
+    expect(ownerMonth).toBeDefined();
+    expect(ownerMonth!.count).toBe(2);
   });
 });
