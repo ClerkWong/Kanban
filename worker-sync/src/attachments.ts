@@ -1,4 +1,5 @@
 import { authorizeProject } from "./authorization";
+import { requireBoardVisible } from "./board-access";
 import type { ResourceStatus } from "./db-types";
 import { json, responseHeaders } from "./http";
 import { requireMigrationComplete, type ApiContext } from "./projects";
@@ -82,12 +83,14 @@ async function getAttachmentResource(
   boardId: string,
   mutation: boolean,
 ): Promise<AttachmentResourceRow> {
-  await authorizeProject(
+  const access = await authorizeProject(
     context.env.DB,
     context.user.id,
     projectId,
     mutation ? "edit" : "read",
   );
+  // 必須在任何 R2 或 D1 讀寫之前完成——既有測試保證 authz 失敗時不碰 R2。
+  await requireBoardVisible(context.env.DB, projectId, boardId, context.user.id, access);
   const row = await context.env.DB.prepare(
     `SELECT projects.workspace_id,
             projects.status AS project_status,

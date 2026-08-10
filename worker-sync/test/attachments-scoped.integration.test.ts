@@ -81,6 +81,15 @@ async function upload(
   });
 }
 
+/** 直接寫入指派列，模擬 Task 5 指派 API 落地前的指派狀態
+ *（沿用 board-access.integration.test.ts 的既有慣例）。 */
+async function assignBoard(projectId: string, userId: string, boardId: string) {
+  await env.DB.prepare(
+    `INSERT INTO project_member_boards (project_id, user_id, board_id, assigned_by, assigned_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).bind(projectId, userId, boardId, managerId, "2026-07-27T00:00:00.000Z").run();
+}
+
 beforeAll(async () => {
   const statements = [
     "CREATE TABLE IF NOT EXISTS user_accounts (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
@@ -91,6 +100,22 @@ beforeAll(async () => {
     "CREATE TABLE IF NOT EXISTS project_members (project_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (project_id, user_id))",
     "CREATE TABLE IF NOT EXISTS boards (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, normalized_name TEXT NOT NULL, status TEXT NOT NULL, revision INTEGER NOT NULL, data TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT, archived_by TEXT)",
     "CREATE TABLE IF NOT EXISTS migration_state (id INTEGER PRIMARY KEY, status TEXT NOT NULL, default_workspace_id TEXT, legacy_project_id TEXT, legacy_board_id TEXT, locked_at TEXT, completed_at TEXT, updated_at TEXT, error TEXT)",
+    // migration 0005：看板指派表（Task 3 起 attachments 會透過 board-access.ts
+    // 查詢此表決定 contributor 可見範圍；resolveVisibleBoardIds 的 fallback 分支
+    // 仍會 SELECT 這張表，即使沒有任何指派列，表不存在就會直接噴 SQL 錯誤）。
+    `CREATE TABLE IF NOT EXISTS project_member_boards (
+       project_id TEXT NOT NULL,
+       user_id TEXT NOT NULL,
+       board_id TEXT NOT NULL,
+       assigned_by TEXT NOT NULL,
+       assigned_at TEXT NOT NULL,
+       PRIMARY KEY (project_id, user_id, board_id),
+       FOREIGN KEY (project_id, user_id)
+         REFERENCES project_members(project_id, user_id) ON DELETE CASCADE,
+       FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
+       FOREIGN KEY (assigned_by) REFERENCES user_accounts(id) ON DELETE RESTRICT
+     )`,
+    "CREATE INDEX IF NOT EXISTS task8_project_member_boards_user_idx ON project_member_boards(project_id, user_id)",
   ];
   for (const sql of statements) await env.DB.prepare(sql).run();
 });
@@ -98,7 +123,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await clearAttachments();
   for (const table of [
-    "boards", "project_members", "projects", "workspace_members",
+    "project_member_boards", "boards", "project_members", "projects", "workspace_members",
     "workspaces", "access_tokens", "user_accounts", "migration_state",
   ]) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
@@ -156,6 +181,11 @@ afterEach(() => {
 
 describe("Project/Board-scoped Attachment API", () => {
   it("allows managers and contributors to mutate while viewers remain read-only", async () => {
+    // Board 可見性 v1：boardA2 的 updated_at 與 boardA 相同、id 較大，是 contributor
+    // 無指派列時 fallback 到的主要看板；boardA 反而不可見。這裡測的是角色能力
+    // （manager/contributor 可寫、viewer 只讀），與可見性無關，故明確指派 contributor
+    // 到 boardA（預設 attachmentPath）。
+    await assignBoard(projectA, contributorId, boardA);
     const content = new Uint8Array([1, 2, 3, 4]);
     expect((await upload(contributorToken, content)).status).toBe(200);
 
@@ -218,12 +248,55 @@ describe("Project/Board-scoped Attachment API", () => {
         method: "DELETE",
       })).status,
     ).toBe(403);
+    // Board 可見性 v1：contributor 對無指派列、非主要看板的 boardA 沒有可見權，
+    // 一樣要在碰 R2 之前被擋下。
+    expect(
+      (await dispatch(contributorToken, attachmentPath(projectA, boardA))).status,
+    ).toBe(404);
     expect(get).not.toHaveBeenCalled();
     expect(put).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
   });
 
+  it("hides an unassigned Board's attachments from a contributor while the fallback primary Board and the owner stay reachable", async () => {
+    // Board 可見性 v1：boardA、boardA2 都在 projectA，updated_at 相同時以 id 較大者
+    // 為主要看板，所以 boardA2 是 contributor 無指派列時的 fallback；boardA 不可見。
+    const content = new Uint8Array([42]);
+    expect((await upload(managerToken, content, projectA, boardA)).status).toBe(200);
+    expect((await upload(managerToken, content, projectA, boardA2)).status).toBe(200);
+
+    expect((await upload(contributorToken, content, projectA, boardA)).status).toBe(404);
+    expect(
+      (await dispatch(contributorToken, attachmentPath(projectA, boardA))).status,
+    ).toBe(404);
+    expect(
+      (await dispatch(contributorToken, attachmentPath(projectA, boardA), {
+        method: "DELETE",
+      })).status,
+    ).toBe(404);
+
+    expect((await upload(contributorToken, content, projectA, boardA2)).status).toBe(200);
+    expect(
+      (await dispatch(contributorToken, attachmentPath(projectA, boardA2))).status,
+    ).toBe(200);
+    expect(
+      (await dispatch(contributorToken, attachmentPath(projectA, boardA2), {
+        method: "DELETE",
+      })).status,
+    ).toBe(200);
+
+    expect((await dispatch(managerToken, attachmentPath(projectA, boardA))).status).toBe(200);
+    expect(
+      (await dispatch(managerToken, attachmentPath(projectA, boardA), {
+        method: "DELETE",
+      })).status,
+    ).toBe(200);
+  });
+
   it("keeps archived attachments readable but rejects all mutations", async () => {
+    // Board 可見性 v1：同上，contributor 無指派列時看不到 boardA，這裡測的是封存
+    // 狀態的權限（archived 一律拒絕變更），與可見性無關，故明確指派。
+    await assignBoard(projectA, contributorId, boardA);
     const original = new Uint8Array([4, 5, 6]);
     expect((await upload(managerToken, original)).status).toBe(200);
     const archivedAt = "2026-07-27T02:00:00.000Z";

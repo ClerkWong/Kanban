@@ -13,13 +13,16 @@ const workspaceId = "81000000-0000-4000-8000-000000000001";
 const managerId = "81000000-0000-4000-8000-000000000002";
 const viewerId = "81000000-0000-4000-8000-000000000003";
 const outsiderId = "81000000-0000-4000-8000-000000000004";
+const contributorId = "81000000-0000-4000-8000-000000000005";
 const projectA = "82000000-0000-4000-8000-000000000001";
 const projectB = "82000000-0000-4000-8000-000000000002";
 const boardA = "83000000-0000-4000-8000-000000000001";
 const boardB = "83000000-0000-4000-8000-000000000002";
+const boardA2 = "83000000-0000-4000-8000-000000000003";
 const managerToken = "task7-log-manager-runtime-token-long-value";
 const viewerToken = "task7-log-viewer-runtime-token-long-value";
 const outsiderToken = "task7-log-outsider-runtime-token-long-value";
+const contributorToken = "task7-log-contributor-runtime-token-long-value";
 
 function card(
   description: string,
@@ -91,14 +94,30 @@ beforeAll(async () => {
     "CREATE TABLE IF NOT EXISTS boards (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, normalized_name TEXT NOT NULL, status TEXT NOT NULL, revision INTEGER NOT NULL, data TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT, archived_by TEXT)",
     "CREATE TABLE IF NOT EXISTS activity_logs (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, project_id TEXT NOT NULL, board_id TEXT, actor_user_id TEXT NOT NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, revision INTEGER, metadata TEXT NOT NULL, occurred_at TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS migration_state (id INTEGER PRIMARY KEY, status TEXT NOT NULL, default_workspace_id TEXT, legacy_project_id TEXT, legacy_board_id TEXT, locked_at TEXT, completed_at TEXT, updated_at TEXT, error TEXT)",
+    // migration 0005：看板指派表（Task 3 起 logs 會透過 board-access.ts 查詢此表
+    // 決定 contributor 可見範圍；resolveVisibleBoardIds 的 fallback 分支即使沒有
+    // 任何指派列也會 SELECT 這張表，表不存在會直接噴 SQL 錯誤）。
+    `CREATE TABLE IF NOT EXISTS project_member_boards (
+       project_id TEXT NOT NULL,
+       user_id TEXT NOT NULL,
+       board_id TEXT NOT NULL,
+       assigned_by TEXT NOT NULL,
+       assigned_at TEXT NOT NULL,
+       PRIMARY KEY (project_id, user_id, board_id),
+       FOREIGN KEY (project_id, user_id)
+         REFERENCES project_members(project_id, user_id) ON DELETE CASCADE,
+       FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
+       FOREIGN KEY (assigned_by) REFERENCES user_accounts(id) ON DELETE RESTRICT
+     )`,
+    "CREATE INDEX IF NOT EXISTS task7_project_member_boards_user_idx ON project_member_boards(project_id, user_id)",
   ];
   for (const sql of statements) await env.DB.prepare(sql).run();
 });
 
 beforeEach(async () => {
   for (const table of [
-    "activity_logs", "boards", "project_members", "projects", "workspace_members",
-    "workspaces", "access_tokens", "user_accounts", "migration_state",
+    "project_member_boards", "activity_logs", "boards", "project_members", "projects",
+    "workspace_members", "workspaces", "access_tokens", "user_accounts", "migration_state",
   ]) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
@@ -273,5 +292,74 @@ describe("Activity Log APIs", () => {
     ]) {
       expect(serialized).not.toContain(secret);
     }
+  });
+});
+
+describe("Activity Log board visibility (Task 3)", () => {
+  beforeEach(async () => {
+    await insertUser(contributorId, contributorToken);
+    const now = "2026-07-27T00:00:00.000Z";
+    await env.DB.prepare(
+      `INSERT INTO project_members (project_id, user_id, role, created_at, updated_at)
+       VALUES (?, ?, 'contributor', ?, ?)`,
+    ).bind(projectA, contributorId, now, now).run();
+    // boardA2 的 updated_at 晚於外層 beforeEach 建立的 boardA，所以是 contributor
+    // 無指派列時 fallback 到的主要看板；boardA 對 contributor 反而不可見。
+    const later = "2026-07-27T00:30:00.000Z";
+    await env.DB.prepare(
+      `INSERT INTO boards (
+         id, project_id, name, normalized_name, status, revision, data,
+         created_by, created_at, updated_at, archived_at, archived_by
+       ) VALUES (?, ?, 'Board A2', 'board a2', 'active', 0, ?, ?, ?, ?, NULL, NULL)`,
+    ).bind(
+      boardA2, projectA, JSON.stringify({ version: 4, columns: [], cards: {} }),
+      managerId, later, later,
+    ).run();
+  });
+
+  it("rejects a non-visible Board's logs for a contributor, allows the fallback primary, and never restricts the owner", async () => {
+    await insertLog("85000000-0000-4000-8000-000000000001", projectA, boardA, "2026-07-27T06:00:00.000Z");
+    await insertLog("85000000-0000-4000-8000-000000000002", projectA, boardA2, "2026-07-27T06:01:00.000Z");
+
+    expect(
+      (await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}/logs`)).status,
+    ).toBe(404);
+    const fallback = await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA2}/logs`);
+    expect(fallback.status).toBe(200);
+    expect((await fallback.json() as { logs: Array<{ boardId: string | null }> }).logs).toHaveLength(1);
+    expect(
+      (await dispatch(managerToken, `/projects/${projectA}/boards/${boardA}/logs`)).status,
+    ).toBe(200);
+
+    // Task 5 的指派 API 尚未落地，直接寫入指派列模擬其效果：一旦指派，fallback 讓路。
+    await env.DB.prepare(
+      `INSERT INTO project_member_boards (project_id, user_id, board_id, assigned_by, assigned_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind(projectA, contributorId, boardA, managerId, "2026-07-27T00:00:00.000Z").run();
+    expect(
+      (await dispatch(contributorToken, `/projects/${projectA}/boards/${boardA}/logs`)).status,
+    ).toBe(200);
+  });
+
+  it("filters non-visible board-scoped events out of a contributor's project-scoped query while the owner keeps seeing all of them", async () => {
+    await insertLog("85000000-0000-4000-8000-000000000010", projectA, boardA, "2026-07-27T06:10:00.000Z");
+    await insertLog("85000000-0000-4000-8000-000000000011", projectA, boardA2, "2026-07-27T06:11:00.000Z");
+    await insertLog("85000000-0000-4000-8000-000000000012", projectA, null, "2026-07-27T06:12:00.000Z");
+
+    const contributorView = await dispatch(contributorToken, `/projects/${projectA}/logs`);
+    expect(contributorView.status).toBe(200);
+    const contributorBody = await contributorView.json() as { logs: Array<{ id: string }> };
+    expect(contributorBody.logs.map((log) => log.id).sort()).toEqual([
+      "85000000-0000-4000-8000-000000000011",
+      "85000000-0000-4000-8000-000000000012",
+    ].sort());
+
+    const ownerView = await dispatch(managerToken, `/projects/${projectA}/logs`);
+    const ownerBody = await ownerView.json() as { logs: Array<{ id: string }> };
+    expect(ownerBody.logs.map((log) => log.id).sort()).toEqual([
+      "85000000-0000-4000-8000-000000000010",
+      "85000000-0000-4000-8000-000000000011",
+      "85000000-0000-4000-8000-000000000012",
+    ].sort());
   });
 });
