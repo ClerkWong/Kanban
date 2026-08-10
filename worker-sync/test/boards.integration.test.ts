@@ -501,6 +501,13 @@ describe("Single-board Project content APIs", () => {
     });
     expect(archive.status).toBe(409);
     expect(await archive.json()).toMatchObject({ error: "single_board_required" });
+    // 併發封存防護的迴歸測試：專案僅剩一個 active Board 時，被擋下的封存
+    // 必須是原子失敗（WHERE 子句未命中），board 本身仍是 active，不會有
+    // 「UPDATE 先跑、事後才發現要擋」的中間狀態。
+    expect(
+      await env.DB.prepare("SELECT status FROM boards WHERE id = ?")
+        .bind(boardA).first<string>("status"),
+    ).toBe("active");
 
     const archivedAt = "2026-07-27T01:00:00.000Z";
     await env.DB.prepare(

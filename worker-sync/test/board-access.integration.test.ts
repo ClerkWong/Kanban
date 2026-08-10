@@ -219,6 +219,30 @@ describe("resolveVisibleBoardIds", () => {
     expect(await resolveVisibleBoardIds(env.DB, projectA, managerId, managerAccess)).toBeNull();
     expect(await resolveVisibleBoardIds(env.DB, projectA, viewerId, viewerAccess)).toBeNull();
   });
+
+  it("fails closed (empty set, not full visibility) for a null or unknown project role", async () => {
+    await insertBoard(boardA, projectA, "Only Board", "2026-08-01T00:00:00.000Z");
+
+    const nullRoleAccess: ProjectAccess = {
+      workspaceRole: null,
+      projectRole: null,
+      projectStatus: "active",
+    };
+    expect(
+      await resolveVisibleBoardIds(env.DB, projectA, contributorId, nullRoleAccess),
+    ).toEqual(new Set());
+
+    // 模擬「未知角色」字串意外流入（例如把 public role 誤當 stored role 傳入）：
+    // 地基必須 fail-closed，不能落入舊的 `!== "contributor"` 全可見分支。
+    const unknownRoleAccess: ProjectAccess = {
+      workspaceRole: null,
+      projectRole: "owner" as ProjectAccess["projectRole"],
+      projectStatus: "active",
+    };
+    expect(
+      await resolveVisibleBoardIds(env.DB, projectA, contributorId, unknownRoleAccess),
+    ).toEqual(new Set());
+  });
 });
 
 describe("requireBoardVisible", () => {

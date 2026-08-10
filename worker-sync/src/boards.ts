@@ -574,14 +574,6 @@ async function changeBoardStatus(
   if (access.projectStatus === "archived") throw new RequestError(409, "resource_archived");
   const row = await getBoard(context.env.DB, projectId, boardId);
   const target = action === "archive" ? "archived" : "active";
-  if (action === "archive" && row.status === "active") {
-    // 多看板 v1：不再是「唯一 active Board 恆不可封存」，改為「專案必須保留至少
-    // 一個 active Board」——只在封存後會清空 active Board 時才擋下。
-    const otherActiveBoardId = await context.env.DB.prepare(
-      "SELECT id FROM boards WHERE project_id = ? AND status = 'active' AND id != ?",
-    ).bind(projectId, boardId).first<string>("id");
-    if (!otherActiveBoardId) throw new RequestError(409, "single_board_required");
-  }
   if (row.status === target) {
     return json(200, { board: boardMetadata(row), requestId: context.requestId }, context.requestId);
   }
@@ -595,6 +587,10 @@ async function changeBoardStatus(
     archived_by: target === "archived" ? context.user.id : null,
   };
   try {
+    // 多看板 v1：專案必須保留至少一個 active Board。第二個 AND 子句只在
+    // target='archived' 時才生效（restore 的 target='active' 讓 `? != 'archived'`
+    // 恆真，等同沒有這個限制）；把「還有別的 active Board」摺進 WHERE，讓兩個並發
+    // 封存請求最多只有一個能通過，不會讓 active Board 數量競態到 0（見 code review）。
     const results = await context.env.DB.batch([
       context.env.DB.prepare(
         `UPDATE boards
@@ -602,6 +598,12 @@ async function changeBoardStatus(
          WHERE id = ? AND project_id = ? AND status = ?
            AND EXISTS (
              SELECT 1 FROM projects WHERE id = ? AND status = 'active'
+           )
+           AND (
+             ? != 'archived' OR EXISTS (
+               SELECT 1 FROM boards AS other
+               WHERE other.project_id = ? AND other.status = 'active' AND other.id != ?
+             )
            )`,
       ).bind(
         target,
@@ -612,6 +614,9 @@ async function changeBoardStatus(
         projectId,
         row.status,
         projectId,
+        target,
+        projectId,
+        boardId,
       ),
       prepareAuditEvent(
         context.env.DB,
@@ -641,6 +646,13 @@ async function changeBoardStatus(
           board: boardMetadata(current),
           requestId: context.requestId,
         }, context.requestId);
+      }
+      // current.status !== target 且不是 project/board 已變動的其他已知原因時，
+      // action === "archive" 只剩一種可能：WHERE 子句的「保留至少一個 active
+      // Board」條件失敗（current.status 仍是 "active"，因為只有兩種狀態且已排除
+      // 等於 target 的情況）。
+      if (action === "archive") {
+        throw new RequestError(409, "single_board_required");
       }
       throw new RequestError(409, "board_changed");
     }

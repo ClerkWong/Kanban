@@ -19,14 +19,18 @@ async function primaryBoardId(
 
 /** 回傳 caller 在此專案可見的 board id 集合；null 代表全部可見。
  *  owner（manager）與 legacy viewer 恆全可見；member（contributor）依指派列，
- *  完全沒有指派列時 fallback 到主要看板。 */
+ *  完全沒有指派列時 fallback 到主要看板。fail-closed：以 allowlist 明確列出
+ *  「全可見」的角色，null 或任何未列入的角色一律回空集合（不可見），而非
+ *  預設全可見——目前唯一建構點 authorizeProject 已擋 null，但這裡是全部
+ *  可見性判斷的地基，不應該依賴呼叫端一定擋掉不明角色。 */
 export async function resolveVisibleBoardIds(
   database: D1Database,
   projectId: string,
   userId: string,
   access: ProjectAccess,
 ): Promise<Set<string> | null> {
-  if (access.projectRole !== "contributor") return null;
+  if (access.projectRole === "manager" || access.projectRole === "viewer") return null;
+  if (access.projectRole !== "contributor") return new Set();
   const assigned = await database.prepare(
     "SELECT board_id FROM project_member_boards WHERE project_id = ? AND user_id = ?",
   ).bind(projectId, userId).all<{ board_id: string }>();
