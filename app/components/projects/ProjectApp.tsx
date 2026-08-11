@@ -5,8 +5,10 @@ import type { ReactNode } from "react";
 import { BoardApp } from "../board/BoardApp";
 import { bundledAppConfig, loadAppConfig, type AppConfig } from "../../app-config";
 import { logoutSession } from "../../auth/api";
+import { createEmptyBoard } from "../../board-model";
 import {
   ApiClientError,
+  createBoard,
   getProject,
   getProjectSummary,
   listBoards,
@@ -388,6 +390,32 @@ function ProjectRouteView({
     [route, state.allBoards],
   );
 
+  async function handleCreateBoard(name: string): Promise<void> {
+    const detail = state.detail;
+    if (!detail) return;
+    try {
+      const created = await createBoard(config, {
+        context: {
+          workspaceId: detail.project.workspaceId,
+          projectId: route.projectId,
+        },
+        boardId: crypto.randomUUID(),
+        name,
+        board: createEmptyBoard(),
+      });
+      window.location.hash = serializeProjectRoute({
+        kind: "board",
+        projectId: route.projectId,
+        boardId: created.meta.id,
+      });
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "建立看板失敗，請稍後再試。",
+      }));
+    }
+  }
+
   if (state.error && !state.detail) {
     return <LoadingState message={state.error} error />;
   }
@@ -423,6 +451,7 @@ function ProjectRouteView({
             setRefreshToken((current) => current + 1);
             onProjectsChanged();
           }}
+          onCreateBoard={handleCreateBoard}
         />
       </>
     );

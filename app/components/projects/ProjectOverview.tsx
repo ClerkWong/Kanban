@@ -29,6 +29,7 @@ export function ProjectOverview({
   activeBoards,
   allBoards,
   onRefresh,
+  onCreateBoard,
 }: {
   config: SyncConfig;
   detail: ProjectDetail;
@@ -36,10 +37,13 @@ export function ProjectOverview({
   activeBoards: BoardMeta[];
   allBoards: BoardMeta[];
   onRefresh: () => void;
+  onCreateBoard: (name: string) => Promise<void>;
 }) {
   const actions = projectManagementActions(detail.myRole, detail.project.status);
   const archivedBoards = allBoards.filter((board) => board.status === "archived");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [archivedReport, setArchivedReport] = useState<ProjectReport | null>(null);
   const [error, setError] = useState("");
@@ -79,6 +83,13 @@ export function ProjectOverview({
     } catch (cause) {
       setError(managementErrorMessage(cause, navigator.onLine));
     }
+  }
+
+  async function submitCreateBoard(name: string) {
+    setCreateBusy(true);
+    await onCreateBoard(name);
+    setCreateBusy(false);
+    setCreateOpen(false);
   }
 
   return (
@@ -127,10 +138,16 @@ export function ProjectOverview({
           <div><p className="eyebrow">Boards</p><h2>使用中看板</h2></div>
           <div className="sectionActions">
             <span>{activeBoards.length} 個</span>
+            {actions.showManagement && (
+              <button className="primaryButton" type="button" onClick={() => setCreateOpen(true)}>＋ 新增看板</button>
+            )}
           </div>
         </div>
         {activeBoards.length === 0 ? (
-          <div className="projectEmpty"><h3>目前沒有使用中看板</h3><p>這是舊資料狀態，請聯絡平台管理者修復。</p></div>
+          <div className="projectEmpty">
+            <h3>目前沒有使用中看板</h3>
+            <p>{actions.showManagement ? "建立第一個看板開始工作。" : "請聯絡專案管理者。"}</p>
+          </div>
         ) : (
           <div className="boardDirectoryGrid">
             {activeBoards.map((board) => (
@@ -157,10 +174,55 @@ export function ProjectOverview({
       <ActivityLogPanel config={config} project={detail.project} boards={allBoards} />
 
       {settingsOpen && <ProjectSettingsModal config={config} detail={detail} onClose={() => setSettingsOpen(false)} onChanged={onRefresh} />}
+      {createOpen && (
+        <NewBoardDialog
+          busy={createBusy}
+          onClose={() => setCreateOpen(false)}
+          onSubmit={(name) => void submitCreateBoard(name)}
+        />
+      )}
     </main>
   );
 }
 
 function SummaryStat({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) {
   return <div className={`stat ${danger ? "danger" : ""}`}><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function NewBoardDialog({
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (name: string) => void;
+}) {
+  const [name, setName] = useState("");
+  return (
+    <div className="modalBackdrop">
+      <div className="modal compactModal" role="dialog" aria-modal="true" aria-labelledby="newBoardTitle">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit(name);
+          }}
+        >
+          <header className="modalHeader">
+            <h2 id="newBoardTitle">新增看板</h2>
+            <button className="iconOnly" type="button" onClick={onClose} aria-label="關閉">×</button>
+          </header>
+          <label className="formField">
+            <span>看板名稱</span>
+            <input autoFocus value={name} maxLength={80} required onChange={(event) => setName(event.target.value)} />
+          </label>
+          <p className="storageNote">新看板會從空白範本開始，名稱不必與專案相同。</p>
+          <footer className="modalActions">
+            <button className="secondaryButton" type="button" onClick={onClose}>取消</button>
+            <button className="primaryButton" type="submit" disabled={busy}>建立</button>
+          </footer>
+        </form>
+      </div>
+    </div>
+  );
 }
