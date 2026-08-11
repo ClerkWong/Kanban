@@ -330,7 +330,7 @@ function ProjectRouteView({
         if (route.kind === "board" && !boardBelongsToRoute(route, allBoards)) {
           window.sessionStorage.setItem(
             "kanban-board-access-notice",
-            "您已不在此看板，已回到可用的看板清單。",
+            "您已不在此看板。",
           );
           window.location.hash = serializeProjectRoute({
             kind: "project",
@@ -367,6 +367,7 @@ function ProjectRouteView({
           error instanceof ApiClientError &&
           (error.kind === "not_found" || error.kind === "forbidden")
         ) {
+          window.sessionStorage.removeItem("kanban-board-access-notice");
           window.location.hash = serializeProjectRoute({ kind: "projects" });
           return;
         }
@@ -387,26 +388,43 @@ function ProjectRouteView({
     [route, state.allBoards],
   );
 
-  if (state.error) {
+  if (state.error && !state.detail) {
     return <LoadingState message={state.error} error />;
   }
   if (!state.detail || !state.report) {
     return <LoadingState message="正在載入專案…" />;
   }
+
+  const accessNotice = state.error && state.detail ? (
+    <div className="notice readOnlyNotice" role="alert">
+      {state.error}
+      <button
+        type="button"
+        className="secondaryButton"
+        onClick={() => setState((current) => ({ ...current, error: "" }))}
+      >
+        知道了
+      </button>
+    </div>
+  ) : null;
+
   if (route.kind === "project") {
     return (
-      <ProjectOverview
-        key={refreshToken}
-        config={config}
-        detail={state.detail}
-        report={state.report}
-        activeBoards={state.activeBoards}
-        allBoards={state.allBoards}
-        onRefresh={() => {
-          setRefreshToken((current) => current + 1);
-          onProjectsChanged();
-        }}
-      />
+      <>
+        {accessNotice}
+        <ProjectOverview
+          key={refreshToken}
+          config={config}
+          detail={state.detail}
+          report={state.report}
+          activeBoards={state.activeBoards}
+          allBoards={state.allBoards}
+          onRefresh={() => {
+            setRefreshToken((current) => current + 1);
+            onProjectsChanged();
+          }}
+        />
+      </>
     );
   }
   if (!board) return <LoadingState message="正在載入看板…" />;
@@ -423,22 +441,25 @@ function ProjectRouteView({
   );
 
   return (
-    <ActiveBoard
-      context={context}
-      projectName={state.detail.project.name}
-      access={access}
-      projectMembers={state.members}
-      navigation={(
-          <BoardNavigation
-            project={state.detail.project}
-            board={board}
-            boards={state.allBoards}
-            role={state.detail.myRole}
-          />
-        )}
-      enableServiceWorker={enableServiceWorker}
-      appConfigUrl={appConfigUrl}
-    />
+    <>
+      {accessNotice}
+      <ActiveBoard
+        context={context}
+        projectName={state.detail.project.name}
+        access={access}
+        projectMembers={state.members}
+        navigation={(
+            <BoardNavigation
+              project={state.detail.project}
+              board={board}
+              boards={state.allBoards}
+              role={state.detail.myRole}
+            />
+          )}
+        enableServiceWorker={enableServiceWorker}
+        appConfigUrl={appConfigUrl}
+      />
+    </>
   );
 }
 
