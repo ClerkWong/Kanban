@@ -47,6 +47,7 @@
 | production R2 | **尚未建立** | 必須等 staging 驗收全數通過 |
 | iOS/Android | `1.1.0 (5)` 已部署實機，未完成正式分發 | 最新資產已覆蓋安裝並啟動於 iPhone 12 Pro Max 與 Pixel 9a；兩台裝置皆回報 build 5，尚缺完整功能 smoke、TestFlight／internal track 與正式簽章分發 |
 | 流動度量與服務類別 v1 | Worker 已部署 staging，待 Web Beta 發布與驗收 | Card schema v7：欄位進入／開工時間、累計阻塞、服務類別與加急 WIP；卡面老化與流動報表；Worker 驗證與 summary 流動度量。已推送 `3329721`；staging Worker version `8070b48c-4ee6-4544-a069-b7a1f23f54be`，無 token／錯 token 均回 401；Web Beta v16 待從 Sites 發布 |
+| 多看板與看板指派 v1 | 已實作，待 staging 部署與驗收 | migration `0005_multi_board_assignments.sql`：移除 `0003` 單看板唯一索引，新增 `project_member_boards`；owner-only 指派 API（`GET`／`PUT /projects/:projectId/members/:userId/boards`，每位 member 上限 50 個看板，空陣列＝回到 fallback，寫入 `member.boards_assigned` audit）；member 依指派列決定可見 Board，完全沒有指派列時 fallback 到主要看板（active 看板中 `updated_at DESC, id DESC` 第一個），owner／legacy viewer 恆全可見；member 對未可見 Board 的內容、附件與 Log 一律 404，`listBoards`、summary 與 `listProjects` 代表看板均已收斂到可見集合；owner 可在專案總覽新增看板，member 面板以 checkbox 群指派（樂觀更新），單一可見看板時自動落板且不顯示切換器，被移除指派時顯示可關閉 banner |
 
 ### 已完成的驗證
 
@@ -321,6 +322,13 @@ git diff --check
 - [ ] 舊版 client（無 settings payload）儲存看板不會清掉 owner 設定。
 - [ ] 加急卡在桌面與 Mobile 都固定排在欄位前段；超過上限時警告不阻擋。
 - [ ] 雙裝置的 Cycle Time／阻塞時長在同步收斂後一致。
+- [ ] owner 可在同一專案建立第二個看板並正常切換、封存。
+- [ ] 單一指派的 member 進專案直接看到任務，畫面沒有看板切換器。
+- [ ] 多指派的 member 只看到被指派的看板。
+- [ ] member 直接輸入非指派看板的 hash route 會被導回，API 回 404。
+- [ ] 未設定指派的既有 member 升級後仍能正常使用主要看板。
+- [ ] member 的報表只聚合可見看板；owner 聚合全部。
+- [ ] 移除指派後該 member 的 client 停止重試並顯示可理解訊息。
 
 ### 3a 看板同步
 
@@ -475,8 +483,19 @@ git diff --check
 - 合併殘餘邊界：勝方已滿 20 欄且敗方有非空獨有欄時，「欄數上限」與「前版非空欄
   不得消失」互斥，推送會被拒但卡片不遺失、可刪欄自癒；徹底解需 Worker 放寬
   已清空欄位的刪除判定。
-- 行動版 build 6 仍載有舊版 mergeBoards（欄位聯集修正前）；下一次 mobile build
-  必須帶入 `100260a` 的合併修正，在此之前手機端合併仍可能丟棄另一側新增的欄位。
+- 部署多看板與看板指派 v1 時必須先執行 `pnpm sync:migrate:staging` 套用 migration
+  `0005`，再部署 Worker；順序顛倒會讓建立第二個看板誤報 `board_id_conflict`。
+- 看板指派 API 目前允許對 owner／viewer 目標寫入指派列（resolution 會忽略，不影響
+  實際可見性），但 GET 仍回傳這些殭屍列，可能誤導管理 UI；應改為對非 contributor
+  目標回 400。
+- `logJson` 剔除不可見看板名稱依賴已知鍵名黑名單，未來新增其他鍵名的 project-level
+  事件會繞過遮蔽而洩漏看板名稱；應在 `audit.ts` 訂出遮蔽鍵名的命名約定並集中驗證。
+- member 僅被指派到已封存看板時目前不會自動落板，專案總覽文案也可能誤導；需補上
+  archived-only 指派情境的落板與文案處理。
+- 行動版 build 6 仍載有舊版 mergeBoards（欄位聯集修正前）與單看板 UI；下一次
+  mobile build（build 7）需同時帶入 `100260a` 的合併修正與本次多看板與看板指派
+  v1，在此之前手機端合併仍可能丟棄另一側新增的欄位，且原生 App 不會出現多看板
+  切換與指派介面。
 - 在獨立 PR 更新 Wrangler、Workers types 與 compatibility date；不要和 production
   cutover 放在同一個不可拆部署。
 - 若需要已安裝 App 即時更新 title，設計具完整性驗證、cache fallback 與版本欄位的

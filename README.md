@@ -203,6 +203,9 @@ create 只從隱藏提示或 stdin 讀取明文，list 不查詢 token hash，pr
 
 - 「我的專案」只列出目前 user 具有 membership 的 Project；沒有跨專案內容總覽。
 - Manager 管理 Project、成員與 Board；Contributor 可修改卡片；Viewer 唯讀。
+- 一個 Project 可有多個 Board；owner 指派每位 member 可見的 Board，member
+  對未指派 Board 一律得到 404。
+- 未設定指派的 member 預設只看主要 Board（最後更新的 active Board）。
 - 每個 Board 使用獨立 revision、local cache、attachment queue 與 R2 scope。
 - 同步以 revision 樂觀鎖與卡片級 `updatedAt` LWW 合併。
 - 刪除墓碑保留 30 天；離線超過 30 天的舊裝置仍可能讓已刪卡片重新出現。
