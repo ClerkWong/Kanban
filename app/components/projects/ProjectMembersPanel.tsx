@@ -149,22 +149,32 @@ export function ProjectMembersPanel({
             <RoleSelect value={member.role} onChange={(next) => void update(member.userId, next)} />
             <button className="dangerGhost" type="button" onClick={() => void update(member.userId, null)}>移除</button>
             {member.role === "member" && (
-              <label className="formField">
-                <span>可見看板</span>
-                <select
-                  multiple
-                  value={assignments[member.userId] ?? []}
-                  onChange={(event) => {
-                    const boardIds = [...event.target.selectedOptions].map((option) => option.value);
-                    void saveAssignments(member.userId, boardIds);
-                  }}
-                >
-                  {boards.map((entry) => (
-                    <option key={entry.id} value={entry.id}>{entry.name}</option>
-                  ))}
-                </select>
-                <small>未選擇時預設只看主要看板。</small>
-              </label>
+              <fieldset className="fieldGroup">
+                <legend>可見看板（可複選）</legend>
+                {boards.length > 0 ? (
+                  <div className="assigneeGrid">
+                    {boards.map((entry) => (
+                      <label className="assigneeChoice" key={entry.id}>
+                        <input
+                          type="checkbox"
+                          checked={(assignments[member.userId] ?? []).includes(entry.id)}
+                          onChange={(event) => {
+                            const current = assignments[member.userId] ?? [];
+                            const boardIds = event.target.checked
+                              ? [...current, entry.id]
+                              : current.filter((id) => id !== entry.id);
+                            void saveAssignments(member.userId, boardIds);
+                          }}
+                        />
+                        <span><strong>{entry.name}</strong></span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="fieldHint">目前沒有使用中看板可指派。</p>
+                )}
+                <p className="fieldHint">未選擇時預設只看主要看板。</p>
+              </fieldset>
             )}
           </div>
         ))}

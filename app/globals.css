@@ -2350,7 +2350,7 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-.memberRow .formField {
+.memberRow .fieldGroup {
   grid-column: 1 / -1;
 }
 
