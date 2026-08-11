@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   listMemberBoards,
   listProjectMembers,
@@ -33,6 +33,15 @@ export function ProjectMembersPanel({
   const [error, setError] = useState("");
   const [candidates, setCandidates] = useState<ProjectMemberCandidate[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string[]>>({});
+  // Per-member sequence number for in-flight board-assignment PUTs. Guards
+  // against the lost-update race below, not against server-side ordering
+  // (deferred): each saveAssignments call claims the next number for that
+  // userId; a response is only applied if it is still the latest number
+  // claimed, so a superseded (rapid double-toggle) request's resolution --
+  // success or failure -- is discarded instead of clobbering a newer
+  // optimistic edit. Same idiom as ActivityLogPanel's requestGeneration ref,
+  // generalized to one counter per member instead of one for the panel.
+  const boardRequestGeneration = useRef<Record<string, number>>({});
 
   async function reload() {
     try {
@@ -89,11 +98,23 @@ export function ProjectMembersPanel({
       setError(managementErrorMessage(null, false));
       return;
     }
+    // Claim this request's generation before touching state, then apply the
+    // change optimistically so rapid consecutive toggles for the same member
+    // each build on the previous toggle's result instead of racing a stale
+    // network response. `previous` is what the checkbox reverts to if this
+    // exact request turns out to fail without being superseded.
+    const generation = (boardRequestGeneration.current[targetUserId] ?? 0) + 1;
+    boardRequestGeneration.current[targetUserId] = generation;
+    const previous = assignments[targetUserId] ?? [];
+    setAssignments((current) => ({ ...current, [targetUserId]: boardIds }));
     try {
       const saved = await putMemberBoards(config, projectId, targetUserId, boardIds);
+      if (boardRequestGeneration.current[targetUserId] !== generation) return;
       setAssignments((current) => ({ ...current, [targetUserId]: saved }));
       setError("");
     } catch (cause) {
+      if (boardRequestGeneration.current[targetUserId] !== generation) return;
+      setAssignments((current) => ({ ...current, [targetUserId]: previous }));
       setError(managementErrorMessage(cause, navigator.onLine));
     }
   }
