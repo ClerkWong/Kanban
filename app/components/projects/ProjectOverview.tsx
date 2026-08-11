@@ -151,7 +151,9 @@ export function ProjectOverview({
       </section>
 
       <ArchivedBoardsPanel config={config} detail={detail} boards={archivedBoards} canManage={false} onChanged={onRefresh} />
-      {actions.showManagement && <ProjectMembersPanel config={config} projectId={detail.project.id} />}
+      {actions.showManagement && (
+        <ProjectMembersPanel config={config} projectId={detail.project.id} boards={activeBoards} />
+      )}
       <ActivityLogPanel config={config} project={detail.project} boards={allBoards} />
 
       {settingsOpen && <ProjectSettingsModal config={config} detail={detail} onClose={() => setSettingsOpen(false)} onChanged={onRefresh} />}

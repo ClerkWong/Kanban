@@ -2350,6 +2350,10 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.memberRow .formField {
+  grid-column: 1 / -1;
+}
+
 .archivedRow {
   grid-template-columns: minmax(0, 1fr) auto;
 }

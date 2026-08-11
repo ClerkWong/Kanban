@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from "react";
 import {
+  listMemberBoards,
   listProjectMembers,
   listProjectMemberCandidates,
+  putMemberBoards,
   removeProjectMember,
   setProjectMember,
   type ProjectMember,
   type ProjectMemberCandidate,
 } from "../../projects/api";
-import type { ProjectRole } from "../../projects/types";
+import type { BoardMeta, ProjectRole } from "../../projects/types";
 import {
   isLastOwnerChangeBlocked,
   managementErrorMessage,
@@ -19,15 +21,18 @@ import type { SyncConfig } from "../../sync/config";
 export function ProjectMembersPanel({
   config,
   projectId,
+  boards,
 }: {
   config: SyncConfig;
   projectId: string;
+  boards: BoardMeta[];
 }) {
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [userId, setUserId] = useState("");
   const [role, setRole] = useState<ProjectRole>("member");
   const [error, setError] = useState("");
   const [candidates, setCandidates] = useState<ProjectMemberCandidate[]>([]);
+  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
 
   async function reload() {
     try {
@@ -47,6 +52,51 @@ export function ProjectMembersPanel({
   // Project/config identity changes remount this project panel.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, projectId]);
+
+  // Only the set of member-role userIds determines which board assignments
+  // need loading. Keying the effect below on this instead of the `members`
+  // array reference matters because `reload()` re-runs (and returns a new
+  // array) after every role change, add, or removal -- including ones that
+  // do not touch any "member"-role user -- which would otherwise refetch
+  // every member's board assignment on each such edit.
+  const memberBoardTargetsKey = members
+    .filter((entry) => entry.role === "member")
+    .map((entry) => entry.userId)
+    .sort()
+    .join(",");
+
+  useEffect(() => {
+    let cancelled = false;
+    const targets = members.filter((entry) => entry.role === "member");
+    void Promise.all(
+      targets.map((entry) =>
+        listMemberBoards(config, projectId, entry.userId)
+          .then((boardIds) => [entry.userId, boardIds] as const)
+          .catch(() => [entry.userId, []] as const),
+      ),
+    ).then((entries) => {
+      if (cancelled) return;
+      setAssignments(Object.fromEntries(entries));
+    });
+    return () => { cancelled = true; };
+  // members is read for its current member-role entries; memberBoardTargetsKey
+  // is the real dependency (see comment above where it is derived).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, projectId, memberBoardTargetsKey]);
+
+  async function saveAssignments(targetUserId: string, boardIds: string[]) {
+    if (!navigator.onLine) {
+      setError(managementErrorMessage(null, false));
+      return;
+    }
+    try {
+      const saved = await putMemberBoards(config, projectId, targetUserId, boardIds);
+      setAssignments((current) => ({ ...current, [targetUserId]: saved }));
+      setError("");
+    } catch (cause) {
+      setError(managementErrorMessage(cause, navigator.onLine));
+    }
+  }
 
   async function update(targetUserId: string, nextRole: ProjectRole | null) {
     if (!navigator.onLine) {
@@ -98,6 +148,24 @@ export function ProjectMembersPanel({
             <div><strong>{member.displayName}</strong><small>{member.userId}</small></div>
             <RoleSelect value={member.role} onChange={(next) => void update(member.userId, next)} />
             <button className="dangerGhost" type="button" onClick={() => void update(member.userId, null)}>移除</button>
+            {member.role === "member" && (
+              <label className="formField">
+                <span>可見看板</span>
+                <select
+                  multiple
+                  value={assignments[member.userId] ?? []}
+                  onChange={(event) => {
+                    const boardIds = [...event.target.selectedOptions].map((option) => option.value);
+                    void saveAssignments(member.userId, boardIds);
+                  }}
+                >
+                  {boards.map((entry) => (
+                    <option key={entry.id} value={entry.id}>{entry.name}</option>
+                  ))}
+                </select>
+                <small>未選擇時預設只看主要看板。</small>
+              </label>
+            )}
           </div>
         ))}
       </div>
