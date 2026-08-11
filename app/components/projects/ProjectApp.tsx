@@ -408,6 +408,7 @@ function ProjectRouteView({
         projectId: route.projectId,
         boardId: created.meta.id,
       });
+      onProjectsChanged();
     } catch (error) {
       setState((current) => ({
         ...current,

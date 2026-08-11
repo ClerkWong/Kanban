@@ -87,9 +87,12 @@ export function ProjectOverview({
 
   async function submitCreateBoard(name: string) {
     setCreateBusy(true);
-    await onCreateBoard(name);
-    setCreateBusy(false);
-    setCreateOpen(false);
+    try {
+      await onCreateBoard(name);
+    } finally {
+      setCreateBusy(false);
+      setCreateOpen(false);
+    }
   }
 
   return (
@@ -103,7 +106,7 @@ export function ProjectOverview({
         <div>
           <p className="eyebrow">{projectRoleLabel(detail.myRole)}</p>
           <h1>{detail.project.name}</h1>
-          <p className="storageNote">每個專案對應一個使用中看板；專案與看板名稱彼此獨立。</p>
+          <p className="storageNote">專案可以有多個使用中看板；專案與看板名稱彼此獨立。</p>
         </div>
         <div className="projectHeroActions">
           <span className={`statusBadge ${detail.project.status}`}>
@@ -138,7 +141,7 @@ export function ProjectOverview({
           <div><p className="eyebrow">Boards</p><h2>使用中看板</h2></div>
           <div className="sectionActions">
             <span>{activeBoards.length} 個</span>
-            {actions.showManagement && (
+            {actions.canEditProject && (
               <button className="primaryButton" type="button" onClick={() => setCreateOpen(true)}>＋ 新增看板</button>
             )}
           </div>
@@ -146,7 +149,7 @@ export function ProjectOverview({
         {activeBoards.length === 0 ? (
           <div className="projectEmpty">
             <h3>目前沒有使用中看板</h3>
-            <p>{actions.showManagement ? "建立第一個看板開始工作。" : "請聯絡專案管理者。"}</p>
+            <p>{actions.canEditProject ? "建立第一個看板開始工作。" : "請聯絡專案管理者。"}</p>
           </div>
         ) : (
           <div className="boardDirectoryGrid">
