@@ -722,4 +722,43 @@ describe("GET /calendar", () => {
     // 排序後比較陣列（而非用 Set），同時涵蓋「集合相同」與「無重複列」兩個斷言。
     expect(actualCardIds.slice().sort()).toEqual(expectedCardIds.slice().sort());
   });
+
+  // 審查修正回合 1／項目 1：unscheduledTruncated 原本完全無測試覆蓋，只靠目視確認
+  // 「取 201 張、切 200 張」的邏輯——Global Constraint 明文禁止靜默截斷，補上臨界值測試。
+  it("caps the unscheduled pool at 200 and reports unscheduledTruncated accordingly", async () => {
+    await insertWorkspaceMember(workspaceA, adminUserId, "admin");
+    await insertProject(calProjectAlpha, workspaceA, "Calendar Alpha", otherOwnerId);
+
+    function buildUnscheduledCards(count: number): Record<string, unknown> {
+      const cards: Record<string, unknown> = {};
+      for (let i = 0; i < count; i += 1) {
+        const id = `card-unsched-${String(i).padStart(3, "0")}`;
+        cards[id] = cardFixture({ id, dueDate: "" }); // 空 dueDate、未完成 → 落在 unscheduled 池
+      }
+      return cards;
+    }
+
+    await insertBoard(calBoardAlpha, calProjectAlpha, "Alpha Board", buildUnscheduledCards(201));
+
+    const truncatedResponse = await dispatch(
+      tokenFor(adminUserId), `/calendar?workspaceId=${workspaceA}&month=${TEST_MONTH}`,
+    );
+    expect(truncatedResponse.status).toBe(200);
+    const truncatedBody = await truncatedResponse.json() as CalendarResponseBody;
+    expect(truncatedBody.unscheduled).toHaveLength(200);
+    expect(truncatedBody.unscheduledTruncated).toBe(true);
+
+    // 201 張卡全擠在同一顆看板的 boards.data JSON blob 裡，不像 boards 表有獨立資料列
+    // 可刪；改寫整份 data 讓卡數剛好收斂到 200，是驗證臨界點翻回 false 最直接的做法。
+    await env.DB.prepare("UPDATE boards SET data = ? WHERE id = ?")
+      .bind(boardJson(buildUnscheduledCards(200)), calBoardAlpha).run();
+
+    const fullResponse = await dispatch(
+      tokenFor(adminUserId), `/calendar?workspaceId=${workspaceA}&month=${TEST_MONTH}`,
+    );
+    expect(fullResponse.status).toBe(200);
+    const fullBody = await fullResponse.json() as CalendarResponseBody;
+    expect(fullBody.unscheduled).toHaveLength(200);
+    expect(fullBody.unscheduledTruncated).toBe(false);
+  });
 });

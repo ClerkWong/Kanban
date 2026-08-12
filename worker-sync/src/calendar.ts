@@ -8,6 +8,9 @@ import { RequestError, parseUuid } from "./validation";
 export const MAX_CALENDAR_BOARDS = 50;
 /** 未排程池上限；超出時回應標記 unscheduledTruncated。 */
 export const MAX_UNSCHEDULED = 200;
+/** scheduled 的防禦性上限：純粹避免單月卡量異常暴衝時把整個結果集拉爆，規格未要求
+ *  對應的截斷旗標（50 個看板 × 每板逾 100 張本月卡才會觸及，實務上不該發生）。 */
+const MAX_SCHEDULED = 5000;
 
 export type CalendarScope = {
   kind: "workspace" | "owned_projects";
@@ -130,7 +133,7 @@ function cardQuery(projectPlaceholders: string, dueClause: string, limit: number
                   ORDER BY boards.updated_at DESC, boards.id DESC
                   LIMIT ${MAX_CALENDAR_BOARDS}
                 )
-            AND projects.id IN (${projectPlaceholders})
+            AND projects.status = 'active'
             AND json_extract(cards.value, '$.completedAt') IS NULL
             AND ${dueClause}
           ORDER BY due_date, projects.name COLLATE NOCASE, title
@@ -165,8 +168,8 @@ export async function handleCalendarRequest(
   ).bind(...scope.projectIds).first<number>("n") ?? 0;
 
   const scheduledResult = await context.env.DB.prepare(
-    cardQuery(placeholders, "json_extract(cards.value, '$.dueDate') LIKE ?", 5000),
-  ).bind(...scope.projectIds, ...scope.projectIds, `${month}-%`).all<CardRow>();
+    cardQuery(placeholders, "json_extract(cards.value, '$.dueDate') LIKE ?", MAX_SCHEDULED),
+  ).bind(...scope.projectIds, `${month}-%`).all<CardRow>();
 
   const unscheduledResult = await context.env.DB.prepare(
     cardQuery(
@@ -174,7 +177,7 @@ export async function handleCalendarRequest(
       "(json_extract(cards.value, '$.dueDate') IS NULL OR json_extract(cards.value, '$.dueDate') = '')",
       MAX_UNSCHEDULED + 1,
     ),
-  ).bind(...scope.projectIds, ...scope.projectIds).all<CardRow>();
+  ).bind(...scope.projectIds).all<CardRow>();
 
   const scheduled = scheduledResult.results.map(toCalendarCard);
   const unscheduledAll = unscheduledResult.results.map(toCalendarCard);
@@ -188,7 +191,8 @@ export async function handleCalendarRequest(
   if (userIds.length) {
     const namePlaceholders = userIds.map(() => "?").join(", ");
     const directory = await context.env.DB.prepare(
-      `SELECT id, display_name FROM user_accounts WHERE id IN (${namePlaceholders})`,
+      `SELECT id, display_name FROM user_accounts WHERE id IN (${namePlaceholders})
+       ORDER BY display_name COLLATE NOCASE, id`,
     ).bind(...userIds).all<{ id: string; display_name: string }>();
     assignees = directory.results.map((row) => ({
       userId: row.id,
