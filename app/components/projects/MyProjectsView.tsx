@@ -6,16 +6,24 @@ export function MyProjectsView({
   projects,
   userName,
   showAdmin,
+  showCalendar,
   onSignOut,
 }: {
   projects: ProjectSummary[];
   userName: string;
   showAdmin: boolean;
+  showCalendar: boolean;
   onSignOut: () => void;
 }) {
   return (
     <main className="projectShell">
-      <WorkspaceEntryNav current="projects" userName={userName} showAdmin={showAdmin} onSignOut={onSignOut} />
+      <WorkspaceEntryNav
+        current="projects"
+        userName={userName}
+        showAdmin={showAdmin}
+        showCalendar={showCalendar}
+        onSignOut={onSignOut}
+      />
       <header className="projectHero">
         <div>
           <p className="eyebrow">Kanban workspace</p>

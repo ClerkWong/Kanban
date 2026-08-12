@@ -73,6 +73,16 @@ export function serializeProjectRoute(route: ProjectRoute): string {
   return `#/projects/${route.projectId}/boards/${route.boardId}`;
 }
 
+/** 日曆是管理者專屬：workspace owner／admin，或任一 active 專案的 Project owner。 */
+export function canViewCalendar(
+  projects: ProjectSummary[],
+  allowAdmin: boolean,
+): boolean {
+  return allowAdmin || projects.some(
+    (project) => project.myRole === "owner" && project.status === "active",
+  );
+}
+
 export function resolveAuthorizedRoute(
   route: ProjectRoute | null,
   projects: ProjectSummary[],
@@ -84,7 +94,7 @@ export function resolveAuthorizedRoute(
     return allowAdmin ? route : { kind: "projects" };
   }
   if (route?.kind === "calendar") {
-    return allowAdmin ? route : { kind: "projects" };
+    return canViewCalendar(projects, allowAdmin) ? route : { kind: "projects" };
   }
   if (
     route &&

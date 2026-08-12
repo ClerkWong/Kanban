@@ -4,6 +4,7 @@ import test from "node:test";
 import { ProjectRepository } from "../app/projects/repository";
 import {
   administrativeWorkspaces,
+  calendarWorkspaceId,
   hasPlatformAdminAccess,
   parseRuntimeSession,
   type RuntimeSession,
@@ -102,6 +103,23 @@ test("only owner and admin workspace roles expose the platform entry", () => {
   assert.deepEqual(administrativeWorkspaces(adminSession), [
     { workspaceId: userB, role: "admin" },
   ]);
+});
+
+test("calendarWorkspaceId prefers an administrative workspace, then the first workspace, then empty", () => {
+  const memberSession = session(userA, "Alice"); // workspaces: [{ workspaceId, role: "member" }]
+  assert.equal(calendarWorkspaceId(memberSession), workspaceId);
+
+  const adminSession: RuntimeSession = {
+    ...memberSession,
+    workspaces: [
+      { workspaceId, role: "member" },
+      { workspaceId: userB, role: "admin" },
+    ],
+  };
+  assert.equal(calendarWorkspaceId(adminSession), userB);
+
+  const noWorkspaceSession: RuntimeSession = { ...memberSession, workspaces: [] };
+  assert.equal(calendarWorkspaceId(noWorkspaceSession), "");
 });
 
 test("SyncConfig v2 persists only base URL/token and migrates v1 without identity overrides", async () => {

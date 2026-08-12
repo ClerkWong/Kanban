@@ -2,11 +2,13 @@ export function WorkspaceEntryNav({
   current,
   userName,
   showAdmin,
+  showCalendar,
   onSignOut,
 }: {
   current: "projects" | "admin" | "calendar";
   userName: string;
   showAdmin: boolean;
+  showCalendar: boolean;
   onSignOut: () => void;
 }) {
   return (
@@ -30,7 +32,7 @@ export function WorkspaceEntryNav({
             <small>管理者入口</small>
           </a>
         )}
-        {showAdmin && (
+        {showCalendar && (
           <a
             href="#/calendar"
             className={current === "calendar" ? "active" : ""}

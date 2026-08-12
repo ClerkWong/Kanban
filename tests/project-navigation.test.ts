@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   boardBelongsToRoute,
+  canViewCalendar,
   deriveBoardAccess,
   parseProjectHash,
   resolveAuthorizedRoute,
@@ -87,13 +88,41 @@ test("calendar route serializes with or without a month query", () => {
   assert.equal(serializeProjectRoute({ kind: "calendar", month: null }), "#/calendar");
 });
 
-test("calendar route requires an explicit workspace capability like admin", () => {
+test("canViewCalendar allows a workspace admin/owner or the owner of any active project", () => {
+  assert.equal(canViewCalendar([], true), true);
+  assert.equal(canViewCalendar(projects, false), true);
+
+  // owner 角色成立，但專案已封存——archived owner 不算，與 Worker 端
+  // resolveCalendarScope 的 `projects.status = 'active'` 篩選一致。
+  const archivedOwnerProjects: ProjectSummary[] = [{ ...projects[0], status: "archived" }];
+  assert.equal(canViewCalendar(archivedOwnerProjects, false), false);
+
+  // 只是 active 專案的 member，不是 owner——不成立。
+  const memberOnlyProjects: ProjectSummary[] = [{ ...projects[0], myRole: "member" }];
+  assert.equal(canViewCalendar(memberOnlyProjects, false), false);
+});
+
+test("calendar route falls back to #/projects unless admin or an active project owner", () => {
+  // admin：即使完全沒有專案，仍保留 calendar 路由（等同 admin 路由的邏輯）。
   assert.deepEqual(
-    resolveAuthorizedRoute({ kind: "calendar", month: null }, projects, null, true),
+    resolveAuthorizedRoute({ kind: "calendar", month: null }, [], null, true),
     { kind: "calendar", month: null },
   );
+  // 非 admin，但在某個 active 專案是 owner——保留 calendar 路由。
   assert.deepEqual(
     resolveAuthorizedRoute({ kind: "calendar", month: "2026-08" }, projects, null, false),
+    { kind: "calendar", month: "2026-08" },
+  );
+  // 非 admin，owner 的專案已封存——導回 #/projects。
+  const archivedOwnerProjects: ProjectSummary[] = [{ ...projects[0], status: "archived" }];
+  assert.deepEqual(
+    resolveAuthorizedRoute({ kind: "calendar", month: null }, archivedOwnerProjects, null, false),
+    { kind: "projects" },
+  );
+  // 非 admin，且所有專案都只是 member 角色——導回 #/projects。
+  const memberOnlyProjects: ProjectSummary[] = [{ ...projects[0], myRole: "member" }];
+  assert.deepEqual(
+    resolveAuthorizedRoute({ kind: "calendar", month: null }, memberOnlyProjects, null, false),
     { kind: "projects" },
   );
 });

@@ -21,6 +21,7 @@ import {
 import { currentMonth } from "../../projects/calendar-model";
 import {
   boardBelongsToRoute,
+  canViewCalendar,
   deriveBoardAccess,
   parseProjectHash,
   resolveAuthorizedRoute,
@@ -29,7 +30,7 @@ import {
   type ProjectRoute,
 } from "../../projects/navigation";
 import {
-  administrativeWorkspaces,
+  calendarWorkspaceId,
   fetchRuntimeSession,
   hasPlatformAdminAccess,
   type RuntimeSession,
@@ -223,6 +224,7 @@ export function ProjectApp({
           projects={bootstrap.projects}
           userName={bootstrap.session.user.displayName}
           showAdmin={hasPlatformAdminAccess(bootstrap.session)}
+          showCalendar={canViewCalendar(bootstrap.projects, hasPlatformAdminAccess(bootstrap.session))}
           onSignOut={() => void signOut()}
         />
       </LegacyMigrationGate>
@@ -254,7 +256,7 @@ export function ProjectApp({
     );
   }
   if (route.kind === "calendar") {
-    const workspaceId = administrativeWorkspaces(bootstrap.session)[0]?.workspaceId ?? "";
+    const workspaceId = calendarWorkspaceId(bootstrap.session);
     return (
       <LegacyMigrationGate
         config={bootstrap.config}
@@ -266,6 +268,7 @@ export function ProjectApp({
           workspaceId={workspaceId}
           month={route.month ?? currentMonth()}
           userName={bootstrap.session.user.displayName}
+          showAdmin={hasPlatformAdminAccess(bootstrap.session)}
           onSignOut={() => void signOut()}
         />
       </LegacyMigrationGate>

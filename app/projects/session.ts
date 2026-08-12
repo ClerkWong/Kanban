@@ -73,6 +73,12 @@ export function hasPlatformAdminAccess(session: RuntimeSession): boolean {
   return administrativeWorkspaces(session).length > 0;
 }
 
+/** 日曆讀取用的 workspace：優先取管理範圍，否則退回使用者所屬的第一個 workspace
+ *  （project owner 是 workspace member，實際可見範圍由 Worker 依 D1 manager 角色收斂）。 */
+export function calendarWorkspaceId(session: RuntimeSession): string {
+  return (administrativeWorkspaces(session)[0] ?? session.workspaces[0])?.workspaceId ?? "";
+}
+
 /** Validates the replacement as a live personal token before asking the
  * server to revoke the currently authenticated legacy shared token. */
 export async function replaceLegacyToken(

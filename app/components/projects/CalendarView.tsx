@@ -27,12 +27,14 @@ export function CalendarView({
   workspaceId,
   month,
   userName,
+  showAdmin,
   onSignOut,
 }: {
   config: SyncConfig;
   workspaceId: string;
   month: string;
   userName: string;
+  showAdmin: boolean;
   onSignOut: () => void;
 }) {
   const [state, setState] = useState<CalendarLoadState>({ kind: "loading" });
@@ -65,7 +67,8 @@ export function CalendarView({
       <WorkspaceEntryNav
         current="calendar"
         userName={userName}
-        showAdmin
+        showAdmin={showAdmin}
+        showCalendar
         onSignOut={onSignOut}
       />
 
