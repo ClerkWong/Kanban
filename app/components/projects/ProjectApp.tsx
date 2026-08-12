@@ -256,13 +256,19 @@ export function ProjectApp({
   if (route.kind === "calendar") {
     const workspaceId = administrativeWorkspaces(bootstrap.session)[0]?.workspaceId ?? "";
     return (
-      <CalendarView
+      <LegacyMigrationGate
         config={bootstrap.config}
-        workspaceId={workspaceId}
-        month={route.month ?? currentMonth()}
-        userName={bootstrap.session.user.displayName}
-        onSignOut={() => void signOut()}
-      />
+        session={bootstrap.session}
+        projects={bootstrap.projects}
+      >
+        <CalendarView
+          config={bootstrap.config}
+          workspaceId={workspaceId}
+          month={route.month ?? currentMonth()}
+          userName={bootstrap.session.user.displayName}
+          onSignOut={() => void signOut()}
+        />
+      </LegacyMigrationGate>
     );
   }
   return (

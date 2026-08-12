@@ -97,9 +97,9 @@ function CalendarBody({ month, data }: { month: string; data: CalendarData }) {
   const load = assigneeLoad(data.scheduled, data.assignees);
   // 離開 workspace 的成員不在目錄中。沿用 CardItem.tsx 既有的
   // 「已離開 (短ID)」格式，避免同一位使用者在日曆與看板呈現不一致的名稱。
+  const assigneeNames = new Map(data.assignees.map((entry) => [entry.userId, entry.displayName]));
   const nameOf = (userId: string) =>
-    data.assignees.find((entry) => entry.userId === userId)?.displayName
-      ?? `已離開 (${userId.slice(0, 8)})`;
+    assigneeNames.get(userId) ?? `已離開 (${userId.slice(0, 8)})`;
 
   return (
     <>
