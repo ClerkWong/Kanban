@@ -10,6 +10,8 @@
 //   docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md
 //     "Shared API and model decisions" (canonical type names)
 
+import type { ServiceClass } from "../board-model";
+
 /** Workspace-level role. Governs workspace administration only -- see
  * §7.3: a workspace role must never auto-grant Project content permission.
  * Workspace admins/owners only gain Project access by becoming a
@@ -72,6 +74,31 @@ export type BoardMeta = {
   updatedAt: string;
   archivedAt: string | null;
   archivedBy: string | null;
+};
+
+/** 日曆檢視的卡片投影；刻意不含描述、checklist、附件與阻塞原因。 */
+export type CalendarCard = {
+  cardId: string;
+  title: string;
+  /** date-only `YYYY-MM-DD`；未排程卡為空字串。 */
+  dueDate: string;
+  assigneeUserIds: string[];
+  projectId: string;
+  projectName: string;
+  boardId: string;
+  boardName: string;
+  blocked: boolean;
+  serviceClass: ServiceClass;
+};
+
+export type CalendarData = {
+  month: string;
+  scope: "workspace" | "owned_projects";
+  scheduled: CalendarCard[];
+  unscheduled: CalendarCard[];
+  unscheduledTruncated: boolean;
+  boardsTruncated: boolean;
+  assignees: Array<{ userId: string; displayName: string }>;
 };
 
 /** One row of the caller's "我的專案" list. `GET /projects` only returns the

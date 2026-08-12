@@ -15,6 +15,7 @@ import type {
 export type ProjectRoute =
   | { kind: "projects" }
   | { kind: "admin" }
+  | { kind: "calendar"; month: string | null }
   | { kind: "project"; projectId: string }
   | { kind: "board"; projectId: string; boardId: string };
 
@@ -29,6 +30,14 @@ export function parseProjectHash(hash: string): ProjectRoute | null {
   const path = hash.replace(/^#/, "").replace(/^\/+|\/+$/g, "");
   if (!path || path === "projects") return { kind: "projects" };
   if (path === "admin") return { kind: "admin" };
+  if (path === "calendar" || path.startsWith("calendar?")) {
+    const query = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
+    const month = new URLSearchParams(query).get("month");
+    return {
+      kind: "calendar",
+      month: month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : null,
+    };
+  }
 
   const segments = path.split("/");
   if (
@@ -57,6 +66,9 @@ export function parseProjectHash(hash: string): ProjectRoute | null {
 export function serializeProjectRoute(route: ProjectRoute): string {
   if (route.kind === "projects") return "#/projects";
   if (route.kind === "admin") return "#/admin";
+  if (route.kind === "calendar") {
+    return route.month ? `#/calendar?month=${route.month}` : "#/calendar";
+  }
   if (route.kind === "project") return `#/projects/${route.projectId}`;
   return `#/projects/${route.projectId}/boards/${route.boardId}`;
 }
@@ -69,6 +81,9 @@ export function resolveAuthorizedRoute(
 ): ProjectRoute {
   if (route?.kind === "projects") return route;
   if (route?.kind === "admin") {
+    return allowAdmin ? route : { kind: "projects" };
+  }
+  if (route?.kind === "calendar") {
     return allowAdmin ? route : { kind: "projects" };
   }
   if (

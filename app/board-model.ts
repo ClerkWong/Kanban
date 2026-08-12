@@ -1314,7 +1314,7 @@ function normalizeWipLimit(value: unknown): number | null {
   return clamp(numberValue, 1, 99);
 }
 
-function isServiceClass(value: unknown): value is ServiceClass {
+export function isServiceClass(value: unknown): value is ServiceClass {
   return (SERVICE_CLASSES as readonly string[]).includes(value as string);
 }
 

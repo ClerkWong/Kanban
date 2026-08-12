@@ -1,4 +1,4 @@
-import { parsePersistedBoard, type BoardState } from "../board-model";
+import { isServiceClass, parsePersistedBoard, type BoardState } from "../board-model";
 import { normalizeBaseUrl, type SyncConfig } from "../sync/config";
 import {
   isProjectRole,
@@ -17,6 +17,8 @@ import type {
   ActivityLogEntry,
   BoardContext,
   BoardMeta,
+  CalendarCard,
+  CalendarData,
   Project,
   ProjectRole,
   ProjectSummary,
@@ -676,6 +678,74 @@ export async function listAdminUserProjects(
     throw invalidResponse("讀取使用者參與的專案");
   }
   return memberships as AdminUserProjectMembership[];
+}
+
+function parseCalendarCard(value: unknown): CalendarCard | null {
+  const raw = asRecord(value);
+  if (!raw) return null;
+  const cardId = typeof raw.cardId === "string" ? raw.cardId : "";
+  const title = typeof raw.title === "string" ? raw.title : "";
+  const dueDate = typeof raw.dueDate === "string" ? raw.dueDate : "";
+  const projectId = typeof raw.projectId === "string" ? raw.projectId : "";
+  const projectName = typeof raw.projectName === "string" ? raw.projectName : "";
+  const boardId = typeof raw.boardId === "string" ? raw.boardId : "";
+  const boardName = typeof raw.boardName === "string" ? raw.boardName : "";
+  if (!cardId || !title || !projectId || !boardId) return null;
+  if (!isServiceClass(raw.serviceClass)) return null;
+  const assignees = Array.isArray(raw.assigneeUserIds)
+    ? raw.assigneeUserIds.filter((id): id is string => typeof id === "string")
+    : null;
+  if (!assignees) return null;
+  return {
+    cardId, title, dueDate,
+    assigneeUserIds: assignees,
+    projectId, projectName, boardId, boardName,
+    blocked: raw.blocked === true,
+    serviceClass: raw.serviceClass,
+  };
+}
+
+function parseCalendarCardList(value: unknown, operation: string): CalendarCard[] {
+  if (!Array.isArray(value)) throw invalidResponse(operation);
+  const cards = value.map(parseCalendarCard);
+  if (cards.some((card) => card === null)) throw invalidResponse(operation);
+  return cards as CalendarCard[];
+}
+
+export async function getCalendar(
+  config: SyncConfig,
+  workspaceId: string,
+  month: string,
+): Promise<CalendarData> {
+  assertResourceId(workspaceId, "workspace_id");
+  const operation = "讀取日曆";
+  const query = new URLSearchParams({ workspaceId, month });
+  const raw = asRecord(await requestJson(config, `/calendar?${query}`, operation));
+  if (!raw) throw invalidResponse(operation);
+  const scope = raw.scope === "workspace" || raw.scope === "owned_projects"
+    ? raw.scope
+    : null;
+  if (typeof raw.month !== "string" || !scope) throw invalidResponse(operation);
+  const assignees = Array.isArray(raw.assignees)
+    ? raw.assignees.map((entry) => {
+        const row = asRecord(entry);
+        return row && typeof row.userId === "string" && typeof row.displayName === "string"
+          ? { userId: row.userId, displayName: row.displayName }
+          : null;
+      })
+    : null;
+  if (!assignees || assignees.some((entry) => entry === null)) {
+    throw invalidResponse(operation);
+  }
+  return {
+    month: raw.month,
+    scope,
+    scheduled: parseCalendarCardList(raw.scheduled, operation),
+    unscheduled: parseCalendarCardList(raw.unscheduled, operation),
+    unscheduledTruncated: raw.unscheduledTruncated === true,
+    boardsTruncated: raw.boardsTruncated === true,
+    assignees: assignees as Array<{ userId: string; displayName: string }>,
+  };
 }
 
 async function changeAdminProjectStatus(

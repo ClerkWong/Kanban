@@ -250,6 +250,12 @@ export function ProjectApp({
       </LegacyMigrationGate>
     );
   }
+  if (route.kind === "calendar") {
+    // TODO(calendar-view-v1 Task 5): render the real CalendarView here; this
+    // placeholder only keeps ProjectRoute's new "calendar" member from
+    // reaching ProjectRouteView (which still assumes project/board routes).
+    return <LoadingState message="日曆檢視即將推出。" />;
+  }
   return (
     <LegacyMigrationGate
       config={bootstrap.config}
@@ -284,7 +290,7 @@ function ProjectRouteView({
   onProjectsChanged,
 }: {
   config: SyncConfig;
-  route: Exclude<ProjectRoute, { kind: "projects" } | { kind: "admin" }>;
+  route: Exclude<ProjectRoute, { kind: "projects" } | { kind: "admin" } | { kind: "calendar" }>;
   enableServiceWorker: boolean;
   appConfigUrl: string;
   onProjectsChanged: () => void;

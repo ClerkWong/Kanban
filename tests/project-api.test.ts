@@ -8,6 +8,7 @@ import {
   archiveAdminProject,
   createProject,
   getBoard,
+  getCalendar,
   getProject,
   getProjectSummary,
   listBoards,
@@ -586,6 +587,97 @@ test("listAdminUserProjects rejects missing memberships or unknown role/status v
     });
     await assert.rejects(
       () => listAdminUserProjects(config, context.workspaceId, userId),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+function calendarCard(overrides: Record<string, unknown> = {}) {
+  return {
+    cardId: "card-1",
+    title: "撰寫報告",
+    dueDate: "2026-08-15",
+    assigneeUserIds: [userId],
+    projectId: context.projectId,
+    projectName: "Alpha",
+    boardId: context.boardId,
+    boardName: "Roadmap",
+    blocked: false,
+    serviceClass: "standard",
+    ...overrides,
+  };
+}
+
+test("getCalendar parses scheduled/unscheduled cards, flags, and assignees from a GET request", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; method: string }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ url: String(input), method: init?.method ?? "GET" });
+    return json({
+      month: "2026-08",
+      scope: "workspace",
+      scheduled: [calendarCard()],
+      unscheduled: [calendarCard({ cardId: "card-2", dueDate: "", blocked: true, serviceClass: "expedite" })],
+      unscheduledTruncated: false,
+      boardsTruncated: true,
+      assignees: [{ userId, displayName: "Manager" }],
+      requestId: "r",
+    });
+  };
+  try {
+    const calendar = await getCalendar(config, context.workspaceId, "2026-08");
+    assert.equal(calendar.month, "2026-08");
+    assert.equal(calendar.scope, "workspace");
+    assert.equal(calendar.scheduled.length, 1);
+    assert.deepEqual(calendar.scheduled[0], calendarCard());
+    assert.equal(calendar.unscheduled.length, 1);
+    assert.equal(calendar.unscheduled[0].dueDate, "");
+    assert.equal(calendar.unscheduled[0].blocked, true);
+    assert.equal(calendar.unscheduledTruncated, false);
+    assert.equal(calendar.boardsTruncated, true);
+    assert.deepEqual(calendar.assignees, [{ userId, displayName: "Manager" }]);
+    assert.deepEqual(requests, [{
+      url: `https://sync.example/calendar?workspaceId=${context.workspaceId}&month=2026-08`,
+      method: "GET",
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("getCalendar rejects a response missing scheduled or carrying an unknown serviceClass", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => json({
+      month: "2026-08",
+      scope: "workspace",
+      unscheduled: [],
+      unscheduledTruncated: false,
+      boardsTruncated: false,
+      assignees: [],
+      requestId: "r",
+    });
+    await assert.rejects(
+      () => getCalendar(config, context.workspaceId, "2026-08"),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+
+    globalThis.fetch = async () => json({
+      month: "2026-08",
+      scope: "workspace",
+      scheduled: [calendarCard({ serviceClass: "urgent" })],
+      unscheduled: [],
+      unscheduledTruncated: false,
+      boardsTruncated: false,
+      assignees: [],
+      requestId: "r",
+    });
+    await assert.rejects(
+      () => getCalendar(config, context.workspaceId, "2026-08"),
       (error: unknown) =>
         error instanceof ApiClientError && error.kind === "invalid_response",
     );

@@ -67,6 +67,37 @@ test("platform administration route requires an explicit workspace capability", 
   );
 });
 
+test("calendar hash route parses an optional month query and falls back on invalid formats", () => {
+  assert.deepEqual(parseProjectHash("#/calendar"), { kind: "calendar", month: null });
+  assert.deepEqual(
+    parseProjectHash("#/calendar?month=2026-08"),
+    { kind: "calendar", month: "2026-08" },
+  );
+  assert.deepEqual(
+    parseProjectHash("#/calendar?month=2026-13"),
+    { kind: "calendar", month: null },
+  );
+});
+
+test("calendar route serializes with or without a month query", () => {
+  assert.equal(
+    serializeProjectRoute({ kind: "calendar", month: "2026-08" }),
+    "#/calendar?month=2026-08",
+  );
+  assert.equal(serializeProjectRoute({ kind: "calendar", month: null }), "#/calendar");
+});
+
+test("calendar route requires an explicit workspace capability like admin", () => {
+  assert.deepEqual(
+    resolveAuthorizedRoute({ kind: "calendar", month: null }, projects, null, true),
+    { kind: "calendar", month: null },
+  );
+  assert.deepEqual(
+    resolveAuthorizedRoute({ kind: "calendar", month: "2026-08" }, projects, null, false),
+    { kind: "projects" },
+  );
+});
+
 test("unauthorized or malformed routes fall back to a valid recent context, then projects", () => {
   const lastContext = { workspaceId, projectId, boardId };
   assert.deepEqual(
