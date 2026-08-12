@@ -537,7 +537,18 @@ test("listAdminUserProjects fetches a user's project memberships scoped by works
   }
 });
 
-test("listAdminUserProjects rejects missing memberships or unknown role values", async () => {
+test("listAdminUserProjects accepts an empty memberships array", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => json({ userId, memberships: [], requestId: "r" });
+  try {
+    const memberships = await listAdminUserProjects(config, context.workspaceId, userId);
+    assert.deepEqual(memberships, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("listAdminUserProjects rejects missing memberships or unknown role/status values", async () => {
   const originalFetch = globalThis.fetch;
   try {
     globalThis.fetch = async () => json({ userId, requestId: "r" });
@@ -554,6 +565,22 @@ test("listAdminUserProjects rejects missing memberships or unknown role values",
         projectName: "專案 A",
         role: "editor",
         status: "active",
+      }],
+      requestId: "r",
+    });
+    await assert.rejects(
+      () => listAdminUserProjects(config, context.workspaceId, userId),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+
+    globalThis.fetch = async () => json({
+      userId,
+      memberships: [{
+        projectId: context.projectId,
+        projectName: "專案 A",
+        role: "owner",
+        status: "pending",
       }],
       requestId: "r",
     });

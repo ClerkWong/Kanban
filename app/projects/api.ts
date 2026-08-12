@@ -351,8 +351,8 @@ function parseAdminUserProjectMembership(
   const projectName = typeof raw.projectName === "string" ? raw.projectName : "";
   const { role, status } = raw;
   if (!projectId || !projectName) return null;
-  if (role !== "owner" && role !== "member" && role !== "viewer") return null;
-  if (status !== "active" && status !== "archived") return null;
+  if (!isProjectRole(role)) return null;
+  if (!isResourceStatus(status)) return null;
   return { projectId, projectName, role, status };
 }
 
