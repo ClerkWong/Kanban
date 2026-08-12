@@ -48,6 +48,7 @@
 | iOS/Android | `1.1.0 (5)` 已部署實機，未完成正式分發 | 最新資產已覆蓋安裝並啟動於 iPhone 12 Pro Max 與 Pixel 9a；兩台裝置皆回報 build 5，尚缺完整功能 smoke、TestFlight／internal track 與正式簽章分發 |
 | 流動度量與服務類別 v1 | Worker 已部署 staging，待 Web Beta 發布與驗收 | Card schema v7：欄位進入／開工時間、累計阻塞、服務類別與加急 WIP；卡面老化與流動報表；Worker 驗證與 summary 流動度量。已推送 `3329721`；staging Worker version `8070b48c-4ee6-4544-a069-b7a1f23f54be`，無 token／錯 token 均回 401；Web Beta v16 待從 Sites 發布 |
 | 多看板與看板指派 v1 | 已部署 staging，待人工驗收 | migration `0005` 已套用 staging D1（5 commands）；staging Worker version `f132bf43-4d3f-4b62-94d7-af612fb47cf5`，無 token／錯 token 對 `/me`、`/projects` 均回 401；Web Beta version `c9646e12-249d-40ae-a523-17fb70c7dedd`，Access 仍正常擋下未授權請求（302）。migration `0005_multi_board_assignments.sql`：移除 `0003` 單看板唯一索引，新增 `project_member_boards`；owner-only 指派 API（`GET`／`PUT /projects/:projectId/members/:userId/boards`，每位 member 上限 50 個看板，空陣列＝回到 fallback，寫入 `member.boards_assigned` audit）；member 依指派列決定可見 Board，完全沒有指派列時 fallback 到主要看板（active 看板中 `updated_at DESC, id DESC` 第一個），owner／legacy viewer 恆全可見；member 對未可見 Board 的內容、附件與 Log 一律 404，`listBoards`、summary 與 `listProjects` 代表看板均已收斂到可見集合；owner 可在專案總覽新增看板，member 面板以 checkbox 群指派（樂觀更新），單一可見看板時自動落板且不顯示切換器，被移除指派時顯示可關閉 banner |
+| 平台管理指派專案成員 v1 | 已實作，待 staging 部署與驗收 | workspace owner／admin 可從使用者管理指派任何專案的成員與角色；放寬只作用於 `PUT`／`DELETE /projects/:projectId/members/:userId`，其餘 manage 操作不變；新增 admin-only `GET /admin/users/:userId/projects`；專案外 admin 的變更在 Activity Log 標 `via: "platform_admin"` |
 
 ### 已完成的驗證
 
@@ -329,6 +330,13 @@ git diff --check
 - [ ] 未設定指派的既有 member 升級後仍能正常使用主要看板。
 - [ ] member 的報表只聚合可見看板；owner 聚合全部。
 - [ ] 移除指派後該 member 的 client 停止重試並顯示可理解訊息。
+- [ ] workspace admin 可從使用者管理把使用者加入專案、改角色、移除。
+- [ ] admin 自我指派成功，且 Activity Log 可辨識（actor 與 target 相同）。
+- [ ] 專案外 admin 的 membership 變更在 Activity Log 標 `via: "platform_admin"`；本身是專案 owner 時不標。
+- [ ] 移除最後一位 owner 顯示「此專案至少需要一位 owner，請先指派其他 owner。」而非泛用訊息。
+- [ ] archived 專案的既有 membership 唯讀顯示；active 專案可指派。
+- [ ] 變更後使用者列的「參與專案」件數更新。
+- [ ] 放寬未外溢：未加入專案的 admin 對該專案的看板內容、附件與 Log 存取行為不變。
 
 ### 3a 看板同步
 
@@ -503,6 +511,20 @@ git diff --check
   cutover 放在同一個不可拆部署。
 - 若需要已安裝 App 即時更新 title，設計具完整性驗證、cache fallback 與版本欄位的
   遠端設定服務。
+- `/admin/users` 家族目前先解析路徑參數（`parseUuid`）才檢查 `requireWorkspaceAdmin`，
+  非 admin 使用者可用 400（格式錯誤）與 404（找不到）的差異，探知 `/password`、
+  `/projects` 等子路徑是否存在；屬既有模式、非本次新增，建議一併調整驗證順序。
+- 平台管理指派專案成員的放寬路徑（`authorizeMembershipManagement`）目前只有讀碼確認
+  或審查時的臨時手動測試，缺少正式 automated test 釘住：跨 workspace 隔離
+  （workspace A 的 admin 不能指派 workspace B 專案成員）、混合身分格（同一使用者是
+  專案 contributor 又是 workspace owner／admin，應放行且標 `via: "platform_admin"`）、
+  以及 workspace owner（非 admin）身分的放寬路徑，目前只用 admin persona 測過。
+- 規格 §6「放寬不外溢」目前只有 1 個 Worker 測試斷言（`GET` 看板詳情對未加入專案的
+  admin 仍回 404）；`PUT` 看板內容、附件與 Activity Log 端點尚未有對應的 admin-404
+  斷言，日後若不慎把放寬套用到這些端點不會被現有測試發現。
+- `AdminUserProjectsModal` 初次載入失敗時，「讀取中…」與錯誤訊息會同時顯示
+  （`memberships` 維持 `null` 觸發讀取中文案，`error` 已另外設定）；應在載入失敗時
+  改用專屬的失敗狀態，不再顯示讀取中。
 
 ## 行動版發行工作
 
