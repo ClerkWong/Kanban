@@ -21,6 +21,7 @@ D1、附件存入 R2，供多裝置共用。
 - 選用的 D1 看板同步與 R2 附件同步；Bearer token 只由使用者在裝置端輸入。
 - PWA manifest、service worker、隱私與支援頁。
 - 卡片欄位停留老化、Cycle Time／阻塞時長／流動效率流動報表、服務類別與加急 WIP 上限。
+- 管理者專屬的跨專案日曆檢視：依截止日呈現本月任務、未排程池與每人件數（桌面專用）。
 
 ## 架構
 
@@ -219,6 +220,8 @@ create 只從隱藏提示或 stdin 讀取明文，list 不查詢 token hash，pr
 - workspace owner／admin 可從平台管理的使用者管理指派任何專案的成員，包含把自己加入
   專案——這會取得該專案的工作內容讀取權，是刻意接受的權限升級路徑，以 Activity Log
   的 `via: "platform_admin"` 稽核而非技術阻擋。
+- workspace owner／admin 可透過日曆端點讀取整個 workspace 所有 active 專案的卡片標題、
+  截止日與指派人；放寬限定在該端點，board content、附件與 Activity Log 仍需加入專案才能讀。
 
 ## 相關文件
 

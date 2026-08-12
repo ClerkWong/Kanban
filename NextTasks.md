@@ -49,6 +49,7 @@
 | 流動度量與服務類別 v1 | Worker 已部署 staging，待 Web Beta 發布與驗收 | Card schema v7：欄位進入／開工時間、累計阻塞、服務類別與加急 WIP；卡面老化與流動報表；Worker 驗證與 summary 流動度量。已推送 `3329721`；staging Worker version `8070b48c-4ee6-4544-a069-b7a1f23f54be`，無 token／錯 token 均回 401；Web Beta v16 待從 Sites 發布 |
 | 多看板與看板指派 v1 | 已部署 staging，待人工驗收 | migration `0005` 已套用 staging D1（5 commands）；staging Worker version `f132bf43-4d3f-4b62-94d7-af612fb47cf5`，無 token／錯 token 對 `/me`、`/projects` 均回 401；Web Beta version `c9646e12-249d-40ae-a523-17fb70c7dedd`，Access 仍正常擋下未授權請求（302）。migration `0005_multi_board_assignments.sql`：移除 `0003` 單看板唯一索引，新增 `project_member_boards`；owner-only 指派 API（`GET`／`PUT /projects/:projectId/members/:userId/boards`，每位 member 上限 50 個看板，空陣列＝回到 fallback，寫入 `member.boards_assigned` audit）；member 依指派列決定可見 Board，完全沒有指派列時 fallback 到主要看板（active 看板中 `updated_at DESC, id DESC` 第一個），owner／legacy viewer 恆全可見；member 對未可見 Board 的內容、附件與 Log 一律 404，`listBoards`、summary 與 `listProjects` 代表看板均已收斂到可見集合；owner 可在專案總覽新增看板，member 面板以 checkbox 群指派（樂觀更新），單一可見看板時自動落板且不顯示切換器，被移除指派時顯示可關閉 banner |
 | 平台管理指派專案成員 v1 | 已部署 staging，待人工驗收 | 已合入 main（`cb44d55`）；staging Worker version `40e86dc5-6393-479a-a32b-f6675f86d5a5`，無 token 對 `/me` 與 `/admin/users` 均回 401；Web Beta version `e588481e-e4cf-4006-8790-47dd8c9cc25d`，Access 仍正常擋下未授權請求（302）。無 D1 migration。workspace owner／admin 可從使用者管理指派任何專案的成員與角色；放寬只作用於 `PUT`／`DELETE /projects/:projectId/members/:userId`，其餘 manage 操作不變；新增 admin-only `GET /admin/users/:userId/projects`；專案外 admin 的變更在 Activity Log 標 `via: "platform_admin"` |
+| 跨專案日曆檢視 v1 | 已實作，待 staging 部署與驗收 | 管理者專屬 `GET /calendar?workspaceId=&month=`；workspace owner／admin 得到全 workspace active 專案、Project owner 得到他 own 的、其餘 403；只回未完成卡與 active 看板，不含描述／checklist／附件／阻塞原因；卡片以 SQLite `json_each` 在 SQL 層過濾（D1 已實測支援）；未排程池上限 200、看板上限 50，超出以旗標明示；v1 純檢視、桌面專用（< 900 px 顯示引導訊息） |
 
 ### 已完成的驗證
 
@@ -371,6 +372,18 @@ git diff --check
 - [ ] UTC 月界線在 Asia/Taipei 顯示正確。
 - [ ] v1/v2/v3 舊資料 migration 結果可接受。
 
+### 跨專案日曆檢視
+
+- [ ] workspace admin 的日曆含全 workspace 所有 active 專案的本月卡片。
+- [ ] Project owner 只看到他 own 的專案；member 與 viewer 開 `#/calendar` 被導回「我的專案」。
+- [ ] member 直接呼叫 `/calendar` 端點得到 403，無法藉此讀取未指派看板的卡片。
+- [ ] 逾期、阻塞、加急三種卡片同時有文字與樣式區隔。
+- [ ] 未排程池顯示無截止日的卡片；超過 200 筆時明示已截斷。
+- [ ] 側欄的每人件數與未指派卡數正確。
+- [ ] 月份切換更新 URL，且以 `#/calendar?month=YYYY-MM` 直接開啟可重載該月。
+- [ ] 已完成卡、archived 專案與 archived 看板的卡片不出現。
+- [ ] 視窗縮到 900 px 以下顯示引導訊息而非破版月曆。
+
 ### Web/PWA 與客製設定
 
 - [x] private Beta v15 仍是 owner-only custom access。
@@ -525,6 +538,24 @@ git diff --check
 - `AdminUserProjectsModal` 初次載入失敗時，「讀取中…」與錯誤訊息會同時顯示
   （`memberships` 維持 `null` 觸發讀取中文案，`error` 已另外設定）；應在載入失敗時
   改用專屬的失敗狀態，不再顯示讀取中。
+- 日曆側欄「每人本月件數」同件數 tie-break 排序沿用 `assigneeLoad`
+  （`app/projects/calendar-model.ts`）內部裸短 ID 的 `localeCompare`，但畫面改用
+  `nameOf` 加上「已離開 (短ID)」前綴顯示（`CalendarView.tsx`）；同件數且其中至少一人
+  已離開 workspace 時，顯示順序可能與畫面文字的字母序不完全對齊。Task 4／5 審查已
+  兩次判定維持現狀（純外觀，不影響件數與資料正確性），記錄於此以免長期遺忘；如需
+  修正應在呼叫端處理，不動 `assigneeLoad` 已定案的排序邏輯本身。
+- `worker-sync/src/calendar.ts` 的 `MAX_SCHEDULED = 5000` 只是防禦性上限，規格只要求
+  `unscheduledTruncated`／`boardsTruncated` 兩個旗標，未涵蓋 scheduled 卡量；50 個看板
+  皆逼近該上限的極端資料下會靜默截斷本月卡片且不提示。目前規模下發生機率低，應評估
+  是否補一個對應旗標或告警，避免未來資料量成長後無聲遺漏卡片。
+- `resolveCalendarScope`（`worker-sync/src/calendar.ts`）中 workspace admin／owner 但該
+  workspace 無任何 active 專案時應回 200 並帶空的 `scheduled`／`unscheduled`；此路徑
+  目前無對應 Worker runtime test 鎖住，建議補上，避免日後改動把「空結果」與
+  403/404 邊界弄混。
+- 日曆 top-50 看板依 `boards.updated_at DESC, boards.id DESC` 排序，現有測試只驗證
+  「取滿 50 個、distinct board 數為 50」，未驗證「取的確實是最近更新的 50 個」；建議
+  補一個混合新舊 `updated_at` 的測試，斷言被截斷排除的是較舊看板，鎖住排序規則本身
+  而非只鎖數量。
 
 ## 行動版發行工作
 
@@ -558,6 +589,9 @@ git diff --check
 - JSON title 可在 Web 啟動時重新讀取；原生已安裝 App 的 bundled JSON 與桌面名稱
   仍受 App build 限制。
 - 本機自動化通過不能取代 staging 雙裝置、實機與 production smoke test。
+- 跨專案日曆以卡片 `completedAt` 是否為 null 判斷是否顯示；pre-v7（無 `completedAt`
+  欄位）的舊 board 資料會被視為未完成卡而出現在日曆中，此為先前 schema 決議下已知的
+  資料品質現象，非本次功能缺陷，亦不影響月報既有的 `completedAt` 計算。
 
 ## 剩餘工作建議時程
 
