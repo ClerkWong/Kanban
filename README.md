@@ -222,6 +222,9 @@ create 只從隱藏提示或 stdin 讀取明文，list 不查詢 token hash，pr
   的 `via: "platform_admin"` 稽核而非技術阻擋。
 - workspace owner／admin 可透過日曆端點讀取整個 workspace 所有 active 專案的卡片標題、
   截止日與指派人；放寬限定在該端點，board content、附件與 Activity Log 仍需加入專案才能讀。
+- 上述兩項放寬疊加後，workspace admin 可以先用日曆看見某專案有哪些工作，再自我指派進入該
+  專案讀取完整內容。日曆讀取本身不留稽核紀錄，自我指派會留 `via: "platform_admin"`；這是
+  刻意接受的管理者能力範圍，而非技術阻擋。
 
 ## 相關文件
 
