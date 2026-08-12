@@ -14,13 +14,13 @@ def releaseTaskRequested = gradle.startParameter.taskNames.any {
 }
 
 android {
-    namespace = "com.wongchambers.kanban"
+    namespace = "com.wongchamber.WongKanban"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.wongchambers.kanban"
+        applicationId "com.wongchamber.WongKanban"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 6
+        versionCode 7
         versionName "1.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">定恆人工智能</string>
     <string name="title_activity_main">定恆人工智能</string>
-    <string name="package_name">com.wongchambers.kanban</string>
-    <string name="custom_url_scheme">com.wongchambers.kanban</string>
+    <string name="package_name">com.wongchamber.WongKanban</string>
+    <string name="custom_url_scheme">com.wongchamber.WongKanban</string>
 </resources>

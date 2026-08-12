@@ -1,4 +1,4 @@
-package com.wongchambers.kanban;
+package com.wongchamber.WongKanban;
 
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;

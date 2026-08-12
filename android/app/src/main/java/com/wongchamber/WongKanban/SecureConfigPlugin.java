@@ -1,4 +1,4 @@
-package com.wongchambers.kanban;
+package com.wongchamber.WongKanban;
 
 import android.content.Context;
 import android.content.SharedPreferences;
