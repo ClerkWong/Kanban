@@ -376,6 +376,8 @@ git diff --check
 
 - [ ] workspace admin 的日曆含全 workspace 所有 active 專案的本月卡片。
 - [ ] Project owner 只看到他 own 的專案；member 與 viewer 開 `#/calendar` 被導回「我的專案」。
+- [ ] 以非 admin 的 Project owner 帳號登入，導覽列出現日曆入口（但沒有「平台管理」入口），
+      且日曆只含他 own 的 active 專案。
 - [ ] member 直接呼叫 `/calendar` 端點得到 403，無法藉此讀取未指派看板的卡片。
 - [ ] 逾期、阻塞、加急三種卡片同時有文字與樣式區隔。
 - [ ] 未排程池顯示無截止日的卡片；超過 200 筆時明示已截斷。
@@ -561,7 +563,18 @@ git diff --check
   專案、或單月出現 100 位以上不同指派人時，整個日曆請求會直接失敗（fail loud，不會靜默
   少資料）。目前規模安全，建議與上一則 `MAX_SCHEDULED` 護欄併為同一件處理：分批查詢或
   明確上限＋旗標。
-- 日曆的 workspace 範圍讀取（admin 可看到全 workspace 所有 active 專案的卡片標題、
+- 日曆入口的可見判斷（`canViewCalendar`）看的是跨 workspace 的全部 project memberships，
+  但送出請求用的 workspace 由 `calendarWorkspaceId` 挑（admin workspace 優先，否則
+  `workspaces[0]`）。使用者同時屬於多個 workspace、且他 own 的專案不在被挑中的那個
+  workspace 時，會出現「導覽看得到日曆入口，但 API 回 403」——畫面顯示權限不足訊息，
+  不會壞版也不洩漏資料。目前部署只有單一 default workspace（migration 只建一個），
+  此路徑不可達，規格 §6 亦明文排除跨 workspace；若日後真的支援多 workspace，
+  必須讓 `ProjectSummary` 帶 `workspaceId` 並改成依 owned 專案反推 workspace。
+- 日曆 SQL 的 `cards.type = 'object'` 守門只能過濾「`$.cards` 底下的成員」是 scalar 的情形；
+  若 `$.cards` 本身是字串，`json_each` 在展開階段就會拋 malformed JSON，守門救不了。
+  該形狀目前由寫入端 `isBoardPayload`（`worker-sync/src/logic.ts`，要求 cards 為非陣列物件）
+  以 400 擋下，createBoard／seed／migration 也都只產物件 map，因此不可達；記錄於此是因為
+  這條防線在寫入端而非讀取端，日後放寬 board payload 驗證時必須一併檢查日曆查詢。
   截止日與指派人）目前只在錯誤時寫 log，成功讀取不留任何可歸因的稽核紀錄；而
   「平台管理指派專案成員」的自我指派會留 `via: "platform_admin"`。兩者疊加的結果是
   「偵察無痕、加入留痕」。評估後不視為阻擋（放寬前 admin 已能經 `/admin` 家族列舉全部
