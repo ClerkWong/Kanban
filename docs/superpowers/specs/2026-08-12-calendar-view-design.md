@@ -98,16 +98,24 @@ v1 的目標是建立**資源 awareness**：管理者一眼看到本月已排定
 `buildProjectSummary` 的做法是把整份 board JSON 拉進 Worker 解析；跨專案聚合若照抄，
 20 個看板可能拉進 20 MB，慢且浪費記憶體。
 
-**首選做法**：以 SQLite 的 `json_each`／`json_extract` 在 SQL 層展開卡片並過濾月份與
+**做法**：以 SQLite 的 `json_each`／`json_extract` 在 SQL 層展開卡片並過濾月份與
 完成狀態，只回傳需要的欄位。
 
-**驗證關卡（實作時必須先做）**：以本機 D1 模擬環境確認 D1 支援 `json_each` 對
-`json_extract(data, '$.cards')` 的展開，且效能優於 Worker 內解析。**驗不過就退回**
-「Worker 內解析＋看板數上限」的保守做法，並在報告記錄實測結果。這是設計假設，不是
-已確認的事實，不得跳過驗證直接假設可行。
+**已實測確認（2026-08-12，remote staging D1）**：原先此處標為「必須驗證的設計假設」，
+現已有實證，不再是假設。在 staging D1 上對 `boards.data` 執行
 
-保守做法的上限：單次請求最多讀取 **50** 個看板，超出時回應加上 `boardsTruncated`
-旗標並在 UI 明示，不得靜默截斷。
+```sql
+SELECT json_extract(c.value, '$.title') FROM boards b, json_each(json_extract(b.data, '$.cards')) c
+WHERE b.id = ?
+```
+
+成功展開並過濾，16 張卡片查詢 `sql_duration_ms` 為 **2.6 ms**；同樣手法也用於展開
+`$.columns`（0.54 ms）。因此 D1 支援 `json_each` 對 board JSON 的展開，效能足夠，
+**採用 SQL 層過濾，不需要保守做法**。
+
+保留的保守上限：即使走 SQL 層過濾，仍對單次請求設 **50 個看板**上限，超出時回應加上
+`boardsTruncated` 旗標並在 UI 明示，不得靜默截斷。這是防止 workspace 規模成長後
+單一請求無界擴張的護欄，與查詢方式無關。
 
 ## 4. 畫面
 
@@ -144,7 +152,8 @@ v1 桌面專用。視窗寬度小於 **900 px** 時不渲染月曆，改顯示�
 - 未排程：`dueDate` 為空的卡片進入 `unscheduled`；超過 200 筆時 `unscheduledTruncated`
   為 true 且不靜默截斷。
 - 回應不含卡片描述、checklist、附件與阻塞原因。
-- `json_each` 驗證關卡的實測結果（通過或退回保守做法）必須記錄。
+- SQL 層過濾的正確性：`json_each` 展開後的月份與完成狀態過濾結果，與「Worker 內解析
+  同一份 board JSON」的結果一致（以同一組 fixture 交叉比對，防止 SQL 條件寫錯而靜默漏卡）。
 - 測試使用動態日期或明確注入的月份，不得硬編當月字串——沿用先前修掉時間炸彈的教訓。
 
 ## 6. 本次不包含
@@ -169,5 +178,5 @@ v1 桌面專用。視窗寬度小於 **900 px** 時不渲染月曆，改顯示�
 - [ ] 月份切換更新 URL 且可直接以 URL 重載指定月份。
 - [ ] 已完成卡、archived 專案與 archived 看板的卡片不出現。
 - [ ] 視窗寬度小於 900 px 時顯示引導訊息而非破版月曆。
-- [ ] `json_each` 驗證關卡已執行並記錄結果。
+- [ ] SQL 層過濾結果與 Worker 內解析的交叉比對一致；超過 50 個看板時 `boardsTruncated` 為 true 且 UI 明示。
 - [ ] `pnpm test`、`pnpm worker:test`、lint、typecheck、Web／mobile build 全綠。
