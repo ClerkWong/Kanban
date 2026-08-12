@@ -79,7 +79,7 @@ export function assigneeLoad(
       unassignedCount += 1;
       continue;
     }
-    for (const userId of card.assigneeUserIds) {
+    for (const userId of new Set(card.assigneeUserIds)) {
       counts.set(userId, (counts.get(userId) ?? 0) + 1);
     }
   }
@@ -90,7 +90,12 @@ export function assigneeLoad(
       displayName: names.get(userId) ?? userId.slice(0, 8),
       count,
     }))
-    .sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName, "zh-Hant"));
+    .sort(
+      (a, b) =>
+        b.count - a.count ||
+        a.displayName.localeCompare(b.displayName, "zh-Hant") ||
+        a.userId.localeCompare(b.userId),
+    );
   return { entries, unassignedCount };
 }
 
