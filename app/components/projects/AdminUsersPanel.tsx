@@ -11,6 +11,7 @@ import type { RuntimeSession } from "../../projects/session";
 import type { AdminUserSummary } from "../../projects/types";
 import { managementErrorMessage } from "../../projects/view-model";
 import type { SyncConfig } from "../../sync/config";
+import { AdminUserProjectsModal } from "./AdminUserProjectsModal";
 
 type AdministrativeWorkspace = RuntimeSession["workspaces"][number];
 
@@ -35,6 +36,7 @@ export function AdminUsersPanel({
   const [error, setError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<AdminUserSummary | null>(null);
+  const [assigning, setAssigning] = useState<AdminUserSummary | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
@@ -142,6 +144,13 @@ export function AdminUsersPanel({
               <button className="secondaryButton" type="button" onClick={() => setEditing(user)}>
                 管理
               </button>
+              <button
+                className="secondaryButton"
+                type="button"
+                onClick={() => setAssigning(user)}
+              >
+                專案
+              </button>
             </article>
           ))}
         </section>
@@ -162,6 +171,15 @@ export function AdminUsersPanel({
           user={editing}
           onClose={() => setEditing(null)}
           onSaved={() => setRefreshToken((value) => value + 1)}
+        />
+      )}
+      {assigning && (
+        <AdminUserProjectsModal
+          config={config}
+          workspaceId={workspaceId}
+          user={assigning}
+          onClose={() => setAssigning(null)}
+          onChanged={() => setRefreshToken((token) => token + 1)}
         />
       )}
     </>
