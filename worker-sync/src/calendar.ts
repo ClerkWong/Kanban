@@ -113,7 +113,11 @@ function toCalendarCard(row: CardRow): CalendarCard {
 
 /** 展開範圍內 active 專案的 active 看板；以 updated_at 取前 MAX_CALENDAR_BOARDS 個。
  *  卡片藏在 boards.data 的 JSON blob 裡，因此用 json_each 在 SQL 層展開與過濾——
- *  已實測 D1 支援（見規格 §3.1），避免把整份 board JSON 拉進 Worker。 */
+ *  已實測 D1 支援（見規格 §3.1），避免把整份 board JSON 拉進 Worker。
+ *  WHERE 另有 cards.type = 'object' 守門：json_each 展開出的成員若非物件（例如
+ *  $.cards 混入 scalar 值），對它求值的 json_extract 會噴 malformed JSON，這裡跳過
+ *  而不是讓整份日曆 500，與 boards.ts／board-diff.ts 讀取路徑「非物件卡片一律跳過」
+ *  的慣例一致。 */
 function cardQuery(projectPlaceholders: string, dueClause: string, limit: number): string {
   return `SELECT projects.id AS project_id, projects.name AS project_name,
                  boards.id AS board_id, boards.name AS board_name,
@@ -134,6 +138,7 @@ function cardQuery(projectPlaceholders: string, dueClause: string, limit: number
                   LIMIT ${MAX_CALENDAR_BOARDS}
                 )
             AND projects.status = 'active'
+            AND cards.type = 'object'
             AND json_extract(cards.value, '$.completedAt') IS NULL
             AND ${dueClause}
           ORDER BY due_date, projects.name COLLATE NOCASE, title

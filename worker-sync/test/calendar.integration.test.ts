@@ -761,4 +761,23 @@ describe("GET /calendar", () => {
     expect(fullBody.unscheduled).toHaveLength(200);
     expect(fullBody.unscheduledTruncated).toBe(false);
   });
+
+  // 全分支審查修正／必修 2：持有效 token 的 contributor 只要 PUT 一張 $.cards 底下混入
+  // scalar 成員（例如 "bad": "x"）的板，json_extract 對該成員求值就會噴 SQLite
+  // malformed JSON，讓整個 workspace 的 GET /calendar 500。驗證 cardQuery 新增的
+  // cards.type = 'object' 守門能跳過該成員，其餘正常卡片仍照常回傳 200。
+  it("skips a malformed non-object $.cards member instead of 500ing the whole request", async () => {
+    await insertWorkspaceMember(workspaceA, adminUserId, "admin");
+    await insertProject(calProjectAlpha, workspaceA, "Calendar Alpha", otherOwnerId);
+    await insertBoard(calBoardAlpha, calProjectAlpha, "Alpha Board", {
+      good: cardFixture({ id: "good", dueDate: `${TEST_MONTH}-14` }),
+      bad: "x",
+    });
+
+    const response = await dispatch(tokenFor(adminUserId), `/calendar?workspaceId=${workspaceA}&month=${TEST_MONTH}`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as CalendarResponseBody;
+    const allIds = [...body.scheduled, ...body.unscheduled].map((card) => card.cardId);
+    expect(allIds).toEqual(["good"]);
+  });
 });
