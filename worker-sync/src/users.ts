@@ -1,6 +1,11 @@
 import { AuthorizationError } from "./authorization";
 import type { ApiContext } from "./projects";
-import type { WorkspaceRole } from "./db-types";
+import {
+  toPublicProjectRole,
+  type ProjectRole,
+  type ResourceStatus,
+  type WorkspaceRole,
+} from "./db-types";
 import { json } from "./http";
 import { hashPassword, normalizeEmail, parsePassword } from "./passwords";
 import {
@@ -354,6 +359,40 @@ async function resetPassword(
   return json(200, { ok: true, requestId: context.requestId }, context.requestId);
 }
 
+type UserProjectRow = {
+  project_id: string;
+  project_name: string;
+  status: ResourceStatus;
+  role: ProjectRole;
+};
+
+async function listUserProjects(
+  context: ApiContext,
+  workspaceId: string,
+  userId: string,
+): Promise<Response> {
+  await requireWorkspaceAdmin(context, workspaceId);
+  await getTargetMembership(context, workspaceId, userId);
+  const result = await context.env.DB.prepare(
+    `SELECT projects.id AS project_id, projects.name AS project_name,
+            projects.status AS status, project_members.role AS role
+     FROM project_members
+     INNER JOIN projects ON projects.id = project_members.project_id
+     WHERE project_members.user_id = ? AND projects.workspace_id = ?
+     ORDER BY projects.name COLLATE NOCASE, projects.id`,
+  ).bind(userId, workspaceId).all<UserProjectRow>();
+  return json(200, {
+    userId,
+    memberships: result.results.map((row) => ({
+      projectId: row.project_id,
+      projectName: row.project_name,
+      role: toPublicProjectRole(row.role),
+      status: row.status,
+    })),
+    requestId: context.requestId,
+  }, context.requestId);
+}
+
 export async function handleUserRequest(context: ApiContext): Promise<Response | null> {
   const url = new URL(context.request.url);
   if (!url.pathname.startsWith("/admin/users")) return null;
@@ -366,7 +405,7 @@ export async function handleUserRequest(context: ApiContext): Promise<Response |
     return createUser(context);
   }
   const match = url.pathname.match(
-    /^\/admin\/users\/([0-9a-f-]+)(?:\/(password))?$/i,
+    /^\/admin\/users\/([0-9a-f-]+)(?:\/(password|projects))?$/i,
   );
   if (!match) return null;
   const userId = parseUuid(match[1], "user_id");
@@ -376,6 +415,9 @@ export async function handleUserRequest(context: ApiContext): Promise<Response |
   }
   if (match[2] === "password" && context.request.method === "POST") {
     return resetPassword(context, workspaceId, userId);
+  }
+  if (match[2] === "projects" && context.request.method === "GET") {
+    return listUserProjects(context, workspaceId, userId);
   }
   return null;
 }
