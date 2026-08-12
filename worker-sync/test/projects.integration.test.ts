@@ -14,11 +14,13 @@ const managerId = "10000000-0000-4000-8000-000000000002";
 const viewerId = "10000000-0000-4000-8000-000000000003";
 const outsiderId = "10000000-0000-4000-8000-000000000004";
 const secondManagerId = "10000000-0000-4000-8000-000000000005";
+const platformAdminId = "10000000-0000-4000-8000-000000000008";
 const projectA = "20000000-0000-4000-8000-000000000001";
 const projectB = "20000000-0000-4000-8000-000000000002";
 const managerToken = "task5-manager-runtime-token-long-value";
 const viewerToken = "task5-viewer-runtime-token-long-value";
 const outsiderToken = "task5-outsider-runtime-token-long-value";
+const platformAdminToken = "task5-platform-admin-runtime-token-long-value";
 
 async function dispatch(token: string, path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
@@ -78,6 +80,7 @@ beforeEach(async () => {
   await insertUser(viewerId, viewerToken);
   await insertUser(outsiderId, outsiderToken);
   await insertUser(secondManagerId, "second-manager-token-long-value-1234");
+  await insertUser(platformAdminId, platformAdminToken);
   const now = "2026-07-26T00:00:00.000Z";
   await env.DB.prepare("INSERT INTO migration_state (id, status) VALUES (1, 'complete')").run();
   await env.DB.prepare(
@@ -89,6 +92,11 @@ beforeEach(async () => {
   await env.DB.prepare(
     "INSERT INTO workspace_members (workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, 'member', ?, ?)",
   ).bind(workspaceId, secondManagerId, now, now).run();
+  // platformAdminId：workspace admin，但刻意不加入 projectA／projectB 的
+  // project_members——用來測試 Task 1 新增的「未加入專案的 workspace admin」放寬路徑。
+  await env.DB.prepare(
+    "INSERT INTO workspace_members (workspace_id, user_id, role, created_at, updated_at) VALUES (?, ?, 'admin', ?, ?)",
+  ).bind(workspaceId, platformAdminId, now, now).run();
   await env.DB.prepare(
     `INSERT INTO projects (
        id, workspace_id, name, normalized_name, status, created_by, created_at, updated_at
@@ -465,5 +473,146 @@ describe("Project and membership APIs", () => {
     const blocked = await dispatch(managerToken, "/projects");
     expect(blocked.status).toBe(503);
     expect(await blocked.json()).toMatchObject({ error: "migration_required" });
+  });
+
+  // Task 1（放寬 membership 授權）：PUT／DELETE /projects/:id/members/:userId 現在
+  // 也接受「不是專案成員，但是 workspace owner／admin」的呼叫者（平台管理平面）。
+  // platformAdminId 在 beforeEach 中刻意只加入 workspace_members（role='admin'），
+  // 不加入 projectA／projectB 的 project_members。
+  describe("lets workspace owners/admins manage memberships of projects they haven't joined", () => {
+    it("1. adds a member via PUT for a workspace admin who is not a project member", async () => {
+      const response = await dispatch(platformAdminToken, `/projects/${projectA}/members/${secondManagerId}`, {
+        method: "PUT",
+        body: JSON.stringify({ role: "member" }),
+      });
+      expect(response.status).toBe(200);
+      expect(
+        await env.DB.prepare("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?")
+          .bind(projectA, secondManagerId).first<string>("role"),
+      ).toBe("contributor");
+    });
+
+    it("2. tags the resulting membership.added log with via: platform_admin", async () => {
+      const response = await dispatch(platformAdminToken, `/projects/${projectA}/members/${secondManagerId}`, {
+        method: "PUT",
+        body: JSON.stringify({ role: "member" }),
+      });
+      expect(response.status).toBe(200);
+      const log = await env.DB.prepare(
+        `SELECT action, metadata FROM activity_logs
+         WHERE project_id = ? AND entity_type = 'membership' AND entity_id = ?`,
+      ).bind(projectA, secondManagerId).first<{ action: string; metadata: string }>();
+      expect(log?.action).toBe("membership.added");
+      expect(JSON.parse(log?.metadata ?? "{}")).toMatchObject({ via: "platform_admin" });
+    });
+
+    it("3. does not tag via when the caller already holds project owner capability", async () => {
+      const response = await dispatch(managerToken, `/projects/${projectA}/members/${secondManagerId}`, {
+        method: "PUT",
+        body: JSON.stringify({ role: "member" }),
+      });
+      expect(response.status).toBe(200);
+      const log = await env.DB.prepare(
+        `SELECT metadata FROM activity_logs
+         WHERE project_id = ? AND entity_type = 'membership' AND entity_id = ?`,
+      ).bind(projectA, secondManagerId).first<{ metadata: string }>();
+      expect(JSON.parse(log?.metadata ?? "{}")).not.toHaveProperty("via");
+    });
+
+    it("4. still returns 403 for a plain contributor who is not a workspace admin", async () => {
+      await env.DB.prepare(
+        "UPDATE project_members SET role = 'contributor' WHERE project_id = ? AND user_id = ?",
+      ).bind(projectA, viewerId).run();
+      const response = await dispatch(viewerToken, `/projects/${projectA}/members/${outsiderId}`, {
+        method: "PUT",
+        body: JSON.stringify({ role: "viewer" }),
+      });
+      expect(response.status).toBe(403);
+    });
+
+    it("5. still returns 404 for a caller with neither a project role nor a workspace role", async () => {
+      const response = await dispatch(outsiderToken, `/projects/${projectA}/members/${viewerId}`, {
+        method: "PUT",
+        body: JSON.stringify({ role: "member" }),
+      });
+      expect(response.status).toBe(404);
+    });
+
+    it("6. still blocks a workspace admin from removing the last owner (409 last_owner)", async () => {
+      const response = await dispatch(platformAdminToken, `/projects/${projectA}/members/${managerId}`, {
+        method: "DELETE",
+      });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: "last_owner" });
+      expect(
+        await env.DB.prepare("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?")
+          .bind(projectA, managerId).first<string>("role"),
+      ).toBe("manager");
+    });
+
+    it("7. lets a workspace admin self-assign into a project they don't belong to", async () => {
+      const response = await dispatch(platformAdminToken, `/projects/${projectA}/members/${platformAdminId}`, {
+        method: "PUT",
+        body: JSON.stringify({ role: "member" }),
+      });
+      expect(response.status).toBe(200);
+      const log = await env.DB.prepare(
+        `SELECT actor_user_id, entity_id FROM activity_logs
+         WHERE project_id = ? AND entity_type = 'membership' AND entity_id = ?`,
+      ).bind(projectA, platformAdminId).first<{ actor_user_id: string; entity_id: string }>();
+      expect(log?.actor_user_id).toBe(platformAdminId);
+      expect(log?.entity_id).toBe(platformAdminId);
+    });
+
+    // 規格用「GET /projects/:p/boards/:b/content」描述這項意圖，但路由層沒有這個字面
+    // GET 路徑（/content 後綴只掛在 PUT；GET 詳情端點的回應本身有一個 `content`
+    // 欄位）。這裡改用真正會回傳看板內容的 GET 詳情端點：它一樣呼叫未被本次改動觸碰的
+    // authorizeProject(..., "read")，足以驗證放寬沒有外溢到 memberships.ts 之外。
+    it("8. does not leak the relaxed authorization into board content access", async () => {
+      const boardId = "20000000-0000-4000-8000-000000000040";
+      const now = "2026-07-26T00:00:00.000Z";
+      await env.DB.prepare(
+        `INSERT INTO boards (
+           id, project_id, name, normalized_name, status, revision, data,
+           created_by, created_at, updated_at, archived_at, archived_by
+         ) VALUES (?, ?, 'Board', 'board', 'active', 1, '{}', ?, ?, ?, NULL, NULL)`,
+      ).bind(boardId, projectA, managerId, now, now).run();
+      const response = await dispatch(platformAdminToken, `/projects/${projectA}/boards/${boardId}`);
+      expect(response.status).toBe(404);
+    });
+
+    it("9. keeps idempotent short-circuits intact on the platform admin path", async () => {
+      const first = await dispatch(platformAdminToken, `/projects/${projectA}/members/${secondManagerId}`, {
+        method: "PUT",
+        body: JSON.stringify({ role: "member" }),
+      });
+      expect(first.status).toBe(200);
+      const second = await dispatch(platformAdminToken, `/projects/${projectA}/members/${secondManagerId}`, {
+        method: "PUT",
+        body: JSON.stringify({ role: "member" }),
+      });
+      expect(second.status).toBe(200);
+      expect(
+        await env.DB.prepare(
+          `SELECT COUNT(*) AS count FROM activity_logs
+           WHERE project_id = ? AND entity_type = 'membership' AND entity_id = ?`,
+        ).bind(projectA, secondManagerId).first<number>("count"),
+      ).toBe(1);
+
+      // 對非成員 DELETE：outsiderId 從未被加入 projectA（deleteMember 不像 putMember
+      // 有 targetExists 前置檢查，這裡不需要 target 是 workspace member）。
+      const deleteResponse = await dispatch(
+        platformAdminToken,
+        `/projects/${projectA}/members/${outsiderId}`,
+        { method: "DELETE" },
+      );
+      expect(deleteResponse.status).toBe(200);
+      expect(
+        await env.DB.prepare(
+          `SELECT COUNT(*) AS count FROM activity_logs
+           WHERE project_id = ? AND entity_type = 'membership' AND entity_id = ?`,
+        ).bind(projectA, outsiderId).first<number>("count"),
+      ).toBe(0);
+    });
   });
 });

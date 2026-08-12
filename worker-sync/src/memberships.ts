@@ -1,10 +1,11 @@
 import { prepareAuditEvent } from "./audit";
-import { authorizeProject } from "./authorization";
+import { authorizeProject, AuthorizationError, hasProjectCapability } from "./authorization";
 import {
   toPublicProjectRole,
   toStoredProjectRole,
   type ProjectRole,
   type ProjectRow,
+  type WorkspaceRole,
 } from "./db-types";
 import { json } from "./http";
 import { requireMigrationComplete, type ApiContext } from "./projects";
@@ -108,12 +109,52 @@ async function listMemberCandidates(context: ApiContext, projectId: string): Pro
   }, context.requestId);
 }
 
+type MembershipAuthorization = { viaPlatformAdmin: boolean };
+
+/** membership 寫入的授權：專案 owner，或 workspace owner／admin（平台管理平面）。
+ *  放寬只作用於本檔的 PUT／DELETE；其餘 manage 操作仍走 authorizeProject。 */
+async function authorizeMembershipManagement(
+  database: D1Database,
+  userId: string,
+  projectId: string,
+): Promise<MembershipAuthorization> {
+  const row = await database.prepare(
+    `SELECT workspace_members.role AS workspace_role,
+            project_members.role AS project_role
+     FROM projects
+     LEFT JOIN workspace_members
+       ON workspace_members.workspace_id = projects.workspace_id
+      AND workspace_members.user_id = ?
+     LEFT JOIN project_members
+       ON project_members.project_id = projects.id
+      AND project_members.user_id = ?
+     WHERE projects.id = ?`,
+  ).bind(userId, userId, projectId).first<{
+    workspace_role: WorkspaceRole | null;
+    project_role: ProjectRole | null;
+  }>();
+  if (!row) throw new AuthorizationError(404, "not_found");
+  if (hasProjectCapability(row.project_role, "manage")) {
+    return { viaPlatformAdmin: false };
+  }
+  if (row.workspace_role === "owner" || row.workspace_role === "admin") {
+    return { viaPlatformAdmin: true };
+  }
+  // 既有行為：專案成員但權限不足回 403、非成員回 404（不洩漏專案存在）。
+  if (row.project_role) throw new AuthorizationError(403, "forbidden");
+  throw new AuthorizationError(404, "not_found");
+}
+
 async function putMember(
   context: ApiContext,
   projectId: string,
   targetUserId: string,
 ): Promise<Response> {
-  await authorizeProject(context.env.DB, context.user.id, projectId, "manage");
+  const { viaPlatformAdmin } = await authorizeMembershipManagement(
+    context.env.DB,
+    context.user.id,
+    projectId,
+  );
   const body = await readJsonObject(context.request, ["role"]);
   const publicRole = parseProjectRole(body.role);
   const role = toStoredProjectRole(publicRole);
@@ -171,7 +212,11 @@ async function putMember(
       context.user.id,
       targetUserId,
       current ? "membership.role_changed" : "membership.added",
-      { from: current?.role ?? null, to: role },
+      {
+        from: current?.role ?? null,
+        to: role,
+        ...(viaPlatformAdmin ? { via: "platform_admin" } : {}),
+      },
     ), true),
   ]);
   if (!results[0].meta.changes) throw new RequestError(409, "last_owner");
@@ -192,7 +237,11 @@ async function deleteMember(
   projectId: string,
   targetUserId: string,
 ): Promise<Response> {
-  await authorizeProject(context.env.DB, context.user.id, projectId, "manage");
+  const { viaPlatformAdmin } = await authorizeMembershipManagement(
+    context.env.DB,
+    context.user.id,
+    projectId,
+  );
   const projectRow = await project(context.env.DB, projectId);
   const current = await context.env.DB.prepare(
     "SELECT role FROM project_members WHERE project_id = ? AND user_id = ?",
@@ -219,7 +268,10 @@ async function deleteMember(
       context.user.id,
       targetUserId,
       "membership.removed",
-      { from: current.role },
+      {
+        from: current.role,
+        ...(viaPlatformAdmin ? { via: "platform_admin" } : {}),
+      },
     ), true),
   ]);
   if (!results[0].meta.changes) throw new RequestError(409, "last_owner");
