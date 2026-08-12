@@ -27,6 +27,10 @@ const projectContribOnly = "72000000-0000-4000-8000-000000000005";
 const projectContributorHome = "72000000-0000-4000-8000-000000000006";
 const projectOwnedInA = "72000000-0000-4000-8000-000000000007";
 const projectOwnedInB = "72000000-0000-4000-8000-000000000008";
+const projectOwnedArchived = "72000000-0000-4000-8000-000000000009"; // memberManagerId 是 manager，但已 archived
+const projectInWorkspaceB = "72000000-0000-4000-8000-000000000010"; // workspace B 的 active 專案（admin 洩漏檢查）
+const projectViewerHome = "72000000-0000-4000-8000-000000000011";
+const projectManagerElsewhere = "72000000-0000-4000-8000-000000000012"; // outsiderId 是 manager，但不是 workspace 成員
 
 async function insertUser(id: string) {
   const now = "2026-08-12T00:00:00.000Z";
@@ -111,6 +115,8 @@ describe("resolveCalendarScope", () => {
     await insertProject(projectActive2, workspaceA, "Beta", otherOwnerId);
     await insertProject(projectArchived, workspaceA, "Zeta", otherOwnerId, "archived");
     // adminUserId 刻意不加入任何 project_members——驗證「不是成員的專案」也在範圍內。
+    // workspace B 的 active 專案：驗證 admin 查 workspace A 不會連帶洩漏其他 workspace。
+    await insertProject(projectInWorkspaceB, workspaceB, "Other Workspace", otherOwnerId);
 
     const scope = await resolveCalendarScope(env.DB, adminUserId, workspaceA);
     expect(scope).toEqual({ kind: "workspace", projectIds: [projectActive1, projectActive2] });
@@ -136,21 +142,31 @@ describe("resolveCalendarScope", () => {
     // 別人 manage 的專案也不該出現。
     await insertProject(projectActive1, workspaceA, "Alpha", otherOwnerId);
     await insertProjectMember(projectActive1, otherOwnerId, "manager");
+    // 自己 manage 但已 archived 的專案也不該出現——這正是 owned 路徑的 active 篩選。
+    await insertProject(projectOwnedArchived, workspaceA, "Owned Archived", memberManagerId, "archived");
+    await insertProjectMember(projectOwnedArchived, memberManagerId, "manager");
 
     const scope = await resolveCalendarScope(env.DB, memberManagerId, workspaceA);
     expect(scope).toEqual({ kind: "owned_projects", projectIds: [projectOwnedByManager] });
   });
 
-  it("rejects a plain member who is only a contributor with 403 forbidden", async () => {
+  it("rejects a plain member whose project roles are all contributor/viewer with 403 forbidden", async () => {
     await insertWorkspaceMember(workspaceA, memberContributorId, "member");
     await insertProject(projectContributorHome, workspaceA, "Contributor Home", otherOwnerId);
     await insertProjectMember(projectContributorHome, memberContributorId, "contributor");
+    // viewer 也不該算「own」——與 contributor 同樣不足以取得 owned_projects。
+    await insertProject(projectViewerHome, workspaceA, "Viewer Home", otherOwnerId);
+    await insertProjectMember(projectViewerHome, memberContributorId, "viewer");
 
     await expect(resolveCalendarScope(env.DB, memberContributorId, workspaceA))
       .rejects.toMatchObject({ status: 403, code: "forbidden" });
   });
 
-  it("rejects a non-member of the workspace with 404 not_found", async () => {
+  it("rejects a non-member of the workspace with 404 not_found, even if they manage a project inside it", async () => {
+    // workspace 檢查必須先擋下——project_members 有列也不能洩漏專案存在或放寬成 403。
+    await insertProject(projectManagerElsewhere, workspaceA, "Managed By Outsider", outsiderId);
+    await insertProjectMember(projectManagerElsewhere, outsiderId, "manager");
+
     await expect(resolveCalendarScope(env.DB, outsiderId, workspaceA))
       .rejects.toMatchObject({ status: 404, code: "not_found" });
   });
