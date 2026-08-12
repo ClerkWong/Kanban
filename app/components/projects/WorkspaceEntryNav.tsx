@@ -4,7 +4,7 @@ export function WorkspaceEntryNav({
   showAdmin,
   onSignOut,
 }: {
-  current: "projects" | "admin";
+  current: "projects" | "admin" | "calendar";
   userName: string;
   showAdmin: boolean;
   onSignOut: () => void;
@@ -28,6 +28,16 @@ export function WorkspaceEntryNav({
           >
             <strong>平台管理</strong>
             <small>管理者入口</small>
+          </a>
+        )}
+        {showAdmin && (
+          <a
+            href="#/calendar"
+            className={current === "calendar" ? "active" : ""}
+            aria-current={current === "calendar" ? "page" : undefined}
+          >
+            <strong>日曆</strong>
+            <small>本月可推進的任務</small>
           </a>
         )}
       </div>

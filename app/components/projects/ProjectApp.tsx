@@ -18,6 +18,7 @@ import {
   type ProjectMember,
   type ProjectReport,
 } from "../../projects/api";
+import { currentMonth } from "../../projects/calendar-model";
 import {
   boardBelongsToRoute,
   deriveBoardAccess,
@@ -28,6 +29,7 @@ import {
   type ProjectRoute,
 } from "../../projects/navigation";
 import {
+  administrativeWorkspaces,
   fetchRuntimeSession,
   hasPlatformAdminAccess,
   type RuntimeSession,
@@ -45,6 +47,7 @@ import { usePlatform } from "../../platform/context";
 import { loadSyncConfig, saveSyncConfig, type SyncConfig } from "../../sync/config";
 import { LoginView } from "../auth/LoginView";
 import { BoardNavigation } from "./BoardNavigation";
+import { CalendarView } from "./CalendarView";
 import { MyProjectsView } from "./MyProjectsView";
 import { ProjectOverview } from "./ProjectOverview";
 import { LegacyMigrationGate } from "./LegacyMigrationGate";
@@ -251,10 +254,16 @@ export function ProjectApp({
     );
   }
   if (route.kind === "calendar") {
-    // TODO(calendar-view-v1 Task 5): render the real CalendarView here; this
-    // placeholder only keeps ProjectRoute's new "calendar" member from
-    // reaching ProjectRouteView (which still assumes project/board routes).
-    return <LoadingState message="日曆檢視即將推出。" />;
+    const workspaceId = administrativeWorkspaces(bootstrap.session)[0]?.workspaceId ?? "";
+    return (
+      <CalendarView
+        config={bootstrap.config}
+        workspaceId={workspaceId}
+        month={route.month ?? currentMonth()}
+        userName={bootstrap.session.user.displayName}
+        onSignOut={() => void signOut()}
+      />
+    );
   }
   return (
     <LegacyMigrationGate
