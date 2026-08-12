@@ -12,6 +12,7 @@ import {
 } from "./model";
 import type {
   AdminProjectSummary,
+  AdminUserProjectMembership,
   AdminUserSummary,
   ActivityLogEntry,
   BoardContext,
@@ -341,6 +342,20 @@ function parseAdminUserListResponse(value: unknown): AdminUserSummary[] {
   return users as AdminUserSummary[];
 }
 
+function parseAdminUserProjectMembership(
+  value: unknown,
+): AdminUserProjectMembership | null {
+  const raw = asRecord(value);
+  if (!raw) return null;
+  const projectId = typeof raw.projectId === "string" ? raw.projectId : "";
+  const projectName = typeof raw.projectName === "string" ? raw.projectName : "";
+  const { role, status } = raw;
+  if (!projectId || !projectName) return null;
+  if (role !== "owner" && role !== "member" && role !== "viewer") return null;
+  if (status !== "active" && status !== "archived") return null;
+  return { projectId, projectName, role, status };
+}
+
 function parseMember(value: unknown): ProjectMember | null {
   const raw = asRecord(value);
   if (
@@ -639,6 +654,28 @@ export async function resetAdminUserPassword(
     "重設使用者密碼",
     { method: "POST", body: JSON.stringify({ password }) },
   );
+}
+
+export async function listAdminUserProjects(
+  config: SyncConfig,
+  workspaceId: string,
+  userId: string,
+): Promise<AdminUserProjectMembership[]> {
+  assertResourceId(workspaceId, "workspace_id");
+  assertResourceId(userId, "user_id");
+  const query = new URLSearchParams({ workspaceId });
+  const raw = asRecord(await requestJson(
+    config,
+    `${apiPath("admin", "users", userId, "projects")}?${query}`,
+    "讀取使用者參與的專案",
+  ));
+  const list = raw?.memberships;
+  if (!Array.isArray(list)) throw invalidResponse("讀取使用者參與的專案");
+  const memberships = list.map(parseAdminUserProjectMembership);
+  if (memberships.some((entry) => entry === null)) {
+    throw invalidResponse("讀取使用者參與的專案");
+  }
+  return memberships as AdminUserProjectMembership[];
 }
 
 async function changeAdminProjectStatus(

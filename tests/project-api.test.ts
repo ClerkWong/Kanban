@@ -16,6 +16,7 @@ import {
   listProjectLogs,
   listProjectMembers,
   listAdminProjects,
+  listAdminUserProjects,
   listProjects,
   putMemberBoards,
   requestJson,
@@ -495,6 +496,69 @@ test("member board assignment client rejects malformed boardIds payloads", async
     globalThis.fetch = async () => json({ boardIds: [1], requestId: "r" });
     await assert.rejects(
       () => putMemberBoards(config, context.projectId, userId, [context.boardId]),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("listAdminUserProjects fetches a user's project memberships scoped by workspace", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; method: string }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ url: String(input), method: init?.method ?? "GET" });
+    return json({
+      userId,
+      memberships: [{
+        projectId: context.projectId,
+        projectName: "專案 A",
+        role: "owner",
+        status: "active",
+      }],
+      requestId: "r",
+    });
+  };
+  try {
+    const memberships = await listAdminUserProjects(config, context.workspaceId, userId);
+    assert.deepEqual(memberships, [{
+      projectId: context.projectId,
+      projectName: "專案 A",
+      role: "owner",
+      status: "active",
+    }]);
+    assert.deepEqual(requests, [{
+      url: `https://sync.example/admin/users/${userId}/projects?workspaceId=${context.workspaceId}`,
+      method: "GET",
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("listAdminUserProjects rejects missing memberships or unknown role values", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => json({ userId, requestId: "r" });
+    await assert.rejects(
+      () => listAdminUserProjects(config, context.workspaceId, userId),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+
+    globalThis.fetch = async () => json({
+      userId,
+      memberships: [{
+        projectId: context.projectId,
+        projectName: "專案 A",
+        role: "editor",
+        status: "active",
+      }],
+      requestId: "r",
+    });
+    await assert.rejects(
+      () => listAdminUserProjects(config, context.workspaceId, userId),
       (error: unknown) =>
         error instanceof ApiClientError && error.kind === "invalid_response",
     );

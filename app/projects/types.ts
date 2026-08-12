@@ -117,6 +117,14 @@ export type AdminUserSummary = {
   updatedAt: string;
 };
 
+/** 平台管理以使用者為主軸檢視的專案 membership。 */
+export type AdminUserProjectMembership = {
+  projectId: string;
+  projectName: string;
+  role: ProjectRole;
+  status: ResourceStatus;
+};
+
 /** Append-only activity log entry (design spec §8.5). Produced by the
  * Worker only; clients never create, edit, or delete these. */
 export type ActivityLogEntry = {
