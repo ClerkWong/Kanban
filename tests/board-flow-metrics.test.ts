@@ -25,7 +25,7 @@ import {
 } from "../app/board-model";
 
 test("schema v7 exposes flow fields with defaults", () => {
-  assert.equal(BOARD_SCHEMA_VERSION, 7);
+  assert.equal(BOARD_SCHEMA_VERSION, 8);
   const board = createDemoBoard(new Date(2026, 7, 5));
   assert.deepEqual(board.settings, DEFAULT_BOARD_SETTINGS);
   for (const card of Object.values(board.cards)) {
@@ -52,7 +52,7 @@ test("v6 data migrates without recomputing completedAt", () => {
   };
   const { board, recovered } = parsePersistedBoard(JSON.stringify(v6));
   assert.equal(recovered, false);
-  assert.equal(board.version, 7);
+  assert.equal(board.version, 8);
   assert.deepEqual(board.settings, DEFAULT_BOARD_SETTINGS);
   const done = board.cards["card-done"];
   assert.equal(done.completedAt, legacy.cards["card-done"].completedAt);

@@ -1,8 +1,17 @@
-export const BOARD_SCHEMA_VERSION = 7;
+export const BOARD_SCHEMA_VERSION = 8;
 
 export type ServiceClass = "standard" | "expedite" | "fixedDate" | "intangible";
 export const SERVICE_CLASSES = ["standard", "expedite", "fixedDate", "intangible"] as const;
 export const MAX_BLOCKED_MS = 100 * 365 * 24 * 3600 * 1000;
+
+/** 某位指派人在這張卡上的計畫投入期間；date-only，含頭尾。 */
+export type AssignmentWindow = {
+  userId: string;
+  startDate: string;
+  endDate: string;
+};
+
+export const MAX_ASSIGNMENT_WINDOWS_PER_CARD = 20;
 
 export type BoardSettings = {
   agingWarnDays: number;
@@ -62,6 +71,8 @@ export type Card = {
   /** 已解除的阻塞累計毫秒數，不含進行中的阻塞。 */
   blockedMs: number;
   serviceClass: ServiceClass;
+  /** 每位指派人各自的計畫投入期間；缺項＝該指派尚未排期，不是錯誤。 */
+  assignmentWindows: AssignmentWindow[];
 };
 
 export type Column = {
@@ -401,6 +412,7 @@ export function addCard(
   const blockedReason = normalizeBlockedReason(input.blockedReason);
   const blocked = Boolean(input.blocked && blockedReason);
   const firstColumnId = board.columns[0]?.id;
+  const assigneeUserIds = uniqueStrings(input.assigneeUserIds ?? []);
   const card: Card = {
     id,
     title: input.title.trim(),
@@ -409,7 +421,7 @@ export function addCard(
     labelIds: uniqueStrings(input.labelIds ?? []),
     dueDate: normalizeDateOnly(input.dueDate ?? ""),
     checklist: normalizeChecklist(input.checklist ?? []),
-    assigneeUserIds: uniqueStrings(input.assigneeUserIds ?? []),
+    assigneeUserIds,
     blocked,
     blockedReason: blocked ? blockedReason : "",
     blockedAt: blocked ? normalizeTimestamp(input.blockedAt) ?? timestamp : null,
@@ -427,6 +439,7 @@ export function addCard(
       (columnId !== firstColumnId ? timestamp : null),
     blockedMs: normalizeBlockedMs(input.blockedMs),
     serviceClass: isServiceClass(input.serviceClass) ? input.serviceClass : "standard",
+    assignmentWindows: normalizeAssignmentWindows(input.assignmentWindows, assigneeUserIds),
   };
 
   if (!card.title) {
@@ -479,6 +492,7 @@ export function updateCard(
       blockedMs = Math.min(blockedMs + (until.getTime() - since.getTime()), MAX_BLOCKED_MS);
     }
   }
+  const assigneeUserIds = uniqueStrings(patch.assigneeUserIds ?? existing.assigneeUserIds);
   next.cards[cardId] = {
     ...existing,
     ...patch,
@@ -486,9 +500,7 @@ export function updateCard(
     labelIds: uniqueStrings(patch.labelIds ?? existing.labelIds),
     dueDate: normalizeDateOnly(patch.dueDate ?? existing.dueDate),
     checklist: normalizeChecklist(patch.checklist ?? existing.checklist),
-    assigneeUserIds: uniqueStrings(
-      patch.assigneeUserIds ?? existing.assigneeUserIds,
-    ),
+    assigneeUserIds,
     blocked,
     blockedReason: blocked ? blockedReason : "",
     blockedAt: blocked
@@ -502,6 +514,10 @@ export function updateCard(
     serviceClass: isServiceClass(patch.serviceClass ?? existing.serviceClass)
       ? (patch.serviceClass ?? existing.serviceClass)
       : "standard",
+    assignmentWindows: normalizeAssignmentWindows(
+      patch.assignmentWindows ?? existing.assignmentWindows,
+      assigneeUserIds,
+    ),
     columnEnteredAt: existing.columnEnteredAt,
     startedAt: patch.startedAt !== undefined
       ? normalizeTimestamp(patch.startedAt)
@@ -799,6 +815,7 @@ export function parsePersistedBoard(raw: string | null): {
         version !== 4 &&
         version !== 5 &&
         version !== 6 &&
+        version !== 7 &&
         version !== BOARD_SCHEMA_VERSION)
     ) {
       return {
@@ -1088,6 +1105,7 @@ function createSeedCard(input: {
     startedAt: input.id === "card-done" ? "2026-06-28T09:00:00.000Z" : null,
     blockedMs: 0,
     serviceClass: "standard",
+    assignmentWindows: [],
   };
 }
 
@@ -1177,6 +1195,11 @@ function normalizeCards(cards: Record<string, Card>): Record<string, Card> {
       (raw as { blockedReason?: unknown }).blockedReason,
     );
     const blocked = Boolean((raw as { blocked?: unknown }).blocked && blockedReason);
+    const assigneeUserIds = uniqueStrings(
+      Array.isArray((raw as { assigneeUserIds?: unknown }).assigneeUserIds)
+        ? (raw as { assigneeUserIds: string[] }).assigneeUserIds
+        : [],
+    );
     normalized[cardId] = {
       id: cardId,
       title: raw.title.trim() || "未命名卡片",
@@ -1185,11 +1208,7 @@ function normalizeCards(cards: Record<string, Card>): Record<string, Card> {
       labelIds: uniqueStrings(Array.isArray(raw.labelIds) ? raw.labelIds : []),
       dueDate: normalizeDateOnly(raw.dueDate),
       checklist: normalizeChecklist(Array.isArray(raw.checklist) ? raw.checklist : []),
-      assigneeUserIds: uniqueStrings(
-        Array.isArray((raw as { assigneeUserIds?: unknown }).assigneeUserIds)
-          ? (raw as { assigneeUserIds: string[] }).assigneeUserIds
-          : [],
-      ),
+      assigneeUserIds,
       blocked,
       blockedReason: blocked ? blockedReason : "",
       blockedAt: blocked
@@ -1213,6 +1232,10 @@ function normalizeCards(cards: Record<string, Card>): Record<string, Card> {
       serviceClass: isServiceClass((raw as { serviceClass?: unknown }).serviceClass)
         ? (raw as { serviceClass: ServiceClass }).serviceClass
         : "standard",
+      assignmentWindows: normalizeAssignmentWindows(
+        (raw as { assignmentWindows?: unknown }).assignmentWindows,
+        assigneeUserIds,
+      ),
     };
   }
 
@@ -1287,6 +1310,31 @@ function normalizeDateOnly(value: unknown): string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
     ? value
     : "";
+}
+
+/** 只保留 userId 在指派名單內、兩個日期都合法且不反向的 window；同一 userId 取第一筆，
+ *  並依 userId 排序成 canonical 形式，使 normalizeBoard 幂等、Worker 簽章穩定。 */
+export function normalizeAssignmentWindows(
+  value: unknown,
+  assigneeUserIds: string[],
+): AssignmentWindow[] {
+  if (!Array.isArray(value)) return [];
+  const allowed = new Set(assigneeUserIds);
+  const seen = new Set<string>();
+  const windows: AssignmentWindow[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const entry = raw as { userId?: unknown; startDate?: unknown; endDate?: unknown };
+    if (typeof entry.userId !== "string" || !allowed.has(entry.userId)) continue;
+    if (seen.has(entry.userId)) continue;
+    const startDate = normalizeDateOnly(entry.startDate);
+    const endDate = normalizeDateOnly(entry.endDate);
+    if (!startDate || !endDate || endDate < startDate) continue;
+    seen.add(entry.userId);
+    windows.push({ userId: entry.userId, startDate, endDate });
+    if (windows.length >= MAX_ASSIGNMENT_WINDOWS_PER_CARD) break;
+  }
+  return windows.sort((left, right) => left.userId.localeCompare(right.userId));
 }
 
 function normalizeBlockedReason(value: unknown): string {
@@ -1382,6 +1430,7 @@ function cloneBoard(board: BoardState): BoardState {
           members: [...card.members],
           checklist: card.checklist.map((item) => ({ ...item })),
           attachments: card.attachments.map((ref) => ({ ...ref })),
+          assignmentWindows: card.assignmentWindows.map((window) => ({ ...window })),
         },
       ]),
     ),

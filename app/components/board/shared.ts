@@ -1,4 +1,5 @@
 import type {
+  AssignmentWindow,
   AttachmentRef,
   BoardState,
   Card,
@@ -26,6 +27,7 @@ export type CardDraft = {
   checklist: ChecklistItem[];
   attachments: AttachmentRef[];
   serviceClass: ServiceClass;
+  assignmentWindows: AssignmentWindow[];
 };
 
 export type DetailState =
@@ -99,6 +101,7 @@ export function createDraft(): CardDraft {
     checklist: [],
     attachments: [],
     serviceClass: "standard",
+    assignmentWindows: [],
   };
 }
 
@@ -116,6 +119,7 @@ export function draftFromCard(card: Card): CardDraft {
     checklist: card.checklist.map((item) => ({ ...item })),
     attachments: card.attachments.map((ref) => ({ ...ref })),
     serviceClass: card.serviceClass,
+    assignmentWindows: card.assignmentWindows.map((entry) => ({ ...entry })),
   };
 }
 
@@ -136,6 +140,9 @@ export function draftToCardInput(draft: CardDraft) {
     checklist: draft.checklist,
     attachments: draft.attachments,
     serviceClass: draft.serviceClass,
+    assignmentWindows: draft.assignmentWindows.filter((entry) =>
+      draft.assigneeUserIds.includes(entry.userId),
+    ),
   };
 }
 

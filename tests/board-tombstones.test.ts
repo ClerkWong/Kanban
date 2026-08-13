@@ -11,7 +11,7 @@ import {
 } from "../app/board-model";
 
 test("schema 版本為 6 且示範看板墓碑為空", () => {
-  assert.equal(BOARD_SCHEMA_VERSION, 7);
+  assert.equal(BOARD_SCHEMA_VERSION, 8);
   assert.deepEqual(createDemoBoard(new Date(2026, 6, 20)).deletedCards, {});
 });
 
@@ -40,7 +40,7 @@ test("v1、v2、v3 資料安全遷移為 v6，推定舊完成卡的 completedAt"
 
     const parsed = parsePersistedBoard(JSON.stringify(legacy));
     assert.equal(parsed.error, null);
-    assert.equal(parsed.board.version, 7);
+    assert.equal(parsed.board.version, 8);
     assert.deepEqual(parsed.board.deletedCards, {});
     assert.equal(
       parsed.board.cards["card-done"].completedAt,
