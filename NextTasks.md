@@ -497,6 +497,10 @@ git diff --check
 
 這些工作不阻擋 staging，但應在正式擴大使用前完成：
 
+- 人力甘特圖下一階段：在甘特圖上直接拖拉與拉伸條子調整每人投入期間（v1 刻意只在卡片
+  面板填寫，甘特圖純檢視）。實作前必須先處理：跨專案寫入時每張卡各自的 revision 樂觀鎖、
+  拖拉的樂觀更新與失敗回滾、多裝置卡片級 LWW 下的誤操作風險，以及「只有 Project owner
+  可改指派與期間」的權限在拖拉路徑上同樣要成立。
 - 撰寫 token 新增、撤銷、輪替、裝置遺失與成員離開 runbook。
 - 撰寫 D1 bookmark/export/restore、Worker rollback 與事故通報 runbook。
 - 定義 staging 定期重設流程，同步清除 D1 board 與 R2 objects，避免失效參照。
