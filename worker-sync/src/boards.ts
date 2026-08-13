@@ -477,6 +477,7 @@ async function createBoard(context: ApiContext, projectId: string): Promise<Resp
     throw new RequestError(400, "invalid_payload");
   }
   requireValidFlowFields(body.board);
+  requireValidAssignmentWindows(body.board);
   await requireNewAssigneesAreProjectMembers(
     context.env.DB,
     projectId,

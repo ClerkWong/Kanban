@@ -1044,6 +1044,27 @@ describe("Assignment windows validation and owner-only assignment management", (
     ).bind(projectA, ALICE, now, now).run();
   });
 
+  it("rejects malformed assignment windows when creating a board", async () => {
+    // 計畫缺口修正：/assignments（Task 3）直接用 SQL 讀 boards.data 裡的
+    // window，不經過 client 的 normalize；createBoard 是資料第一次落地的
+    // 地方，格式錯誤的值若在這裡漏網，會原樣存進 D1，後續被 SQL 撈出來
+    // 送到前端排版計算時才壞掉。structural 驗證必須在建立看板時就擋。
+    const response = await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-8-7", endDate: "2026-08-13" }],
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_assignment_windows" });
+  });
+
+  it("lets the project owner create a board with valid assignment windows", async () => {
+    const response = await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" }],
+    }));
+    expect(response.status).toBe(201);
+  });
+
   it("rejects malformed assignment windows with 400", async () => {
     await createBoard(managerToken, projectA, boardA, "Assignments");
     const response = await putBoardContentAt(managerToken, 0, boardWithCard({
