@@ -6,6 +6,8 @@ import {
   createDemoBoard,
   normalizeAssignmentWindows,
   normalizeBoard,
+  parsePersistedBoard,
+  serializeBoard,
   updateCard,
 } from "../app/board-model";
 
@@ -194,4 +196,46 @@ test("a hand-built v7 board whose cards have no assignmentWindows key migrates t
   for (const card of Object.values(migrated.cards)) {
     assert.deepEqual(card.assignmentWindows, []);
   }
+});
+
+// 以上所有遷移測試都直接呼叫 normalizeBoard()，完全沒經過
+// parsePersistedBoard() 的版本白名單（app/board-model.ts 的
+// `version !== 7 && ... version !== BOARD_SCHEMA_VERSION` 那段）。白名單本身
+// 是純手工維護的條列式清單，下次升版若忘記加一行、或重構時不小心漏掉，
+// 使用者本機的 v7／v8 看板會被判定為不相容、整份換成示範資料——且如果只測
+// normalizeBoard()，這個迴歸不會讓任何測試轉紅。這裡改成真正打
+// parsePersistedBoard()，確保白名單缺一行時測試會壞。
+test("parsePersistedBoard migrates a serialized v7 board to v8 with empty window lists", () => {
+  const legacy = JSON.stringify({ ...createDemoBoard(), version: 7 });
+
+  const parsed = parsePersistedBoard(legacy);
+
+  assert.equal(parsed.recovered, false);
+  assert.equal(parsed.error, null);
+  assert.equal(parsed.board.version, 8);
+  for (const card of Object.values(parsed.board.cards)) {
+    assert.deepEqual(card.assignmentWindows, []);
+  }
+});
+
+test("parsePersistedBoard round-trips a v8 board and preserves assignment window content", () => {
+  const board = createDemoBoard();
+  const withCard = addCard(board, board.columns[0].id, {
+    title: "排程卡",
+    assigneeUserIds: [ALICE],
+    assignmentWindows: [
+      { userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" },
+    ],
+  });
+  const persisted = serializeBoard(withCard);
+
+  const parsed = parsePersistedBoard(persisted);
+
+  assert.equal(parsed.recovered, false);
+  assert.equal(parsed.error, null);
+  assert.equal(parsed.board.version, 8);
+  const card = Object.values(parsed.board.cards).find((entry) => entry.title === "排程卡");
+  assert.deepEqual(card?.assignmentWindows, [
+    { userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" },
+  ]);
 });

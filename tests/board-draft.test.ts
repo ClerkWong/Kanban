@@ -39,10 +39,23 @@ test("draftFromCard 複製欄位並以逗號串接成員、深拷貝清單", () 
       id: "att-1", type: "photo", fileName: "att-1.jpeg",
       mimeType: "image/jpeg", size: 10, createdAt: "2026-07-16T09:00:00.000Z",
     }],
+    assigneeUserIds: ["user-a"],
+    assignmentWindows: [
+      { userId: "user-a", startDate: "2026-08-07", endDate: "2026-08-13" },
+    ],
   });
   const draftWithRef = draftFromCard(boardWithRef.cards[card.id]);
   assert.equal(draftWithRef.attachments.length, 1);
   assert.notEqual(draftWithRef.attachments, boardWithRef.cards[card.id].attachments);
+  assert.equal(draftWithRef.assignmentWindows.length, 1);
+  assert.notEqual(
+    draftWithRef.assignmentWindows,
+    boardWithRef.cards[card.id].assignmentWindows,
+  );
+  assert.notEqual(
+    draftWithRef.assignmentWindows[0],
+    boardWithRef.cards[card.id].assignmentWindows[0],
+  );
 });
 
 test("draftToCardInput only preserves a blocker reason while blocked", () => {
@@ -70,6 +83,20 @@ test("draftToCardInput 修剪成員字串並剔除空項", () => {
   const input = draftToCardInput(draft);
   assert.deepEqual(input.assigneeUserIds, ["user-a", "user-b"]);
   assert.deepEqual(input.members, ["雅婷", "Kai"]);
+});
+
+test("draftToCardInput 丟棄未指派者的投入期間", () => {
+  const draft = {
+    ...createDraft(),
+    assigneeUserIds: ["user-a"],
+    assignmentWindows: [
+      { userId: "user-a", startDate: "2026-08-07", endDate: "2026-08-13" },
+      { userId: "user-b", startDate: "2026-08-07", endDate: "2026-08-12" },
+    ],
+  };
+  assert.deepEqual(draftToCardInput(draft).assignmentWindows, [
+    { userId: "user-a", startDate: "2026-08-07", endDate: "2026-08-13" },
+  ]);
 });
 
 test("draftToCardInput 帶出附件參照", () => {
