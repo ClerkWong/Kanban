@@ -110,6 +110,47 @@ function requireValidFlowFields(value: unknown): void {
   }
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** v7 舊 client 相容：`assignmentWindows` 缺席即通過，出現才驗格式。
+ *  絕不能要求「每位指派人都要有 window」——那會讓舊卡的任何編輯都 400。 */
+function requireValidAssignmentWindows(value: unknown): void {
+  const cards = asRecord(asRecord(value)?.cards);
+  if (!cards) return;
+  for (const raw of Object.values(cards)) {
+    const card = asRecord(raw);
+    if (!card || card.assignmentWindows === undefined) continue;
+    const windows = card.assignmentWindows;
+    if (!Array.isArray(windows) || windows.length > MAX_ASSIGNEES_PER_CARD) {
+      throw new RequestError(400, "invalid_assignment_windows");
+    }
+    const assigned = new Set(
+      Array.isArray(card.assigneeUserIds)
+        ? card.assigneeUserIds.filter((id): id is string => typeof id === "string")
+        : [],
+    );
+    const seen = new Set<string>();
+    for (const entry of windows) {
+      const window = asRecord(entry);
+      if (!window) throw new RequestError(400, "invalid_assignment_windows");
+      const userId = typeof window.userId === "string" ? window.userId : "";
+      const startDate = window.startDate;
+      const endDate = window.endDate;
+      if (
+        !userId ||
+        !assigned.has(userId) ||
+        seen.has(userId) ||
+        typeof startDate !== "string" || !DATE_ONLY.test(startDate) ||
+        typeof endDate !== "string" || !DATE_ONLY.test(endDate) ||
+        endDate < startDate
+      ) {
+        throw new RequestError(400, "invalid_assignment_windows");
+      }
+      seen.add(userId);
+    }
+  }
+}
+
 /** 與 app/board-model.ts 的 DEFAULT_BOARD_SETTINGS 保持一致：無 settings 鍵的舊 board（功能上線前建立）
  * 在 v7 client 一律會被 normalizeBoard 補上這組預設值，故視為「缺席 = 預設值」，
  * 否則 member 對這類舊 board 的任何編輯都會被誤判為「變更了 settings」而 403。 */
@@ -166,6 +207,47 @@ function requireWorkflowManagement(
     throw new RequestError(403, "forbidden");
   }
   if (settingsSignature(previousBoard) !== settingsSignature(nextBoard)) {
+    throw new RequestError(403, "forbidden");
+  }
+}
+
+/** 缺席的 assignmentWindows 與空陣列必須算出同一個簽章，否則 v8 client 一律送空陣列、
+ *  舊 board 沒有此鍵，member 對舊 board 的任何編輯都會被誤判為「變更了指派」而 403。
+ *  這是流動度量 v7 absent-settings lockout 的同型錯誤，不接受第二次。 */
+function assignmentSignature(value: unknown): string {
+  const cards = asRecord(asRecord(value)?.cards);
+  if (!cards) return "[]";
+  const entries = Object.entries(cards).map(([cardId, raw]) => {
+    const card = asRecord(raw);
+    const assignees = Array.isArray(card?.assigneeUserIds)
+      ? [...card!.assigneeUserIds]
+        .filter((id): id is string => typeof id === "string")
+        .sort()
+      : [];
+    const windows = Array.isArray(card?.assignmentWindows)
+      ? card!.assignmentWindows
+        .map((entry) => {
+          const window = asRecord(entry);
+          return window
+            ? [window.userId, window.startDate, window.endDate]
+            : null;
+        })
+        .filter((window): window is unknown[] => window !== null)
+        .sort((left, right) => String(left[0]).localeCompare(String(right[0])))
+      : [];
+    return [cardId, assignees, windows];
+  });
+  entries.sort((left, right) => String(left[0]).localeCompare(String(right[0])));
+  return JSON.stringify(entries);
+}
+
+function requireAssignmentManagement(
+  access: ProjectAccess,
+  previousBoard: unknown,
+  nextBoard: unknown,
+): void {
+  if (access.projectRole === "manager") return;
+  if (assignmentSignature(previousBoard) !== assignmentSignature(nextBoard)) {
     throw new RequestError(403, "forbidden");
   }
 }
@@ -702,9 +784,11 @@ async function putBoardContent(
     return boardConflict(row, context.requestId);
   }
   requireValidFlowFields(payload.board);
+  requireValidAssignmentWindows(payload.board);
   const previousBoard = JSON.parse(row.data) as unknown;
   const effectiveBoard = preserveBoardSettings(previousBoard, payload.board);
   requireWorkflowManagement(access, previousBoard, effectiveBoard);
+  requireAssignmentManagement(access, previousBoard, effectiveBoard);
   requireSafeWorkflowTransition(previousBoard, effectiveBoard);
   await requireNewAssigneesAreProjectMembers(
     context.env.DB,
@@ -796,6 +880,7 @@ async function putLegacyRow(context: ApiContext): Promise<Response> {
     return json(400, { error: "invalid payload", requestId: context.requestId }, context.requestId);
   }
   requireValidFlowFields(payload.board);
+  requireValidAssignmentWindows(payload.board);
   const row = await getLegacyBoard(context.env.DB);
   if (payload.baseRevision !== (row?.revision ?? 0)) {
     return row

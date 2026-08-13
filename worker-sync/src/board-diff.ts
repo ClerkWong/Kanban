@@ -26,6 +26,7 @@ export type CardField =
   | "dueDate"
   | "checklist"
   | "assigneeUserIds"
+  | "assignmentWindows"
   | "blocked"
   | "blockedReason"
   | "blockedAt"
@@ -47,6 +48,7 @@ export type CardSnapshot = {
   dueDate: string;
   checklist: unknown[];
   assigneeUserIds: unknown[];
+  assignmentWindows: unknown[];
   blocked: boolean;
   blockedReason: string;
   blockedAt: string | null;
@@ -174,6 +176,7 @@ export function parseBoardSnapshot(value: unknown): BoardSnapshot | null {
       dueDate: typeof card.dueDate === "string" ? card.dueDate : "",
       checklist: safeArray(card.checklist),
       assigneeUserIds: safeArray(card.assigneeUserIds),
+      assignmentWindows: safeArray(card.assignmentWindows),
       blocked: card.blocked === true,
       blockedReason: typeof card.blockedReason === "string" ? card.blockedReason : "",
       blockedAt: typeof card.blockedAt === "string" ? card.blockedAt : null,
@@ -229,6 +232,9 @@ function changedFields(before: CardSnapshot, after: CardSnapshot): CardField[] {
   if (!sameValue(before.checklist, after.checklist)) fields.push("checklist");
   if (!sameValue(before.assigneeUserIds, after.assigneeUserIds)) {
     fields.push("assigneeUserIds");
+  }
+  if (!sameValue(before.assignmentWindows, after.assignmentWindows)) {
+    fields.push("assignmentWindows");
   }
   if (before.blocked !== after.blocked) fields.push("blocked");
   if (before.blockedReason !== after.blockedReason) fields.push("blockedReason");

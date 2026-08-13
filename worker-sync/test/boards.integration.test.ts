@@ -418,8 +418,11 @@ describe("Single-board Project content APIs", () => {
     );
     expect(created.status).toBe(201);
 
+    // 指派管理已收斂到 owner（見「Assignment windows validation」describe block），
+    // 這裡改由 managerToken 送出，讓本測試繼續驗證指派清單本身的驗證規則
+    // （人數上限／重複／非專案成員），不與 owner-only 403 混在一起判讀。
     const expanded = await dispatch(
-      contributorToken,
+      managerToken,
       `/projects/${projectA}/boards/${boardA}/content`,
       {
         method: "PUT",
@@ -432,7 +435,7 @@ describe("Single-board Project content APIs", () => {
     expect(expanded.status).toBe(200);
 
     const outsider = await dispatch(
-      contributorToken,
+      managerToken,
       `/projects/${projectA}/boards/${boardA}/content`,
       {
         method: "PUT",
@@ -451,7 +454,7 @@ describe("Single-board Project content APIs", () => {
     });
 
     const duplicate = await dispatch(
-      contributorToken,
+      managerToken,
       `/projects/${projectA}/boards/${boardA}/content`,
       {
         method: "PUT",
@@ -465,7 +468,7 @@ describe("Single-board Project content APIs", () => {
     expect(await duplicate.json()).toMatchObject({ error: "invalid_assignees" });
 
     const tooMany = await dispatch(
-      contributorToken,
+      managerToken,
       `/projects/${projectA}/boards/${boardA}/content`,
       {
         method: "PUT",
@@ -997,5 +1000,206 @@ describe("Flow field validation, Board settings guard, and Activity Log flow tra
     expect(metadata.changes.some((change) => change.kind === "card.moved")).toBe(true);
     const cardUpdated = metadata.changes.find((change) => change.kind === "card.updated");
     expect(cardUpdated).toBeUndefined();
+  });
+});
+
+const ALICE = "11111111-2222-4333-8444-555555555555";
+
+/** 單卡 board：固定一個欄位「todo」與一張卡片「task-1」，cardPatch 覆蓋卡片欄位。
+ *  不主動塞入 assignmentWindows／assigneeUserIds，缺席即缺席，模擬各版本 client 送出的形狀。 */
+function boardWithCard(
+  cardPatch: Record<string, unknown>,
+  marker = "assignment",
+): Record<string, unknown> {
+  return {
+    version: 8,
+    marker,
+    columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1"] }],
+    cards: {
+      "task-1": { title: "Task", ...cardPatch },
+    },
+  };
+}
+
+async function putBoardContentAt(
+  token: string,
+  baseRevision: number,
+  data: Record<string, unknown>,
+): Promise<Response> {
+  return dispatch(token, `/projects/${projectA}/boards/${boardA}/content`, {
+    method: "PUT",
+    body: JSON.stringify({ baseRevision, board: data }),
+  });
+}
+
+describe("Assignment windows validation and owner-only assignment management", () => {
+  beforeEach(async () => {
+    // requireNewAssigneesAreProjectMembers 要求「新指派的人」必須是專案成員；
+    // ALICE 在這個 describe 專門扮演「可被指派的一般成員」，與角色命名的
+    // manager/contributor/viewer 語意分開。
+    const now = "2026-07-27T00:00:00.000Z";
+    await env.DB.prepare(
+      `INSERT INTO project_members (project_id, user_id, role, created_at, updated_at)
+       VALUES (?, ?, 'contributor', ?, ?)`,
+    ).bind(projectA, ALICE, now, now).run();
+  });
+
+  it("rejects malformed assignment windows with 400", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-8-7", endDate: "2026-08-13" }],
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_assignment_windows" });
+  });
+
+  it("rejects a window whose userId is not assigned", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCard({
+      assigneeUserIds: [],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" }],
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_assignment_windows" });
+  });
+
+  it("rejects a reversed window", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-08-13", endDate: "2026-08-07" }],
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_assignment_windows" });
+  });
+
+  it("rejects duplicate windows for the same user", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [
+        { userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-08" },
+        { userId: ALICE, startDate: "2026-08-09", endDate: "2026-08-10" },
+      ],
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_assignment_windows" });
+  });
+
+  it("lets the project owner set assignments and windows", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" }],
+    }));
+    expect(response.status).toBe(200);
+  });
+
+  it("forbids a member from changing assignees", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({ assigneeUserIds: [] }));
+    const response = await putBoardContentAt(contributorToken, 0, boardWithCard({
+      assigneeUserIds: [ALICE],
+    }));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "forbidden" });
+  });
+
+  it("forbids a member from changing assignment windows", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({
+      assigneeUserIds: [ALICE],
+    }));
+    const ownerPut = await putBoardContentAt(managerToken, 0, boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" }],
+    }));
+    expect(ownerPut.status).toBe(200);
+
+    const response = await putBoardContentAt(contributorToken, 1, boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-20" }],
+    }));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "forbidden" });
+  });
+
+  it("lets a member edit other card fields while assignments stay identical", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({
+      assigneeUserIds: [ALICE],
+    }));
+    const ownerPut = await putBoardContentAt(managerToken, 0, boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" }],
+    }));
+    expect(ownerPut.status).toBe(200);
+
+    const response = await putBoardContentAt(contributorToken, 1, boardWithCard({
+      title: "改過的標題",
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" }],
+    }));
+    expect(response.status).toBe(200);
+  });
+
+  it("lets a member edit a legacy board that has no assignmentWindows key", async () => {
+    // 直接以 owner 建立沒有 assignmentWindows 鍵的 board，模擬功能上線前的資料。
+    await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({
+      assigneeUserIds: [ALICE],
+    }, "pre-feature"));
+    const response = await putBoardContentAt(contributorToken, 0, boardWithCard({
+      title: "member 編輯",
+      assigneeUserIds: [ALICE],
+    }));
+    expect(response.status).toBe(200);
+  });
+
+  it("treats an absent key and an empty array as the same signature", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({
+      assigneeUserIds: [ALICE],
+    }, "pre-feature"));
+    const response = await putBoardContentAt(contributorToken, 0, boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [],
+    }));
+    expect(response.status).toBe(200);
+  });
+
+  it("lets a member edit a board whose card order is reversed but content is unchanged", async () => {
+    // mutation 防線：entries.sort 若被移除，Object.entries 的插入順序差異會讓內容相同的
+    // 兩份 cards 誤判為「指派變更」而 403（見 assignmentSignature 上方註解）。
+    const cards = {
+      "task-1": { title: "Task 1", assigneeUserIds: [ALICE] },
+      "task-2": { title: "Task 2", assigneeUserIds: [] as string[] },
+    };
+    await createBoard(managerToken, projectA, boardA, "Assignments", {
+      version: 8,
+      marker: "order",
+      columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1", "task-2"] }],
+      cards,
+    });
+    const reversed = {
+      version: 8,
+      marker: "order-reversed",
+      columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1", "task-2"] }],
+      cards: { "task-2": cards["task-2"], "task-1": cards["task-1"] },
+    };
+    const response = await putBoardContentAt(contributorToken, 0, reversed);
+    expect(response.status).toBe(200);
+  });
+
+  it("records assignmentWindows as a changed field in the activity log without logging dates", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({
+      assigneeUserIds: [ALICE],
+    }));
+    const response = await putBoardContentAt(managerToken, 0, boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" }],
+    }));
+    expect(response.status).toBe(200);
+
+    const metadata = await latestBoardContentMetadata(boardA);
+    const cardUpdated = metadata.changes.find((change) => change.kind === "card.updated");
+    expect(cardUpdated?.fields).toContain("assignmentWindows");
+    expect(JSON.stringify(metadata)).not.toContain("2026-08-07");
   });
 });
