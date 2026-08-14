@@ -30,6 +30,7 @@ export function DetailModal({
   onCapabilityError,
   readOnly = false,
   attachmentsReadOnly = false,
+  canManageAssignments = true,
   attachmentContext,
   projectMembers,
 }: {
@@ -44,6 +45,8 @@ export function DetailModal({
   onCapabilityError: (error: unknown) => void;
   readOnly?: boolean;
   attachmentsReadOnly?: boolean;
+  /** Project owner 專屬權限；false 時指派名單與投入期間唯讀（Worker 端同步以 403 擋下 member 的變更）。 */
+  canManageAssignments?: boolean;
   attachmentContext?: BoardContext;
   /** Undefined for a legacy local board; an array (including empty) for a Project board. */
   projectMembers?: ProjectMember[];
@@ -55,9 +58,41 @@ export function DetailModal({
   const departedAssigneeIds = draft.assigneeUserIds.filter(
     (userId) => !currentProjectMemberIds.has(userId),
   );
+  // 「投入期間」只列出目前已勾選的指派人（含已離開專案者）；順序與上方任務負責人
+  // 清單一致——現職成員依 projectMembers 原順序，離職者附加在後。
+  const assignmentRows: Array<{ userId: string; displayName: string | null }> = [
+    ...(projectMembers ?? [])
+      .filter((member) => draft.assigneeUserIds.includes(member.userId))
+      .map((member) => ({ userId: member.userId, displayName: member.displayName })),
+    ...departedAssigneeIds.map((userId) => ({ userId, displayName: null })),
+  ];
+  // 只要有一列「兩個日期都填了但結束日早於開始日」，就擋下送出——真正的丟棄
+  // （未勾選者、兩個日期沒填齊者）留給 draftToCardInput／normalizeAssignmentWindows
+  // 處理，這裡只擋「填了但範圍顛倒」這種會讓使用者以為存成功、實際上被 Worker
+  // 400 或被靜默丟棄的情形。
+  const hasInvalidAssignmentWindow = assignmentRows.some((row) => {
+    const existingWindow = draft.assignmentWindows.find((entry) => entry.userId === row.userId);
+    return Boolean(
+      existingWindow &&
+        existingWindow.startDate &&
+        existingWindow.endDate &&
+        existingWindow.endDate < existingWindow.startDate,
+    );
+  });
 
   function setDraft(patch: Partial<CardDraft>) {
     onDraftChange({ ...draft, ...patch });
+  }
+
+  /** 兩個日期都空時直接移除這筆 window，而不是留著一個兩個欄位都是空字串的殘影——
+   * 這樣「該人視為未排期」在 draft 這一層就成立，不必等 draftToCardInput 才丟棄。 */
+  function setAssignmentWindow(userId: string, next: { startDate: string; endDate: string }) {
+    const others = draft.assignmentWindows.filter((entry) => entry.userId !== userId);
+    if (!next.startDate && !next.endDate) {
+      setDraft({ assignmentWindows: others });
+      return;
+    }
+    setDraft({ assignmentWindows: [...others, { userId, ...next }] });
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -215,8 +250,11 @@ export function DetailModal({
             </label>
           ) : (
             <>
-              <fieldset className="fieldGroup">
+              <fieldset className="fieldGroup" disabled={readOnly || !canManageAssignments}>
                 <legend>任務負責人（可複選）</legend>
+                {!canManageAssignments && (
+                  <p className="fieldHint">指派與排程由專案管理者負責。</p>
+                )}
                 {projectMembers.length > 0 ? (
                   <div className="assigneeGrid">
                     {projectMembers.map((member) => (
@@ -263,6 +301,61 @@ export function DetailModal({
                     </span>
                   </label>
                 ))}
+              </fieldset>
+
+              <fieldset className="fieldGroup" disabled={readOnly || !canManageAssignments}>
+                <legend>投入期間</legend>
+                {!canManageAssignments && (
+                  <p className="fieldHint">指派與排程由專案管理者負責。</p>
+                )}
+                {assignmentRows.length === 0 ? (
+                  <p className="fieldHint">勾選任務負責人後，可在此設定每人的投入期間。</p>
+                ) : (
+                  assignmentRows.map((row) => {
+                    const existingWindow = draft.assignmentWindows.find(
+                      (entry) => entry.userId === row.userId,
+                    );
+                    const startDate = existingWindow?.startDate ?? "";
+                    const endDate = existingWindow?.endDate ?? "";
+                    const bothFilled = Boolean(startDate && endDate);
+                    const invalidRange = bothFilled && endDate < startDate;
+                    const name = row.displayName ?? `已離開專案的成員（${row.userId}）`;
+                    return (
+                      <div className="assignmentWindowRow" key={row.userId}>
+                        <span>{name}</span>
+                        <input
+                          type="date"
+                          aria-label={`${name} 投入開始日`}
+                          value={startDate}
+                          onChange={(event) =>
+                            setAssignmentWindow(row.userId, {
+                              startDate: event.target.value,
+                              endDate,
+                            })
+                          }
+                        />
+                        <input
+                          type="date"
+                          aria-label={`${name} 投入結束日`}
+                          value={endDate}
+                          onChange={(event) =>
+                            setAssignmentWindow(row.userId, {
+                              startDate,
+                              endDate: event.target.value,
+                            })
+                          }
+                        />
+                        {invalidRange ? (
+                          <small className="assignmentWindowError" role="alert">
+                            結束日不可早於開始日。
+                          </small>
+                        ) : !bothFilled ? (
+                          <small className="fieldHint">兩個日期都填寫後才會排入甘特圖。</small>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                )}
               </fieldset>
               {draft.members && (
                 <label className="formField">
@@ -355,7 +448,11 @@ export function DetailModal({
               {readOnly ? "關閉" : "取消"}
             </button>
             {!readOnly && (
-              <button type="submit" className="primaryButton">
+              <button
+                type="submit"
+                className="primaryButton"
+                disabled={hasInvalidAssignmentWindow}
+              >
                 儲存
               </button>
             )}

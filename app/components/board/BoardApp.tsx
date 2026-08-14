@@ -1236,6 +1236,7 @@ function BoardSurface({
           onCapabilityError={reportCapabilityError}
           readOnly={!access.canEdit}
           attachmentsReadOnly={!access.canWriteAttachments}
+          canManageAssignments={access.canManageAssignments}
           attachmentContext={context}
           projectMembers={projectMembers}
         />
