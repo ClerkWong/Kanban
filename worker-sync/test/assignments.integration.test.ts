@@ -607,6 +607,64 @@ describe("GET /assignments", () => {
     expect(((await full.json()) as AssignmentsResponseBody).boardsTruncated).toBe(false);
   });
 
+  // 控制者裁決（非 brief 原文，見任務報告）：上面那個測試只用「1 個專案、51 個
+  // 看板」，全部落在同一個 project-id chunk 裡，測不到「分批」這件事本身的錯誤
+  // ——舊寫法把 LIMIT 50 塞進每個 chunk 各自的巢狀子查詢，workspace 專案數一旦
+  // 超過 CHUNK_SIZE（50）、分成多批查詢，就變成「每批各自取前 50」，全域上限
+  // 形同虛設。這裡用 60 個「各自 1 個看板」的 active 專案（強迫 scope.projectIds
+  // 分成 50+10 兩批），驗證最終只回傳全域最近更新的 50 個看板的資料，不是
+  // 「每批各自最近更新的」拼起來的 50+10=60 筆。
+  it("selects the 50 most-recently-updated boards across all project chunks, not per chunk, and flags boardsTruncated accordingly", async () => {
+    await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
+    await insertUser(ALICE);
+    const total = 60;
+    for (let i = 0; i < total; i += 1) {
+      const projectId = `94000000-0000-4000-8000-${i.toString(16).padStart(12, "0")}`;
+      const boardId = `95000000-0000-4000-8000-${i.toString(16).padStart(12, "0")}`;
+      await insertProject(projectId, WORKSPACE_ID, `Top50 Project ${i}`, creatorId);
+      const updatedAt = `2026-08-01T00:${String(i).padStart(2, "0")}:00.000Z`; // i 越大越晚更新
+      await insertBoard(boardId, projectId, `Top50 Board ${i}`, {
+        [`top50-card-${i}`]: cardFixture({
+          id: `top50-card-${i}`, assigneeUserIds: [ALICE],
+          assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-08" }],
+        }),
+      }, { updatedAt });
+    }
+
+    const response = await dispatch(tokenFor(adminUserId), `/assignments?workspaceId=${WORKSPACE_ID}&from=${FROM}&to=${TO}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AssignmentsResponseBody;
+    expect(body.boardsTruncated).toBe(true);
+    expect(body.bars).toHaveLength(50);
+    const includedCardIds = body.bars.map((bar) => bar.cardId).sort();
+    // updated_at 由 i=0（最早）遞增到 i=59（最新）：全域最近更新的 50 個是 i=10..59。
+    const expectedIncluded = Array.from({ length: 50 }, (_, k) => `top50-card-${k + 10}`).sort();
+    expect(includedCardIds).toEqual(expectedIncluded);
+  });
+
+  // 這正是舊寫法會誤報 true 的情境對照組：60 個專案分成 2 批，但真實看板數只有
+  // 40（低於 MAX_BOARDS），確認新寫法在多批情境下仍正確回報「沒有截斷」。
+  it("does not flag boardsTruncated when only 40 boards exist across 60 projects split into two chunks", async () => {
+    await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
+    const total = 60;
+    const boardsToCreate = 40;
+    for (let i = 0; i < total; i += 1) {
+      const projectId = `96000000-0000-4000-8000-${i.toString(16).padStart(12, "0")}`;
+      await insertProject(projectId, WORKSPACE_ID, `Sparse Project ${i}`, creatorId);
+      if (i < boardsToCreate) {
+        const boardId = `97000000-0000-4000-8000-${i.toString(16).padStart(12, "0")}`;
+        await insertBoard(boardId, projectId, `Sparse Board ${i}`, {
+          [`sparse-card-${i}`]: cardFixture({ id: `sparse-card-${i}` }),
+        });
+      }
+    }
+
+    const response = await dispatch(tokenFor(adminUserId), `/assignments?workspaceId=${WORKSPACE_ID}&from=${FROM}&to=${TO}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AssignmentsResponseBody;
+    expect(body.boardsTruncated).toBe(false);
+  });
+
   it("flags barsTruncated at 2001 bars and clears at 2000", async () => {
     await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
     await insertProject(projectAlpha, WORKSPACE_ID, "Alpha", creatorId);
@@ -706,6 +764,10 @@ describe("GET /assignments", () => {
   // 日曆合法性，故「2026-13-45」這種值可能已經入庫。直接寫 DB 略過應用層驗證，
   // 模擬「早於本次驗證版本」的既存資料：endDate 月份 13 不合法，但字串比較不會讓
   // SQL 出錯（"2026-13-45" >= from 恆成立），必須在轉換階段用同一顆 DATE_ONLY 再篩一次。
+  //
+  // 追加（回應審查意見 2）：ALICE 的指派不能因為日期不合法就同時從 bars 與
+  // unscheduled 消失——window 存在但日期不合法，等同沒有排期，ALICE 要出現在
+  // unscheduled，而不是憑空蒸發。
   it("skips a bar whose window date fails calendar validation even though it passed the write-time format check", async () => {
     await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
     await insertProject(projectAlpha, WORKSPACE_ID, "Alpha", creatorId);
@@ -726,6 +788,32 @@ describe("GET /assignments", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as AssignmentsResponseBody;
     expect(body.bars.map((bar) => bar.cardId)).toEqual(["good"]);
+    expect(body.unscheduled).toHaveLength(1);
+    expect(body.unscheduled[0]).toMatchObject({ cardId: "bad", userId: ALICE });
+  });
+
+  // 控制者裁決（非 brief 原文，見任務報告，審查意見 2）：window 存在、userId
+  // 正確，但 startDate／endDate 兩者都不合法（同一份審查回覆給的範例）。舊寫法
+  // 只驗 userId 是字串，會把這個 window 誤判為「已排期」，讓 ALICE 同時不出現在
+  // bars（被 toBar 的縱深防禦篩掉）與 unscheduled（誤判為已排期）——這筆指派會
+  // 對管理者悄悄消失。修法後 ALICE 必須出現在 unscheduled。
+  it("treats a window with both dates calendar-invalid as unscheduled instead of vanishing from both lists", async () => {
+    await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
+    await insertProject(projectAlpha, WORKSPACE_ID, "Alpha", creatorId);
+    await insertUser(ALICE);
+    await insertBoard(boardAlpha, projectAlpha, "Alpha Board", {
+      c1: cardFixture({
+        id: "c1", title: "Bad Window Card", assigneeUserIds: [ALICE],
+        assignmentWindows: [{ userId: ALICE, startDate: "2026-13-45", endDate: "2026-13-46" }],
+      }),
+    });
+
+    const response = await dispatch(tokenFor(adminUserId), `/assignments?workspaceId=${WORKSPACE_ID}&from=${FROM}&to=${TO}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AssignmentsResponseBody;
+    expect(body.bars).toHaveLength(0);
+    expect(body.unscheduled).toHaveLength(1);
+    expect(body.unscheduled[0]).toMatchObject({ cardId: "c1", userId: ALICE });
   });
 
   // 控制者裁決（非 brief 原文，見任務報告）：barsTruncated 的縱深防禦與截斷旗標

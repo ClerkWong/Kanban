@@ -3,7 +3,19 @@ import { json } from "./http";
 import { requireMigrationComplete, type ApiContext } from "./projects";
 import { RequestError, parseUuid } from "./validation";
 
-/** 單次請求最多展開的看板數；超出時回應標記 boardsTruncated。 */
+/** 單次請求最多展開的看板數（依 updated_at DESC, id DESC 取全域最近更新的
+ *  MAX_BOARDS 個，見 resolveTopBoards）；超出時回應標記 boardsTruncated。
+ *
+ *  控制者裁決（非 brief 原文）：原本這個上限是塞進 barQuery／assignedCardQuery
+ *  各自的巢狀子查詢當 SQL LIMIT，但那個子查詢的 WHERE 只吃單一批（CHUNK_SIZE）
+ *  的 projectIds——workspace 專案數一旦超過 CHUNK_SIZE、分成 N 批，就變成
+ *  「每批各自取前 50」，等於全域上限最多可以到 50×N，且取到的不是「整個範圍
+ *  內最近更新的 50 個」，是「每批各自最近更新的 50 個」拼起來。boardsTruncated
+ *  旗標本身當時是用不分批的 COUNT(*) 算的，數字沒有錯，但錯的是「上限有沒有
+ *  真的生效」——旗標說「有截斷」，可是兩個查詢實際上完全沒有把看板數壓在 50
+ *  以內。修法見 resolveTopBoards：先把所有批次的 (id, updated_at) 全撈出來、
+ *  在 Worker 內排序取前 50，barQuery／assignedCardQuery 改吃這批確定的
+ *  boardIds，兩條查詢裡原本的巢狀子查詢因此整段拿掉。 */
 export const MAX_BOARDS = 50;
 /** 甘特條上限；超出時回應標記 barsTruncated。 */
 export const MAX_BARS = 2000;
@@ -22,7 +34,9 @@ const MAX_RANGE_DAYS = 31;
  *  （Task 2 審查 minor，見 .superpowers/sdd/2026-08-13-resource-gantt-v1/progress.md）。
  *  SQL 對這類值只做字串比較，不會出錯，但會產生無意義的條子；用同一顆正則在
  *  轉換階段再篩一次，格式不符就跳過該筆，不讓它進 bars。這是縱深防禦，不是
- *  重複驗證——SQL 讀的是既存資料，可能早於任何一版寫入驗證。 */
+ *  重複驗證——SQL 讀的是既存資料，可能早於任何一版寫入驗證；(3) 判斷一個
+ *  window 算不算「已排期」，見 unscheduledFromRow——日期不合法的 window 視同
+ *  沒有排期。 */
 const DATE_ONLY = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 const SERVICE_CLASSES = ["standard", "expedite", "fixedDate", "intangible"];
@@ -120,12 +134,19 @@ type UnscheduledItem = {
   boardName: string;
 };
 
-/** row 的 assigneeUserIds 內、windows_json 裡找不到對應 userId 的人 → 未排期。
- *  兩段 JSON.parse 都容錯：assignee_ids 解析失敗或非陣列 → 這張卡不產生任何未
- *  排期項；windows_json 解析失敗或非陣列 → 視為「沒有任何 window」，該卡全部
- *  指派人都算未排期（陣列內非物件或 userId 非字串的成員直接跳過，不判斷任何
- *  日期合法性——這裡只問「有沒有排期意圖」，不是「排期是否乾淨」，日期層級的
- *  縱深防禦只影響 bars，見 toBar）。 */
+/** row 的 assigneeUserIds 內、windows_json 裡找不到「日期合法」對應 window 的人
+ *  → 未排期。兩段 JSON.parse 都容錯：assignee_ids 解析失敗或非陣列 → 這張卡不
+ *  產生任何未排期項；windows_json 解析失敗或非陣列 → 視為「沒有任何 window」，
+ *  該卡全部指派人都算未排期（陣列內非物件或 userId 非字串的成員直接跳過）。
+ *
+ *  控制者裁決（非 brief 原文）：window 的 startDate／endDate 也要通過 DATE_ONLY
+ *  才算「已排期」——只驗 userId 是字串、不驗日期合法性的舊寫法會讓「window 存在
+ *  但日期不合法（例如既有資料裡的 2026-13-45）」的指派人，同時從 bars（被
+ *  toBar 的縱深防禦篩掉）與 unscheduled（因為 windows_json 裡確實找得到一個
+ *  帶這個 userId 的物件）消失——對管理者來說是這筆指派憑空蒸發，看不到也無從
+ *  修。改成只認日期合法的 window：window 存在但日期不合法，等同沒有排期，該
+ *  指派人要進 unscheduled，讓管理者能在畫面上看到並回卡片面板重填，跟「完全
+ *  沒有 window」的處理方式一致。 */
 function unscheduledFromRow(row: AssignedCardRow): UnscheduledItem[] {
   let assigneeIds: string[] = [];
   try {
@@ -144,8 +165,17 @@ function unscheduledFromRow(row: AssignedCardRow): UnscheduledItem[] {
     if (Array.isArray(parsed)) {
       for (const entry of parsed) {
         if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
-        const userId = (entry as Record<string, unknown>).userId;
-        if (typeof userId === "string") scheduledUserIds.add(userId);
+        const window = entry as Record<string, unknown>;
+        const userId = window.userId;
+        const startDate = window.startDate;
+        const endDate = window.endDate;
+        if (
+          typeof userId === "string" &&
+          typeof startDate === "string" && DATE_ONLY.test(startDate) &&
+          typeof endDate === "string" && DATE_ONLY.test(endDate)
+        ) {
+          scheduledUserIds.add(userId);
+        }
       }
     }
   } catch {
@@ -198,8 +228,15 @@ function unscheduledFromRow(row: AssignedCardRow): UnscheduledItem[] {
  *     「不依賴查詢規劃器求值順序」的建構保證，且會讓 Step 7 的 mutation
  *     測試沒有東西可以驗證。故 CASE 保留，且必須繼續帶第 2 點的 json_type
  *     檢查——那一層防護不是 WHERE cards.type='object' 的重複，是完全獨立的
- *     另一種畸形資料。 */
-function barQuery(projectPlaceholders: string): string {
+ *     另一種畸形資料。
+ *
+ *  控制者裁決（非 brief 原文）：不再吃 projectPlaceholders、在 WHERE 裡塞一個
+ *  「每批各自 LIMIT 50」的巢狀子查詢——那個寫法在 workspace 專案數超過
+ *  CHUNK_SIZE、需要分成 N 批查詢時，等於把全域上限放寬成 50×N，且選出來的
+ *  不是「整個範圍內最近更新的 50 個」。改吃呼叫端已經在 Worker 內排序、確定好
+ *  的 boardIds（見 resolveTopBoards），直接 `boards.id IN (...)`，上限只在
+ *  resolveTopBoards 生效一次，這裡不用再管。 */
+function barQuery(boardPlaceholders: string): string {
   return `SELECT projects.id AS project_id, projects.name AS project_name,
                  boards.id AS board_id, boards.name AS board_name,
                  cards.key AS card_id,
@@ -215,13 +252,7 @@ function barQuery(projectPlaceholders: string): string {
           JOIN json_each(CASE WHEN cards.type = 'object'
                 AND json_type(cards.value, '$.assignmentWindows') = 'array'
                 THEN json_extract(cards.value, '$.assignmentWindows') END) AS windows
-          WHERE boards.id IN (
-                  SELECT boards.id FROM boards
-                  WHERE boards.status = 'active'
-                    AND boards.project_id IN (${projectPlaceholders})
-                  ORDER BY boards.updated_at DESC, boards.id DESC
-                  LIMIT ${MAX_BOARDS}
-                )
+          WHERE boards.id IN (${boardPlaceholders})
             AND projects.status = 'active'
             AND cards.type = 'object'
             AND windows.type = 'object'
@@ -240,8 +271,11 @@ function barQuery(projectPlaceholders: string): string {
  *  區分「剛好等於視覺上限」與「原始資料被截斷」，只有 +1 才做得到），程式碼
  *  片段少了 +1 判斷是 brief 本身的落差，這裡採信散文與控制者的裁決。
  *  一張卡可能有多位指派人卻只有少數缺期間，所以原始列數必須大於未排期上限
- *  才夠篩。 */
-function assignedCardQuery(projectPlaceholders: string): string {
+ *  才夠篩。
+ *
+ *  同 barQuery：改吃 boardIds，不再吃 projectPlaceholders＋巢狀子查詢——理由
+ *  見 barQuery 的註解。 */
+function assignedCardQuery(boardPlaceholders: string): string {
   return `SELECT projects.id AS project_id, projects.name AS project_name,
                  boards.id AS board_id, boards.name AS board_name,
                  cards.key AS card_id,
@@ -251,17 +285,47 @@ function assignedCardQuery(projectPlaceholders: string): string {
           FROM boards
           INNER JOIN projects ON projects.id = boards.project_id
           JOIN json_each(json_extract(boards.data, '$.cards')) AS cards
-          WHERE boards.id IN (
-                  SELECT boards.id FROM boards
-                  WHERE boards.status = 'active'
-                    AND boards.project_id IN (${projectPlaceholders})
-                  ORDER BY boards.updated_at DESC, boards.id DESC
-                  LIMIT ${MAX_BOARDS}
-                )
+          WHERE boards.id IN (${boardPlaceholders})
             AND projects.status = 'active'
             AND cards.type = 'object'
             AND json_extract(cards.value, '$.completedAt') IS NULL
           LIMIT ${MAX_UNSCHEDULED * 10 + 1}`;
+}
+
+type BoardMetaRow = { id: string; updated_at: string };
+
+/** 決定這次請求要展開的看板集合：全域最近更新的 MAX_BOARDS 個，不是「每個
+ *  projectId 批次各自最近更新的 MAX_BOARDS 個」。
+ *
+ *  做法：對 scope.projectIds 分批查 (id, updated_at)，每批都不加 LIMIT——這裡
+ *  故意不在 SQL 端限制筆數，否則又會重演同一個「每批各自截斷」的錯誤，只是
+ *  換了個位置。所有批次的結果在 Worker 內合併，統一排序（`updated_at DESC,
+ *  id DESC`，與舊版子查詢的 ORDER BY 對齊，維持「最近更新優先，同秒以 id 降序
+ *  當 tie-breaker」的既有語意）後只取前 MAX_BOARDS 個 id。
+ *
+ *  回傳的 totalCount 是排序前的合併總數（分批 COUNT 的效果，但用同一次查詢
+ *  順便算出來，不必再開一條獨立的 COUNT(*) 查詢）：boardsTruncated 直接用
+ *  `totalCount > MAX_BOARDS` 判斷，這時候「有截斷」的旗標與「兩條查詢實際上
+ *  只處理前 MAX_BOARDS 個看板」的事實一致，不會再有旗標與資料兜不起來的落差。 */
+async function resolveTopBoards(
+  database: D1Database,
+  projectIds: string[],
+): Promise<{ boardIds: string[]; totalCount: number }> {
+  const allBoards: BoardMetaRow[] = [];
+  for (const group of chunk(projectIds, CHUNK_SIZE)) {
+    const placeholders = group.map(() => "?").join(", ");
+    const result = await database.prepare(
+      `SELECT id, updated_at FROM boards
+       WHERE status = 'active' AND project_id IN (${placeholders})`,
+    ).bind(...group).all<BoardMetaRow>();
+    allBoards.push(...result.results);
+  }
+  allBoards.sort((a, b) =>
+    b.updated_at.localeCompare(a.updated_at) || b.id.localeCompare(a.id));
+  return {
+    boardIds: allBoards.slice(0, MAX_BOARDS).map((board) => board.id),
+    totalCount: allBoards.length,
+  };
 }
 
 type Person = { userId: string; displayName: string };
@@ -337,22 +401,17 @@ export async function handleAssignmentsRequest(
   }
 
   const database = context.env.DB;
-  const projectGroups = chunk(scope.projectIds, CHUNK_SIZE);
 
-  let boardCount = 0;
+  const { boardIds, totalCount: boardTotalCount } = await resolveTopBoards(database, scope.projectIds);
+  const boardsTruncated = boardTotalCount > MAX_BOARDS;
+
   const bars: Bar[] = [];
   let barsRawHitLimit = false;
   const unscheduledAll: UnscheduledItem[] = [];
   let unscheduledRawHitLimit = false;
 
-  for (const group of projectGroups) {
+  for (const group of chunk(boardIds, CHUNK_SIZE)) {
     const placeholders = group.map(() => "?").join(", ");
-
-    const countRow = await database.prepare(
-      `SELECT COUNT(*) AS n FROM boards
-       WHERE boards.status = 'active' AND boards.project_id IN (${placeholders})`,
-    ).bind(...group).first<number>("n") ?? 0;
-    boardCount += countRow;
 
     const barResult = await database.prepare(barQuery(placeholders))
       .bind(...group, to, from)
@@ -418,7 +477,7 @@ export async function handleAssignmentsRequest(
     unscheduled: trimmedUnscheduled,
     barsTruncated,
     unscheduledTruncated,
-    boardsTruncated: boardCount > MAX_BOARDS,
+    boardsTruncated,
     requestId: context.requestId,
   }, context.requestId);
 }
