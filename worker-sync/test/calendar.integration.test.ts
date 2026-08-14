@@ -234,6 +234,19 @@ async function insertBoard(
   ).run();
 }
 
+/** 直接寫入任意（可能不合法）的 boards.data 文字，繞過 boardJson 的
+ *  JSON.stringify——用於模擬「既存資料早於任何一版寫入驗證」的畸形資料，這種
+ *  形狀不可能透過應用層的寫入路徑產生。 */
+async function insertRawBoard(id: string, projectId: string, name: string, rawData: string) {
+  const now = "2026-08-12T00:00:00.000Z";
+  await env.DB.prepare(
+    `INSERT INTO boards (
+       id, project_id, name, normalized_name, status, revision, data,
+       created_by, created_at, updated_at, archived_at, archived_by
+     ) VALUES (?, ?, ?, ?, 'active', 0, ?, ?, ?, ?, NULL, NULL)`,
+  ).bind(id, projectId, name, name.toLowerCase(), rawData, otherOwnerId, now, now).run();
+}
+
 const endpoint = "https://sync.test";
 
 async function dispatch(token: string | null, path: string): Promise<Response> {
@@ -773,6 +786,43 @@ describe("GET /calendar", () => {
       good: cardFixture({ id: "good", dueDate: `${TEST_MONTH}-14` }),
       bad: "x",
     });
+
+    const response = await dispatch(tokenFor(adminUserId), `/calendar?workspaceId=${workspaceA}&month=${TEST_MONTH}`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as CalendarResponseBody;
+    const allIds = [...body.scheduled, ...body.unscheduled].map((card) => card.cardId);
+    expect(allIds).toEqual(["good"]);
+  });
+
+  // 人力甘特圖 v1 Task 3 複審發現的同型缺口（真實 D1 實測確認），一併補到這裡：
+  // 上面那個測試守的是「$.cards 底下個別成員是 scalar」，cards.type = 'object'
+  // 這條 WHERE 守得住。但最外層 json_each(json_extract(boards.data, '$.cards'))
+  // 本身完全沒有守門——$.cards 這個容器本身是 scalar、或 boards.data 整份不是
+  // 合法 JSON 時，json_extract 會直接對非法輸入求值並拋 malformed JSON，
+  // 讓整個 workspace 的 GET /calendar 500，跟上面的洞是不同層級。寫入端只驗
+  // board 整體合法，這裡讀的是既存資料，可能早於任何一版寫入驗證。
+  it("survives a board whose boards.data is not valid JSON at all", async () => {
+    await insertWorkspaceMember(workspaceA, adminUserId, "admin");
+    await insertProject(calProjectAlpha, workspaceA, "Calendar Alpha", otherOwnerId);
+    await insertBoard(calBoardAlpha, calProjectAlpha, "Alpha Board", {
+      good: cardFixture({ id: "good", dueDate: `${TEST_MONTH}-14` }),
+    });
+    await insertRawBoard(calBoardBeta, calProjectAlpha, "Corrupt Board", "not json at all");
+
+    const response = await dispatch(tokenFor(adminUserId), `/calendar?workspaceId=${workspaceA}&month=${TEST_MONTH}`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as CalendarResponseBody;
+    const allIds = [...body.scheduled, ...body.unscheduled].map((card) => card.cardId);
+    expect(allIds).toEqual(["good"]);
+  });
+
+  it("survives a board whose $.cards itself is a scalar rather than an object", async () => {
+    await insertWorkspaceMember(workspaceA, adminUserId, "admin");
+    await insertProject(calProjectAlpha, workspaceA, "Calendar Alpha", otherOwnerId);
+    await insertBoard(calBoardAlpha, calProjectAlpha, "Alpha Board", {
+      good: cardFixture({ id: "good", dueDate: `${TEST_MONTH}-14` }),
+    });
+    await insertRawBoard(calBoardBeta, calProjectAlpha, "Scalar Cards Board", JSON.stringify({ cards: "not-an-object" }));
 
     const response = await dispatch(tokenFor(adminUserId), `/calendar?workspaceId=${workspaceA}&month=${TEST_MONTH}`);
     expect(response.status).toBe(200);

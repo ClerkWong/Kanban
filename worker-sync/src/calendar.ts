@@ -117,7 +117,22 @@ function toCalendarCard(row: CardRow): CalendarCard {
  *  WHERE 另有 cards.type = 'object' 守門：json_each 展開出的成員若非物件（例如
  *  $.cards 混入 scalar 值），對它求值的 json_extract 會噴 malformed JSON，這裡跳過
  *  而不是讓整份日曆 500，與 boards.ts／board-diff.ts 讀取路徑「非物件卡片一律跳過」
- *  的慣例一致。 */
+ *  的慣例一致。
+ *
+ *  後續補強（人力甘特圖 v1 Task 3 複審發現的同型缺口，真實 D1 實測確認）：
+ *  最外層 `json_each(json_extract(boards.data, '$.cards'))` 本身完全沒有守門
+ *  ——`boards.data` 整份不是合法 JSON、或 `$.cards` 本身是 scalar（不是物件）
+ *  時，`json_extract` 會直接對這個非法輸入求值並拋 malformed JSON，讓整份
+ *  日曆 500，跟上面 `cards.type = 'object'` 守門的是完全不同層級的問題（那個
+ *  守的是「$.cards 底下的個別成員」，這個守的是「$.cards 這個容器本身」）。
+ *  修法：`json_each(CASE WHEN json_valid(boards.data) AND
+ *  json_type(boards.data, '$.cards') = 'object' THEN
+ *  json_extract(boards.data, '$.cards') END)`——`json_valid` 對任何輸入都不
+ *  拋錯，必須放在 AND 第一個運算元短路擋住後面的 `json_type`（`json_type`
+ *  單獨對非法 JSON 求值一樣會拋錯）。寫入端只驗 board 整體是合法 JSON
+ *  物件，不保證 boards.data 這個 TEXT 欄位在資料庫層面沒有例外途徑被寫入
+ *  非法內容（例如手動 SQL 操作、遷移腳本），縱深防禦原則與 assignments.ts
+ *  的 DATE_ONLY 一致：SQL 讀的是既存資料，可能早於任何一版寫入驗證。 */
 function cardQuery(projectPlaceholders: string, dueClause: string, limit: number): string {
   return `SELECT projects.id AS project_id, projects.name AS project_name,
                  boards.id AS board_id, boards.name AS board_name,
@@ -129,7 +144,9 @@ function cardQuery(projectPlaceholders: string, dueClause: string, limit: number
                  json_extract(cards.value, '$.assigneeUserIds') AS assignee_ids
           FROM boards
           INNER JOIN projects ON projects.id = boards.project_id
-          JOIN json_each(json_extract(boards.data, '$.cards')) AS cards
+          JOIN json_each(CASE WHEN json_valid(boards.data)
+                AND json_type(boards.data, '$.cards') = 'object'
+                THEN json_extract(boards.data, '$.cards') END) AS cards
           WHERE boards.id IN (
                   SELECT boards.id FROM boards
                   WHERE boards.status = 'active'
