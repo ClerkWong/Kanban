@@ -22,6 +22,7 @@ D1、附件存入 R2，供多裝置共用。
 - PWA manifest、service worker、隱私與支援頁。
 - 卡片欄位停留老化、Cycle Time／阻塞時長／流動效率流動報表、服務類別與加急 WIP 上限。
 - 管理者專屬的跨專案日曆檢視：依截止日呈現本月任務、未排程池與每人件數（桌面專用）。
+- 管理者專屬的人力甘特圖：以人為列、以日期為軸顯示每人投入期間、過載與未排期（桌面專用）。
 
 ## 架構
 
@@ -225,10 +226,17 @@ create 只從隱藏提示或 stdin 讀取明文，list 不查詢 token hash，pr
 - 上述兩項放寬疊加後，workspace admin 可以先用日曆看見某專案有哪些工作，再自我指派進入該
   專案讀取完整內容。日曆讀取本身不留稽核紀錄，自我指派會留 `via: "platform_admin"`；這是
   刻意接受的管理者能力範圍，而非技術阻擋。
+- 指派名單與每人投入期間只有 Project owner 可變更；member 可編輯卡片其他欄位。
+- 每張卡片的每位指派人可有各自的計畫投入期間；沒有期間的指派在甘特圖上列為未排期，
+  不會被視為錯誤，也不阻擋任何編輯。
+- 每人投入期間隨卡片整體 LWW 合併，不做欄位級合併；兩台裝置同時改同一張卡的不同人期間時，
+  後寫入者整份覆蓋。這是維持卡片級 LWW 簡單性所接受的精度損失。
 
 ## 相關文件
 
 - [NextTasks.md](./NextTasks.md)：目前狀態、後續任務、驗收與 rollback runbook。
+- [人力甘特圖 v1 規格](./docs/superpowers/specs/2026-08-13-resource-gantt-design.md)
+- [人力甘特圖 v1 實作計畫](./docs/superpowers/plans/2026-08-13-resource-gantt-v1.md)
 - [多專案／多看板 v1 規格](./docs/superpowers/specs/2026-07-24-multi-project-multi-board-design.md)
 - [多專案／多看板 v1 實作計畫](./docs/superpowers/plans/2026-07-24-multi-project-multi-board-v1.md)
 - [設計規格](./docs/superpowers/specs/2026-07-14-mobile-app-design.md)

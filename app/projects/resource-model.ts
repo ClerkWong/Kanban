@@ -28,10 +28,10 @@ function diffDays(from: string, to: string): number {
   return Math.round((parseUtcDay(to) - parseUtcDay(from)) / MS_PER_DAY);
 }
 
-/** date-only 格式的粗略檢查；跟 app/projects/api.ts 的 DATE_ONLY 用同一顆正則
- * ——那裡驗的是伺服器落庫前的縱深防禦，這裡驗的是 client 路由參數，兩處故意
- * 保持同一顆正則而不是各自寫一份。只驗數字範圍，驗不出「2 月 30 日」這類曆法
- * 上不存在的日期，所以 isValidDay 另外做來回驗證。 */
+/** date-only 格式的粗略檢查；跟 worker-sync/src/assignments.ts 的 DATE_ONLY 用
+ * 同一顆正則——那裡驗的是伺服器端讀寫的縱深防禦，這裡驗的是 client 路由參數，
+ * 兩處故意保持同一顆正則而不是各自寫一份。只驗數字範圍，驗不出「2 月 30 日」
+ * 這類曆法上不存在的日期，所以 isValidDay 另外做來回驗證。 */
 const DAY_FORMAT = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 /**

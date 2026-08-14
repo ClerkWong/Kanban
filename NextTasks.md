@@ -50,6 +50,7 @@
 | 多看板與看板指派 v1 | 已部署 staging，待人工驗收 | migration `0005` 已套用 staging D1（5 commands）；staging Worker version `f132bf43-4d3f-4b62-94d7-af612fb47cf5`，無 token／錯 token 對 `/me`、`/projects` 均回 401；Web Beta version `c9646e12-249d-40ae-a523-17fb70c7dedd`，Access 仍正常擋下未授權請求（302）。migration `0005_multi_board_assignments.sql`：移除 `0003` 單看板唯一索引，新增 `project_member_boards`；owner-only 指派 API（`GET`／`PUT /projects/:projectId/members/:userId/boards`，每位 member 上限 50 個看板，空陣列＝回到 fallback，寫入 `member.boards_assigned` audit）；member 依指派列決定可見 Board，完全沒有指派列時 fallback 到主要看板（active 看板中 `updated_at DESC, id DESC` 第一個），owner／legacy viewer 恆全可見；member 對未可見 Board 的內容、附件與 Log 一律 404，`listBoards`、summary 與 `listProjects` 代表看板均已收斂到可見集合；owner 可在專案總覽新增看板，member 面板以 checkbox 群指派（樂觀更新），單一可見看板時自動落板且不顯示切換器，被移除指派時顯示可關閉 banner |
 | 平台管理指派專案成員 v1 | 已部署 staging，待人工驗收 | 已合入 main（`cb44d55`）；staging Worker version `40e86dc5-6393-479a-a32b-f6675f86d5a5`，無 token 對 `/me` 與 `/admin/users` 均回 401；Web Beta version `e588481e-e4cf-4006-8790-47dd8c9cc25d`，Access 仍正常擋下未授權請求（302）。無 D1 migration。workspace owner／admin 可從使用者管理指派任何專案的成員與角色；放寬只作用於 `PUT`／`DELETE /projects/:projectId/members/:userId`，其餘 manage 操作不變；新增 admin-only `GET /admin/users/:userId/projects`；專案外 admin 的變更在 Activity Log 標 `via: "platform_admin"` |
 | 跨專案日曆檢視 v1 | 已部署 staging 與 Web Beta，待人工驗收 | 管理者專屬 `GET /calendar?workspaceId=&month=`；workspace owner／admin 得到全 workspace active 專案、Project owner 得到他 own 的、其餘 403；只回未完成卡與 active 看板，不含描述／checklist／附件／阻塞原因；卡片以 SQLite `json_each` 在 SQL 層過濾（D1 已實測支援）；未排程池上限 200、看板上限 50，超出以旗標明示；v1 純檢視、桌面專用（< 900 px 顯示引導訊息）。已合入 main（`df85fe8`）；無 D1 migration；staging Worker version `77070cdd-60f8-4cdc-b104-1451d7202487`，無 token／錯 token 對 `/calendar` 與 `/me` 均回 401；Web Beta version `b6033548-7155-40b8-99e5-0782cf7f0243`，Access 仍正常擋下未授權請求（302）。導覽日曆入口對 workspace admin 與非 admin 的 Project owner 皆可見，且 SQL 對非物件卡片有型別守門 |
+| 人力甘特圖 v1 | 已實作，待 staging 部署與驗收 | Card schema v8 新增 `assignmentWindows`（每位指派人各自的計畫投入期間，date-only 含頭尾；`userId` 須為 `assigneeUserIds` 子集、每人至多一筆、每卡上限 20；缺 window＝未排期，非錯誤）；migration 一律補空陣列，不替舊卡推導日期。指派名單與投入期間收斂為只有 Project owner 可變更，以逐卡 `assignmentSignature` 比對實作——只比對兩版都存在的卡片，缺席鍵與空陣列視為同一簽章（避免舊看板 member 編輯被誤 403 鎖死，即流動度量 v7 上線前抓到的同一坑）。新增 `GET /assignments?workspaceId=&from=&to=`，範圍複用 `resolveCalendarScope`，窗長上限含頭尾 31 天；看板選取為全域 Top-50（`updated_at DESC, id DESC`），bars 上限 2000、未排期上限 200，三者皆有對應截斷旗標；卡片與 window 以雙層 `json_each` 展開，內層以 `CASE` 守門，外層另加 `json_valid`／`json_type` 守門避免畸形資料致 500。新路由 `#/resources?from=YYYY-MM-DD`：每人一列、lane packing 分層、同日並行以文字＋樣式雙區隔標示過載、未排期側欄、預設 14 天可前後移動；v1 純檢視（不可在甘特圖上拖拉調整期間）、桌面專用（< 900px 顯示引導訊息）。無 D1 migration（`assignmentWindows` 住在 `boards.data` 的 JSON blob 內），但因權限收緊，部署順序不可顛倒，見下方 P1 部署備註。分支 `feature/resource-gantt-v1`，尚未合入 main |
 
 ### 已完成的驗證
 
@@ -386,6 +387,24 @@ git diff --check
 - [ ] 已完成卡、archived 專案與 archived 看板的卡片不出現。
 - [ ] 視窗縮到 900 px 以下顯示引導訊息而非破版月曆。
 
+### 人力甘特圖
+
+- [ ] Project owner 在卡片面板可為每位指派人填起訖日；member 看到的是唯讀。
+- [ ] 舊看板（無 `assignmentWindows`）的 member 編輯不會被 403 擋下。
+- [ ] 非 owner 嘗試改指派或期間得到 403，Activity Log 記錄欄位變更但不含日期內容。
+- [ ] workspace admin 的甘特圖含全 workspace 所有 active 專案；Project owner 只含他 own 的；
+      member 與 viewer 開 `#/resources` 被導回「我的專案」，直接呼叫端點得 403。
+- [ ] 同一張卡片同時出現在多位指派人的列上，各自使用自己的期間。
+- [ ] 這段期間完全沒有條子的成員仍出現在人員軸上，顯示為空白列。
+- [ ] 已離開專案但指派仍保留的成員仍有自己的列，標示為「已離開」並排在正式成員之後。
+- [ ] 同一人同日兩條以上時有文字與樣式雙區隔的過載標示。
+- [ ] 有指派、無期間的卡片出現在「未排期」側欄。
+- [ ] 視窗前後移動更新 URL，且以 `#/resources?from=YYYY-MM-DD` 直接開啟可重載。
+- [ ] 跨窗邊界的條子正確裁切，不溢出時間軸。
+- [ ] 已完成卡、archived 專案與 archived 看板不出現。
+- [ ] 畸形卡片或畸形 window 不會讓端點 500。
+- [ ] 視窗縮到 900 px 以下顯示引導訊息而非破版時間軸。
+
 ### Web/PWA 與客製設定
 
 - [x] private Beta v15 仍是 owner-only custom access。
@@ -527,7 +546,11 @@ git diff --check
   v1，在此之前手機端合併仍可能丟棄另一側新增的欄位，且原生 App 不會出現多看板
   切換與指派介面。
 - 在獨立 PR 更新 Wrangler、Workers types 與 compatibility date；不要和 production
-  cutover 放在同一個不可拆部署。
+  cutover 放在同一個不可拆部署。人力甘特圖 v1（Task 7）已定位具體阻塞點：本機釘死的
+  `wrangler@4.92.0`／`workerd@1.20260515.1` 最高只支援 compatibility date 約
+  2026-05-22，專案目前設定已到 `2026-08-07`，`pnpm dev` 因此在本機無法啟動；真實部署
+  不受影響（`wrangler deploy` 打 Cloudflare 正式 edge，不受本機執行期版本限制），僅本機
+  開發體驗受阻，本分支刻意不在此處升版。
 - 若需要已安裝 App 即時更新 title，設計具完整性驗證、cache fallback 與版本欄位的
   遠端設定服務。
 - `/admin/users` 家族目前先解析路徑參數（`parseUuid`）才檢查 `requireWorkspaceAdmin`，
@@ -584,6 +607,30 @@ git diff --check
   「偵察無痕、加入留痕」。評估後不視為阻擋（放寬前 admin 已能經 `/admin` 家族列舉全部
   專案與成員，日曆只是把粒度細化到卡片標題層級，且敏感內容仍在稽核牆後），但建議補一筆
   輕量 audit 或存取計數，讓管理者的跨專案讀取也可回溯。
+- 部署人力甘特圖 v1 時必須先 `pnpm sync:deploy:staging`（Worker 要先能驗證並接受
+  `assignmentWindows`，否則 v8 client 送上的新欄位會被舊 Worker 原樣存入而未經驗證），
+  再 `pnpm web:deploy:beta`；部署順序不可顛倒。部署後須確認：無 token 對 `/assignments`
+  回 401、member 帳號改指派得 403、且舊看板的 member 編輯仍得 200（lockout 回歸的線上
+  確認，即流動度量 v7 上線前抓到的同一坑，本次沿用同一防線）。
+- `tests/board-flow-metrics.test.ts` 在 `TZ=Pacific/Niue`（UTC-11）下有一個既有測試
+  失敗；人力甘特圖 v1 實作時（Task 5）順手發現，已確認與本次改動無關，屬先前 schema 的
+  既有時區換算缺陷，應獨立排查月份／日界線在極端負時區下的計算。
+- 指派人數 UI 目前無 20 上限提示（多看板指派 v1 遺留缺口，人力甘特圖 v1 審查時再次確認
+  仍未補）：超過 20 位成員的專案勾選第 21 位指派人時，UI 無事前守門，要等 sync 才會吃
+  Worker 400 `invalid_assignees`；應在勾選 UI 加上到 20 即停用其餘 checkbox 並提示上限。
+- Worker 端 `DATE_ONLY`（`worker-sync/src/boards.ts` 寫入端、`worker-sync/src/assignments.ts`
+  讀取端同一顆正則）只驗格式不驗曆法，`2026-13-45` 這類數字範圍合法但曆法不存在的日期可以
+  直接存進 `assignmentWindows`。`/assignments` 讀取端已對此做縱深防禦（視為未排期，不會
+  500 或算出 NaN 座標），但寫入端仍會落庫；應評估是否值得在 `normalizeAssignmentWindows`
+  加一次來回驗證（比照 `app/projects/resource-model.ts` 的 `isValidDay`）。
+- 卡片 `title` 或 `cardId` 為空字串、但 `assignmentWindows` 日期合法時，該筆會同時從
+  `/assignments` 的 `bars` 與 `unscheduled` 兩個清單消失（塞進 `unscheduled` 會產生空
+  標題項，人力甘特圖 v1 審查時判斷為可接受的設計取捨，非本次修正範圍，但記錄於此避免
+  日後被誤讀為端點漏資料）。
+- `worker-sync/src/board-diff.ts` 的 `sameValue` 對鍵順序敏感；人力甘特圖 v1 新增的
+  `assignmentWindows` 沿用同一函式比對變更偵測，繼承既有的 `assigneeUserIds` 同款限制
+  （鍵順序不同但內容相同時，Activity Log 可能誤記一次「變更」）。只影響 Log 精度，不
+  影響實際資料或權限判斷。
 
 ## 行動版發行工作
 
