@@ -4,6 +4,7 @@ import {
   canWriteAttachment,
   isServerResourceId,
 } from "./model";
+import { isValidDay } from "./resource-model";
 import type {
   BoardContext,
   BoardMeta,
@@ -43,9 +44,14 @@ export function parseProjectHash(hash: string): ProjectRoute | null {
   if (path === "resources" || path.startsWith("resources?")) {
     const query = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
     const from = new URLSearchParams(query).get("from");
+    // 正則加來回驗證（isValidDay）：這是 from 參數唯一的輸入口，擋在這裡之後
+    // rangeFrom／dayRange 就不可能收到「2026-02-30」這類數字範圍合法但曆法
+    // 上不存在的日期——不然 rangeFrom 用 toISOString() 格式化時可能直接拋
+    // 未捕捉例外（Invalid time value），或是靜默溢位成別的日期，使用者只會
+    // 看到白屏，Worker 端的 DATE_ONLY 驗證根本沒機會擋下。
     return {
       kind: "resources",
-      from: from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : null,
+      from: from && isValidDay(from) ? from : null,
     };
   }
 

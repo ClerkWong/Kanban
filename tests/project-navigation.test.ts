@@ -100,6 +100,25 @@ test("parses the resources route with and without a from parameter", () => {
   );
 });
 
+test("resources route rejects from dates that are not real calendar days", () => {
+  // 正則形狀合法（YYYY-MM-DD、數字範圍也對）但曆法上不存在——isValidDay 的
+  // 來回驗證才擋得下來，單靠 /^\d{4}-\d{2}-\d{2}$/ 這類形狀正則會誤放行，
+  // 讓 rangeFrom 在 Task 6 直接拿到這個值時於 toISOString() 溢位或拋例外。
+  assert.deepEqual(
+    parseProjectHash("#/resources?from=2026-02-30"),
+    { kind: "resources", from: null },
+  );
+  assert.deepEqual(
+    parseProjectHash("#/resources?from=2027-02-29"),
+    { kind: "resources", from: null },
+  );
+  // 閏年 2 月 29 日是合法的一天，不該被誤擋。
+  assert.deepEqual(
+    parseProjectHash("#/resources?from=2028-02-29"),
+    { kind: "resources", from: "2028-02-29" },
+  );
+});
+
 test("serializes the resources route", () => {
   assert.equal(
     serializeProjectRoute({ kind: "resources", from: "2026-08-07" }),

@@ -28,6 +28,33 @@ function diffDays(from: string, to: string): number {
   return Math.round((parseUtcDay(to) - parseUtcDay(from)) / MS_PER_DAY);
 }
 
+/** date-only 格式的粗略檢查；跟 app/projects/api.ts 的 DATE_ONLY 用同一顆正則
+ * ——那裡驗的是伺服器落庫前的縱深防禦，這裡驗的是 client 路由參數，兩處故意
+ * 保持同一顆正則而不是各自寫一份。只驗數字範圍，驗不出「2 月 30 日」這類曆法
+ * 上不存在的日期，所以 isValidDay 另外做來回驗證。 */
+const DAY_FORMAT = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+/**
+ * 判斷字串是否為曆法上真實存在的一天（`YYYY-MM-DD`）。正則驗不出「2 月 30
+ * 日」「非閏年 2 月 29 日」這類數字範圍合法、曆法上不存在的日期——JS 的
+ * `Date` 對這類輸入的行為不一致：有的會溢位捲到下個月（變成另一個合法但錯誤
+ * 的日期，不會拋錯，容易被忽略)，有的直接是 Invalid Date（後續呼叫
+ * `toISOString()` 才會拋 `RangeError`)。所以先過正則抓明顯的格式錯誤，再把
+ * 它 parse 成 UTC 時間戳格式化回字串、跟原字串比對：溢位或無效都會在這一步
+ * 露餡，兩種情形一律回 false，不區分。
+ *
+ * 這是 app/projects/navigation.ts 的 resources 路由 parser 專用的守門——
+ * route parser 是 `from` 查詢參數唯一的輸入口，擋在那裡之後，dayRange／
+ * rangeFrom／shiftRange 就不可能收到一個曆法上不存在的日期，這些函式內部
+ * 不需要再各自防禦一次。
+ */
+export function isValidDay(day: string): boolean {
+  if (!DAY_FORMAT.test(day)) return false;
+  const ms = parseUtcDay(day);
+  if (Number.isNaN(ms)) return false;
+  return formatUtcDay(ms) === day;
+}
+
 /** 含頭尾列出 from 到 to 之間每一天。to 早於 from 時回傳空陣列——Worker 端保證
  * 查詢窗 from <= to，但這裡不假設呼叫端一定守規矩，退化輸入給定義良好的結果
  * 而不是丟例外或跑出負索引。 */

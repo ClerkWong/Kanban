@@ -4,6 +4,7 @@ import {
   barSpanInWindow,
   dayRange,
   groupBarsByUser,
+  isValidDay,
   overloadedDays,
   packLanes,
   rangeFrom,
@@ -74,6 +75,18 @@ test("barSpanInWindow clips a bar that straddles the window", () => {
   );
 });
 
+test("isValidDay rejects out-of-range components and calendar-invalid days", () => {
+  assert.equal(isValidDay("2026-13-01"), false);
+  assert.equal(isValidDay("2026-02-30"), false);
+  assert.equal(isValidDay("2026-00-10"), false);
+  assert.equal(isValidDay("2026-08-32"), false);
+});
+
+test("isValidDay accepts a leap day and rejects the same day in a non-leap year", () => {
+  assert.equal(isValidDay("2028-02-29"), true);
+  assert.equal(isValidDay("2027-02-29"), false);
+});
+
 // bar 工廠：只填排版用得到的欄位，其餘以 ResourceBar 的合法值補齊
 function bar(cardId: string, startDate: string, endDate: string, userId = ALICE): ResourceBar {
   return {
@@ -136,6 +149,33 @@ test("packLanes is deterministic regardless of input order", () => {
     second.map((entry) => [entry.bar.cardId, entry.lane]),
   );
   assert.deepEqual(first.map((entry) => entry.lane), [0, 1]);
+});
+
+test("packLanes keeps a same-day handoff on separate lanes (not adjacent)", () => {
+  // 對照組：跟上面「adjacent bars」測試（a 08-08 結束、b 08-09 開始，隔了一整
+  // 天）恰好相反——這裡 a 在 08-10 結束的同一天 b 就開始，兩者都算「當天在
+  // 用」，必須算重疊。這個案例會抓到 packLanes 把 `<` 誤改成 `<=` 的變異：
+  // 用 `<=` 的話 08-10 這個結束日會被判定「< 或 = 08-10」而讓 b 錯誤沿用
+  // a 的 lane，兩根同一天都在用的 bar 疊進同一個格子。
+  const result = packLanes([
+    bar("a", "2026-08-07", "2026-08-10"),
+    bar("b", "2026-08-10", "2026-08-13"),
+  ]);
+  assert.deepEqual(result.map((entry) => [entry.bar.cardId, entry.lane]),
+    [["a", 0], ["b", 1]]);
+});
+
+test("packLanes sorts by endDate when startDate ties, so the shorter bar keeps the smaller lane", () => {
+  // cardId 故意跟長度反著排（較長的排在字母序較前的 "a"）：如果排序鍵漏掉
+  // endDate、退回只靠 cardId 排序，較長的 "a" 會先被處理而搶走 lane 0，
+  // 這個測試就會抓到那個變異。
+  const result = packLanes([
+    bar("a", "2026-08-07", "2026-08-13"),
+    bar("b", "2026-08-07", "2026-08-08"),
+  ]);
+  const lanes = new Map(result.map((entry) => [entry.bar.cardId, entry.lane]));
+  assert.equal(lanes.get("b"), 0);
+  assert.equal(lanes.get("a"), 1);
 });
 
 test("overloadedDays reports only days with two or more concurrent bars", () => {
