@@ -223,6 +223,19 @@ async function insertBoard(
   ).run();
 }
 
+/** 直接寫入任意（可能不合法）的 boards.data 文字，繞過 boardJson 的
+ *  JSON.stringify——用於模擬「既存資料早於任何一版寫入驗證」的畸形資料，例如
+ *  boards.data 整份不是合法 JSON，這種形狀不可能透過應用層的寫入路徑產生。 */
+async function insertRawBoard(id: string, projectId: string, name: string, rawData: string) {
+  const now = "2026-08-12T00:00:00.000Z";
+  await env.DB.prepare(
+    `INSERT INTO boards (
+       id, project_id, name, normalized_name, status, revision, data,
+       created_by, created_at, updated_at, archived_at, archived_by
+     ) VALUES (?, ?, ?, ?, 'active', 0, ?, ?, ?, ?, NULL, NULL)`,
+  ).bind(id, projectId, name, name.toLowerCase(), rawData, creatorId, now, now).run();
+}
+
 const endpoint = "https://sync.test";
 
 async function dispatch(token: string | null, path: string): Promise<Response> {
@@ -583,6 +596,109 @@ describe("GET /assignments", () => {
     expect(body.bars.map((bar) => bar.cardId)).toEqual(["good"]);
     expect(body.unscheduled).toHaveLength(1);
     expect(body.unscheduled[0]).toMatchObject({ cardId: "bad", userId: ALICE, title: "Bad Card" });
+  });
+
+  // 複審 Important（P1、P5，真實 D1 實測確認）：最外層
+  // json_each(json_extract(boards.data, '$.cards')) 完全沒有守門，跟前面已修的
+  // 「$.cards 底下個別成員是 scalar」是不同層級的洞——這裡守的是 $.cards 這個
+  // 容器本身／boards.data 這整份文件。寫入端的 isBoardPayload 擋得住 API 注入，
+  // 但這裡讀的是既存資料，可能早於任何一版寫入驗證（DATE_ONLY 縱深防禦同一個
+  // 哲學，這裡要貫徹到最外層）——直接寫 DB 略過應用層驗證，模擬這類既存資料。
+  it("survives a board whose boards.data is not valid JSON at all", async () => {
+    await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
+    await insertProject(projectAlpha, WORKSPACE_ID, "Alpha", creatorId);
+    await insertUser(ALICE);
+    await insertBoard(boardAlpha, projectAlpha, "Alpha Board", {
+      good: cardFixture({ id: "good", assigneeUserIds: [ALICE], assignmentWindows: [] }),
+      c1: cardFixture({
+        id: "c1", assigneeUserIds: [ALICE],
+        assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-08" }],
+      }),
+    });
+    await insertRawBoard(boardBeta, projectAlpha, "Corrupt Board", "not json at all");
+
+    const response = await dispatch(tokenFor(adminUserId), `/assignments?workspaceId=${WORKSPACE_ID}&from=${FROM}&to=${TO}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AssignmentsResponseBody;
+    expect(body.bars.map((bar) => bar.cardId)).toEqual(["c1"]);
+    expect(body.unscheduled.map((item) => item.cardId)).toEqual(["good"]);
+  });
+
+  it("survives a board whose $.cards itself is a scalar rather than an object", async () => {
+    await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
+    await insertProject(projectAlpha, WORKSPACE_ID, "Alpha", creatorId);
+    await insertUser(ALICE);
+    await insertBoard(boardAlpha, projectAlpha, "Alpha Board", {
+      good: cardFixture({ id: "good", assigneeUserIds: [ALICE], assignmentWindows: [] }),
+      c1: cardFixture({
+        id: "c1", assigneeUserIds: [ALICE],
+        assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-08" }],
+      }),
+    });
+    await insertRawBoard(boardBeta, projectAlpha, "Scalar Cards Board", JSON.stringify({ cards: "not-an-object" }));
+
+    const response = await dispatch(tokenFor(adminUserId), `/assignments?workspaceId=${WORKSPACE_ID}&from=${FROM}&to=${TO}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AssignmentsResponseBody;
+    expect(body.bars.map((bar) => bar.cardId)).toEqual(["c1"]);
+    expect(body.unscheduled.map((item) => item.cardId)).toEqual(["good"]);
+  });
+
+  // 複審 P12（真實 D1 實測確認）：startDate、endDate 各自格式合法但起訖顛倒
+  // （startDate 晚於 endDate）會通過 SQL 的重疊判斷與 DATE_ONLY，產生一根
+  // span 為負的 bar——Task 5 的 barSpanInWindow 會算出負跨距，Task 6 的格線會
+  // 被畫壞。顛倒的窗視同沒有排期，比照日期格式不合法的處理，進 unscheduled。
+  it("treats a reversed window (startDate after endDate) as unscheduled instead of producing a negative-span bar", async () => {
+    await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
+    await insertProject(projectAlpha, WORKSPACE_ID, "Alpha", creatorId);
+    await insertUser(ALICE);
+    await insertBoard(boardAlpha, projectAlpha, "Alpha Board", {
+      c1: cardFixture({
+        id: "c1", title: "Reversed Window Card", assigneeUserIds: [ALICE],
+        assignmentWindows: [{ userId: ALICE, startDate: "2026-08-15", endDate: "2026-08-10" }],
+      }),
+    });
+
+    const response = await dispatch(tokenFor(adminUserId), `/assignments?workspaceId=${WORKSPACE_ID}&from=${FROM}&to=${TO}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AssignmentsResponseBody;
+    expect(body.bars).toHaveLength(0);
+    expect(body.unscheduled).toHaveLength(1);
+    expect(body.unscheduled[0]).toMatchObject({ cardId: "c1", userId: ALICE });
+  });
+
+  // 複審 P4（真實 D1 實測確認）：window 的 userId 若是巢狀物件，
+  // json_extract 不會拋錯也不會回傳 NULL，而是把該物件序列化成合法字串
+  // '{"nested":true}'——單純 typeof 檢查在 TS 層已經來不及分辨，SQL 端改用
+  // json_type(...) = 'text' 守門後，這個 userId 應該回傳 NULL、被 toBar 擋下。
+  // ALICE 本人的指派因為對應的 window 已損毀（userId 型別不對），視同沒有
+  // 排期，應該出現在 unscheduled，而不是憑空消失或產生垃圾 bar／people 列。
+  it("skips a bar whose window userId is a nested object instead of leaking a garbage bar or a phantom people row", async () => {
+    await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
+    await insertProject(projectAlpha, WORKSPACE_ID, "Alpha", creatorId);
+    await insertUser(ALICE);
+    const boardData = JSON.stringify({
+      version: 8,
+      columns: [{ id: "todo", title: "Todo", wipLimit: null, cardIds: ["c1"] }],
+      cards: {
+        c1: {
+          id: "c1", title: "Bad UserId Card", dueDate: "", completedAt: null, blocked: false,
+          serviceClass: "standard", assigneeUserIds: [ALICE],
+          assignmentWindows: [{ userId: { nested: true }, startDate: "2026-08-07", endDate: "2026-08-08" }],
+        },
+      },
+      labels: [],
+      settings: { agingWarnDays: 3, agingAlertDays: 7, expediteWipLimit: 1 },
+    });
+    await insertRawBoard(boardAlpha, projectAlpha, "Alpha Board", boardData);
+
+    const response = await dispatch(tokenFor(adminUserId), `/assignments?workspaceId=${WORKSPACE_ID}&from=${FROM}&to=${TO}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AssignmentsResponseBody;
+    expect(body.bars).toHaveLength(0);
+    expect(body.unscheduled).toHaveLength(1);
+    expect(body.unscheduled[0]).toMatchObject({ cardId: "c1", userId: ALICE });
+    expect(body.people.some((p) => p.displayName === "")).toBe(false);
   });
 
   it("flags boardsTruncated at 51 active boards and clears at 50", async () => {

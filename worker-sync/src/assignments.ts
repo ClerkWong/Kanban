@@ -56,13 +56,17 @@ function inclusiveDays(from: string, to: string): number {
   return Math.round((end - start) / 86_400_000) + 1;
 }
 
+/** card_id／title 宣告為 `string | null` 而非 `string`：D1 的 `.all<T>()`
+ *  是不受檢查的型別斷言，實際執行期可能是 NULL（title 缺席）或其他型別
+ *  （$.cards 若為陣列，card_id 會是數字）——toBar 的 typeof 檢查才是真正的
+ *  防線，這裡的型別標注只負責誠實描述「已知」的 NULL 情形，不代表窮舉。 */
 type BarRow = {
   project_id: string;
   project_name: string;
   board_id: string;
   board_name: string;
-  card_id: string;
-  title: string;
+  card_id: string | null;
+  title: string | null;
   blocked: number | null;
   service_class: string | null;
   user_id: string | null;
@@ -84,14 +88,33 @@ type Bar = {
   serviceClass: string;
 };
 
-/** row → bar。userId 缺席（windows.type='object' 已在 SQL 端守門，理論上不會發生，
- *  但 D1 型別在 TS 層不透明，這裡 fail-closed 再驗一次）或 startDate／endDate
- *  未通過 DATE_ONLY 的縱深防禦檢查，直接跳過整筆，不讓它進 bars。 */
+/** row → bar。統一的型別檢查（複審 P2／P4／P7，真實 D1 實測確認）：`cardId`、
+ *  `title`、`userId` 任一不是非空字串就跳過整筆，不讓型別不對的值流進回應
+ *  （spec §4 三者皆為 `string`）：
+ *  - `cardId`：`$.cards` 若是陣列而非物件（外層守門正常情況下已擋掉，這裡是
+ *    第二層 fail-closed），`json_each` 迭代出的 `.key` 會是陣列索引（數字），
+ *    不是字串。
+ *  - `title`：卡片缺 `title` 欄位時 `json_extract` 回傳 SQL NULL，不驗型別會讓
+ *    `null` 直接流進回應，違反 spec 的 `string`。
+ *  - `userId`：SQL 端已用 `json_type(windows.value, '$.userId') = 'text'` 把
+ *    「userId 是巢狀物件」的情況轉成 NULL（見 barQuery 註解第 5 點——物件會被
+ *    json_extract 序列化成合法非空字串，單純 typeof 檢查在 TS 層已經來不及
+ *    分辨，必須在 SQL 端擋），這裡的 typeof 檢查是 SQL 端守門失效時的
+ *    fail-closed，理論上不會發生，但 D1 型別在 TS 層不透明，不依賴這個假設。
+ *
+ *  startDate／endDate 除了原有的 DATE_ONLY 縱深防禦，再加 `startDate <=
+ *  endDate`（複審 P12，真實 D1 實測確認）：兩個日期各自格式合法，但起訖顛倒
+ *  （例如 startDate 晚於 endDate）會通過 SQL 的重疊判斷與 DATE_ONLY，產生一根
+ *  span 為負的 bar——Task 5 的 barSpanInWindow 會算出負的跨距，Task 6 的格線
+ *  會被畫壞。顛倒的窗視同沒有排期，不讓它進 bars。 */
 function toBar(row: BarRow): Bar | null {
   if (
+    typeof row.card_id !== "string" || !row.card_id ||
+    typeof row.title !== "string" || !row.title ||
     typeof row.user_id !== "string" || !row.user_id ||
     typeof row.start_date !== "string" || !DATE_ONLY.test(row.start_date) ||
-    typeof row.end_date !== "string" || !DATE_ONLY.test(row.end_date)
+    typeof row.end_date !== "string" || !DATE_ONLY.test(row.end_date) ||
+    row.start_date > row.end_date
   ) {
     return null;
   }
@@ -146,7 +169,11 @@ type UnscheduledItem = {
  *  帶這個 userId 的物件）消失——對管理者來說是這筆指派憑空蒸發，看不到也無從
  *  修。改成只認日期合法的 window：window 存在但日期不合法，等同沒有排期，該
  *  指派人要進 unscheduled，讓管理者能在畫面上看到並回卡片面板重填，跟「完全
- *  沒有 window」的處理方式一致。 */
+ *  沒有 window」的處理方式一致。
+ *
+ *  複審追加（P12，真實 D1 實測確認）：兩個日期各自格式合法但起訖顛倒
+ *  （startDate 晚於 endDate）也要視同沒有排期，與 toBar 的處理一致——見
+ *  toBar 註解，顛倒的窗會讓下游 barSpanInWindow 算出負的跨距。 */
 function unscheduledFromRow(row: AssignedCardRow): UnscheduledItem[] {
   let assigneeIds: string[] = [];
   try {
@@ -172,7 +199,8 @@ function unscheduledFromRow(row: AssignedCardRow): UnscheduledItem[] {
         if (
           typeof userId === "string" &&
           typeof startDate === "string" && DATE_ONLY.test(startDate) &&
-          typeof endDate === "string" && DATE_ONLY.test(endDate)
+          typeof endDate === "string" && DATE_ONLY.test(endDate) &&
+          startDate <= endDate
         ) {
           scheduledUserIds.add(userId);
         }
@@ -229,6 +257,29 @@ function unscheduledFromRow(row: AssignedCardRow): UnscheduledItem[] {
  *     測試沒有東西可以驗證。故 CASE 保留，且必須繼續帶第 2 點的 json_type
  *     檢查——那一層防護不是 WHERE cards.type='object' 的重複，是完全獨立的
  *     另一種畸形資料。
+ *  4. 複審找到的 Important（P1、P5，真實 D1 實測確認）：最外層
+ *     `json_each(json_extract(boards.data, '$.cards'))` 完全沒有守門。
+ *     `boards.data` 整份不是合法 JSON、或 `$.cards` 本身是 scalar 時都會拋
+ *     malformed JSON，讓整個請求 500——寫入端 `isBoardPayload` 擋得住 API
+ *     注入，但這裡讀的是既存資料，可能早於任何一版寫入驗證（DATE_ONLY 縱深
+ *     防禦的同一個哲學，這次要貫徹到最外層）。修法：`json_each(CASE WHEN
+ *     json_valid(boards.data) AND json_type(boards.data, '$.cards') = 'object'
+ *     THEN json_extract(boards.data, '$.cards') END)`。`json_valid` 對任何
+ *     輸入都不拋錯（回傳 0 或 1，真實 D1 測試確認），且必須放在 AND 的第一個
+ *     運算元——`json_type(boards.data, '$.cards')` 單獨對非法 JSON 求值一樣會
+ *     拋錯，需要靠 `json_valid` 短路擋在它前面（真實 D1 測試確認 AND 確實
+ *     左到右短路求值，`json_valid` 為 0 時不會再算 `json_type`）。
+ *  5. 複審找到的 P4：window 的 `userId` 若是巢狀物件（例如
+ *     `"userId": {"nested": true}`），`json_extract(windows.value,
+ *     '$.userId')` 不會拋錯也不會回傳 NULL，而是把該物件序列化成合法字串
+ *     `'{"nested":true}'`（真實 D1 測試確認：SQL 原生型別是 'text'，但
+ *     `json_type()` 正確回報 'object'）。這個序列化字串會通過 `toBar` 的
+ *     `typeof` 與非空檢查，變成一根 userId 是亂碼的 bar，還會讓 `people`
+ *     多一列查無此人的 `displayName: ""`。純 TS 端的 typeof 檢查在這裡沒用
+ *     ——序列化後就是一個貨真價實的非空字串，`toBar` 拿到手上已經無法分辨它
+ *     原本是不是物件。必須在 SQL 端用 `json_type(windows.value, '$.userId')
+ *     = 'text'` 當守門，物件/陣列會被判成 NULL，交給 `toBar` 既有的
+ *     typeof 檢查擋下。
  *
  *  控制者裁決（非 brief 原文）：不再吃 projectPlaceholders、在 WHERE 裡塞一個
  *  「每批各自 LIMIT 50」的巢狀子查詢——那個寫法在 workspace 專案數超過
@@ -243,12 +294,15 @@ function barQuery(boardPlaceholders: string): string {
                  json_extract(cards.value, '$.title') AS title,
                  json_extract(cards.value, '$.blocked') AS blocked,
                  json_extract(cards.value, '$.serviceClass') AS service_class,
-                 json_extract(windows.value, '$.userId') AS user_id,
+                 CASE WHEN json_type(windows.value, '$.userId') = 'text'
+                      THEN json_extract(windows.value, '$.userId') END AS user_id,
                  json_extract(windows.value, '$.startDate') AS start_date,
                  json_extract(windows.value, '$.endDate') AS end_date
           FROM boards
           INNER JOIN projects ON projects.id = boards.project_id
-          JOIN json_each(json_extract(boards.data, '$.cards')) AS cards
+          JOIN json_each(CASE WHEN json_valid(boards.data)
+                AND json_type(boards.data, '$.cards') = 'object'
+                THEN json_extract(boards.data, '$.cards') END) AS cards
           JOIN json_each(CASE WHEN cards.type = 'object'
                 AND json_type(cards.value, '$.assignmentWindows') = 'array'
                 THEN json_extract(cards.value, '$.assignmentWindows') END) AS windows
@@ -274,7 +328,13 @@ function barQuery(boardPlaceholders: string): string {
  *  才夠篩。
  *
  *  同 barQuery：改吃 boardIds，不再吃 projectPlaceholders＋巢狀子查詢——理由
- *  見 barQuery 的註解。 */
+ *  見 barQuery 的註解。同樣需要 barQuery 第 4 點的外層守門
+ *  （`json_valid(boards.data) AND json_type(boards.data, '$.cards') =
+ *  'object'`）——`boards.data` 整份非法 JSON 或 `$.cards` 是 scalar 時，這裡
+ *  唯一的一層 json_each 一樣會 500，跟 barQuery 是同一個缺口。這條查詢不解析
+ *  window 的 userId（挪到 Worker 內的 unscheduledFromRow 做，那裡走
+ *  JSON.parse 產生真正的 JS 物件，typeof 檢查天然有效），不需要 barQuery
+ *  第 5 點的 json_type='text' 守門。 */
 function assignedCardQuery(boardPlaceholders: string): string {
   return `SELECT projects.id AS project_id, projects.name AS project_name,
                  boards.id AS board_id, boards.name AS board_name,
@@ -284,7 +344,9 @@ function assignedCardQuery(boardPlaceholders: string): string {
                  json_extract(cards.value, '$.assignmentWindows') AS windows_json
           FROM boards
           INNER JOIN projects ON projects.id = boards.project_id
-          JOIN json_each(json_extract(boards.data, '$.cards')) AS cards
+          JOIN json_each(CASE WHEN json_valid(boards.data)
+                AND json_type(boards.data, '$.cards') = 'object'
+                THEN json_extract(boards.data, '$.cards') END) AS cards
           WHERE boards.id IN (${boardPlaceholders})
             AND projects.status = 'active'
             AND cards.type = 'object'
