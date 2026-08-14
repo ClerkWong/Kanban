@@ -213,11 +213,18 @@ function requireWorkflowManagement(
 
 /** 缺席的 assignmentWindows 與空陣列必須算出同一個簽章，否則 v8 client 一律送空陣列、
  *  舊 board 沒有此鍵，member 對舊 board 的任何編輯都會被誤判為「變更了指派」而 403。
- *  這是流動度量 v7 absent-settings lockout 的同型錯誤，不接受第二次。 */
-function assignmentSignature(value: unknown): string {
+ *  這是流動度量 v7 absent-settings lockout 的同型錯誤，不接受第二次。
+ *
+ *  只對「有指派內容」（assignees 或 windows 非空）的卡建立條目——沒有指派人也
+ *  沒有投入期間的卡不進 map。這是必要的：卡片集合本身的增減不是指派動作，
+ *  若對每張卡（含空卡）都建條目，member 新增/刪除任何一張卡都會讓 map 的鍵集合
+ *  改變、被誤判成「變更了指派」而 403，等於讓 member 無法自由建卡/刪卡——這是
+ *  第一版審查抓到的回歸，Task 2 之前 contributor 本來就能自由增刪卡。 */
+function assignmentSignaturesByCard(value: unknown): Map<string, string> {
   const cards = asRecord(asRecord(value)?.cards);
-  if (!cards) return "[]";
-  const entries = Object.entries(cards).map(([cardId, raw]) => {
+  const signatures = new Map<string, string>();
+  if (!cards) return signatures;
+  for (const [cardId, raw] of Object.entries(cards)) {
     const card = asRecord(raw);
     const assignees = Array.isArray(card?.assigneeUserIds)
       ? [...card!.assigneeUserIds]
@@ -235,20 +242,37 @@ function assignmentSignature(value: unknown): string {
         .filter((window): window is unknown[] => window !== null)
         .sort((left, right) => String(left[0]).localeCompare(String(right[0])))
       : [];
-    return [cardId, assignees, windows];
-  });
-  entries.sort((left, right) => String(left[0]).localeCompare(String(right[0])));
-  return JSON.stringify(entries);
+    if (!assignees.length && !windows.length) continue;
+    signatures.set(cardId, JSON.stringify([assignees, windows]));
+  }
+  return signatures;
 }
 
+function existingCardIds(value: unknown): Set<string> {
+  const cards = asRecord(asRecord(value)?.cards);
+  return new Set(cards ? Object.keys(cards) : []);
+}
+
+/** 只檢查「兩版都存在」的卡片：卡片一旦從 next board 消失（被刪除），就略過
+ *  比對，交給看板編輯權限決定——刪卡不是指派動作，使用者已裁決 member 可以
+ *  刪除任何卡（含有指派的卡）。必須走前後兩個 map 鍵集合的聯集，只迭代
+ *  next map 會漏掉「member 清空既有卡的指派人」這個案例（該卡在 previous
+ *  map 有條目、在 next map 沒有條目，但卡片本身還在 next board 裡）。 */
 function requireAssignmentManagement(
   access: ProjectAccess,
   previousBoard: unknown,
   nextBoard: unknown,
 ): void {
   if (access.projectRole === "manager") return;
-  if (assignmentSignature(previousBoard) !== assignmentSignature(nextBoard)) {
-    throw new RequestError(403, "forbidden");
+  const previous = assignmentSignaturesByCard(previousBoard);
+  const next = assignmentSignaturesByCard(nextBoard);
+  const nextCardIds = existingCardIds(nextBoard);
+  const cardIds = new Set([...previous.keys(), ...next.keys()]);
+  for (const cardId of cardIds) {
+    if (!nextCardIds.has(cardId)) continue;
+    if (previous.get(cardId) !== next.get(cardId)) {
+      throw new RequestError(403, "forbidden");
+    }
   }
 }
 

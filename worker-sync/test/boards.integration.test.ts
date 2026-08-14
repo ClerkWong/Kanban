@@ -1004,6 +1004,7 @@ describe("Flow field validation, Board settings guard, and Activity Log flow tra
 });
 
 const ALICE = "11111111-2222-4333-8444-555555555555";
+const BOB = "22222222-3333-4444-8555-666666666666";
 
 /** 單卡 board：固定一個欄位「todo」與一張卡片「task-1」，cardPatch 覆蓋卡片欄位。
  *  不主動塞入 assignmentWindows／assigneeUserIds，缺席即缺席，模擬各版本 client 送出的形狀。 */
@@ -1032,16 +1033,33 @@ async function putBoardContentAt(
   });
 }
 
+/** 產生 count 個相異、格式合法的 userId，用來湊出「上限+1」筆
+ *  assignmentWindows——刻意避免重複 userId：若 21 筆 window 共用同一個
+ *  userId，`seen.has(userId)`（重複偵測）會在陣列長度檢查之前就先擋下，
+ *  跟「超過上限」撞成同一個 400 + 同一個錯誤代碼，會讓上限檢查被拿掉時
+ *  這個測試測不出來（見 mutation 4 的實際記錄）。 */
+function distinctUserIds(count: number, prefix = "70000000-0000-4000-8000-"): string[] {
+  return Array.from({ length: count }, (_, index) => `${prefix}${String(index).padStart(12, "0")}`);
+}
+
+function windowsFor(userIds: string[]): Array<Record<string, unknown>> {
+  return userIds.map((userId) => ({
+    userId,
+    startDate: "2026-08-01",
+    endDate: "2026-08-02",
+  }));
+}
+
 describe("Assignment windows validation and owner-only assignment management", () => {
   beforeEach(async () => {
     // requireNewAssigneesAreProjectMembers 要求「新指派的人」必須是專案成員；
-    // ALICE 在這個 describe 專門扮演「可被指派的一般成員」，與角色命名的
-    // manager/contributor/viewer 語意分開。
+    // ALICE／BOB 在這個 describe 專門扮演「可被指派的一般成員」，與角色命名的
+    // manager/contributor/viewer 語意分開。BOB 只用在需要同卡兩位指派人的測試。
     const now = "2026-07-27T00:00:00.000Z";
     await env.DB.prepare(
       `INSERT INTO project_members (project_id, user_id, role, created_at, updated_at)
-       VALUES (?, ?, 'contributor', ?, ?)`,
-    ).bind(projectA, ALICE, now, now).run();
+       VALUES (?, ?, 'contributor', ?, ?), (?, ?, 'contributor', ?, ?)`,
+    ).bind(projectA, ALICE, now, now, projectA, BOB, now, now).run();
   });
 
   it("rejects malformed assignment windows when creating a board", async () => {
@@ -1108,6 +1126,26 @@ describe("Assignment windows validation and owner-only assignment management", (
     expect(await response.json()).toMatchObject({ error: "invalid_assignment_windows" });
   });
 
+  it("rejects more than 20 assignment windows on a single card", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments");
+    const userIds = distinctUserIds(21);
+    const response = await putBoardContentAt(managerToken, 0, boardWithCard({
+      assigneeUserIds: userIds,
+      assignmentWindows: windowsFor(userIds),
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_assignment_windows" });
+  });
+
+  it("accepts a window where startDate equals endDate", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCard({
+      assigneeUserIds: [ALICE],
+      assignmentWindows: [{ userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-07" }],
+    }));
+    expect(response.status).toBe(200);
+  });
+
   it("lets the project owner set assignments and windows", async () => {
     await createBoard(managerToken, projectA, boardA, "Assignments");
     const response = await putBoardContentAt(managerToken, 0, boardWithCard({
@@ -1142,6 +1180,100 @@ describe("Assignment windows validation and owner-only assignment management", (
     }));
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ error: "forbidden" });
+  });
+
+  // 以下 4 個測試釘住審查抓到的 Critical 回歸：assignmentSignaturesByCard 只對
+  // 「有指派內容」的卡建條目，卡片集合本身的增減（建卡/刪卡）不是指派動作，
+  // 不該被這個函式擋下——那是看板編輯權限的範圍，member 一直都能做。
+
+  it("lets a member add a new card with no assignees", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({
+      assigneeUserIds: [ALICE],
+    }));
+    const withNewCard = {
+      version: 8,
+      marker: "new-unassigned-card",
+      columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1", "task-2"] }],
+      cards: {
+        "task-1": { title: "Task", assigneeUserIds: [ALICE] },
+        "task-2": { title: "New card" },
+      },
+    };
+    const response = await putBoardContentAt(contributorToken, 0, withNewCard);
+    expect(response.status).toBe(200);
+  });
+
+  it("forbids a member from adding a new card with an assignee", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({
+      assigneeUserIds: [],
+    }));
+    const withNewAssignedCard = {
+      version: 8,
+      marker: "new-assigned-card",
+      columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1", "task-2"] }],
+      cards: {
+        "task-1": { title: "Task", assigneeUserIds: [] },
+        "task-2": { title: "New card", assigneeUserIds: [ALICE] },
+      },
+    };
+    const response = await putBoardContentAt(contributorToken, 0, withNewAssignedCard);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "forbidden" });
+  });
+
+  it("lets a member delete a card that has an assignee", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments", {
+      version: 8,
+      marker: "two-cards",
+      columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1", "task-2"] }],
+      cards: {
+        "task-1": { title: "Task 1", assigneeUserIds: [] },
+        "task-2": { title: "Task 2", assigneeUserIds: [ALICE] },
+      },
+    });
+    const withoutTask2 = {
+      version: 8,
+      marker: "task-2-deleted",
+      columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds: ["task-1"] }],
+      cards: {
+        "task-1": { title: "Task 1", assigneeUserIds: [] },
+      },
+    };
+    const response = await putBoardContentAt(contributorToken, 0, withoutTask2);
+    expect(response.status).toBe(200);
+  });
+
+  it("forbids a member from clearing an existing card's assignees", async () => {
+    await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({
+      assigneeUserIds: [ALICE],
+    }));
+    const response = await putBoardContentAt(contributorToken, 0, boardWithCard({
+      assigneeUserIds: [],
+    }));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "forbidden" });
+  });
+
+  it("lets a member edit a card whose two assignment windows are reordered but unchanged", async () => {
+    // Important 2：window 陣列的排序（assignmentSignaturesByCard 內層的
+    // .sort(...localeCompare...)）需要至少兩位指派人才測得出來——只有一個
+    // window 時，排序前後結果必然相同，測不出排序被拿掉。
+    await createBoard(managerToken, projectA, boardA, "Assignments", boardWithCard({
+      assigneeUserIds: [ALICE, BOB],
+      assignmentWindows: [
+        { userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" },
+        { userId: BOB, startDate: "2026-08-10", endDate: "2026-08-15" },
+      ],
+    }));
+    const reordered = boardWithCard({
+      assigneeUserIds: [ALICE, BOB],
+      assignmentWindows: [
+        { userId: BOB, startDate: "2026-08-10", endDate: "2026-08-15" },
+        { userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" },
+      ],
+    });
+    const response = await putBoardContentAt(contributorToken, 0, reordered);
+    expect(response.status).toBe(200);
   });
 
   it("lets a member edit other card fields while assignments stay identical", async () => {
@@ -1186,8 +1318,9 @@ describe("Assignment windows validation and owner-only assignment management", (
   });
 
   it("lets a member edit a board whose card order is reversed but content is unchanged", async () => {
-    // mutation 防線：entries.sort 若被移除，Object.entries 的插入順序差異會讓內容相同的
-    // 兩份 cards 誤判為「指派變更」而 403（見 assignmentSignature 上方註解）。
+    // 迴歸防線：assignmentSignaturesByCard 現在是逐卡建 Map、以 cardId 查找比對，
+    // 鍵序天生無關；保留這個測試釘住「cards 物件裡的卡片相對順序不影響指派比對
+    // 結果」這個性質，避免未來若改回整份序列化字串比對又引入鍵序敏感的回歸。
     const cards = {
       "task-1": { title: "Task 1", assigneeUserIds: [ALICE] },
       "task-2": { title: "Task 2", assigneeUserIds: [] as string[] },

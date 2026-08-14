@@ -177,4 +177,40 @@ describe("Legacy /board alias", () => {
     await env.DB.prepare("UPDATE migration_state SET status = 'complete' WHERE id = 1").run();
     expect((await dispatch(outsiderToken, "/board")).status).toBe(404);
   });
+
+  it("rejects more than 20 assignment windows on a card while migration is pending", async () => {
+    // putLegacyRow 沒有 project role，也沒有 requireNewAssigneesAreProjectMembers
+    // 那一層的 assignee 上限兜底（那個檢查只在 putBoardContent 的流程裡）；
+    // window 上限這條防線在這裡沒有其他機制能補位，必須直接測 legacy 路徑本身。
+    // 21 筆 window 刻意用相異 userId：若共用同一個 userId，第 2 筆就會先撞到
+    // 「重複 userId」檢查，跟「超過上限」撞成同一個 400 錯誤代碼，會讓這個測試
+    // 測不出上限檢查被拿掉（這條路徑沒有 assignee 上限，21 個相異 assignee
+    // 不會被其他機制攔下，能乾淨地只測到 window 上限本身）。
+    const userIds = Array.from(
+      { length: 21 },
+      (_, index) => `70000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    );
+    const tooMany = {
+      version: 8,
+      columns: [],
+      cards: {
+        "task-1": {
+          title: "Task",
+          assigneeUserIds: userIds,
+          assignmentWindows: userIds.map((userId) => ({
+            userId,
+            startDate: "2026-08-01",
+            endDate: "2026-08-02",
+          })),
+        },
+      },
+      marker: "too-many-windows",
+    };
+    const put = await dispatch(memberToken, "/board", {
+      method: "PUT",
+      body: JSON.stringify({ baseRevision: 7, board: tooMany }),
+    });
+    expect(put.status).toBe(400);
+    expect(await put.json()).toMatchObject({ error: "invalid_assignment_windows" });
+  });
 });
