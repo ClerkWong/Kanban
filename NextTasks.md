@@ -602,16 +602,26 @@ git diff --check
   該形狀目前由寫入端 `isBoardPayload`（`worker-sync/src/logic.ts`，要求 cards 為非陣列物件）
   以 400 擋下，createBoard／seed／migration 也都只產物件 map，因此不可達；記錄於此是因為
   這條防線在寫入端而非讀取端，日後放寬 board payload 驗證時必須一併檢查日曆查詢。
-  截止日與指派人）目前只在錯誤時寫 log，成功讀取不留任何可歸因的稽核紀錄；而
-  「平台管理指派專案成員」的自我指派會留 `via: "platform_admin"`。兩者疊加的結果是
-  「偵察無痕、加入留痕」。評估後不視為阻擋（放寬前 admin 已能經 `/admin` 家族列舉全部
-  專案與成員，日曆只是把粒度細化到卡片標題層級，且敏感內容仍在稽核牆後），但建議補一筆
-  輕量 audit 或存取計數，讓管理者的跨專案讀取也可回溯。
+- 日曆與人力甘特圖的 workspace 範圍讀取（`GET /calendar`：admin 可看到全 workspace
+  所有 active 專案的卡片標題、截止日與指派人；`GET /assignments`：admin 可看到全
+  workspace 所有人的投入期間全景）目前都只在錯誤時寫 log，成功讀取不留任何可歸因的
+  稽核紀錄；而「平台管理指派專案成員」的自我指派會留 `via: "platform_admin"`。兩者
+  疊加的結果是「偵察無痕、加入留痕」（人力甘特圖 v1 審查時將範圍由 `/calendar`
+  擴大到 `/assignments`——它揭露的是整個 workspace 的人力配置全景，資訊粒度比日曆
+  更細，不只是單月卡片）。評估後不視為阻擋（放寬前 admin 已能經 `/admin` 家族列舉
+  全部專案與成員，這兩個端點只是把粒度細化到卡片與人員層級，且敏感內容仍在稽核牆
+  後），但建議補一筆輕量 audit 或存取計數，讓管理者的跨專案讀取也可回溯。
 - 部署人力甘特圖 v1 時必須先 `pnpm sync:deploy:staging`（Worker 要先能驗證並接受
   `assignmentWindows`，否則 v8 client 送上的新欄位會被舊 Worker 原樣存入而未經驗證），
   再 `pnpm web:deploy:beta`；部署順序不可顛倒。部署後須確認：無 token 對 `/assignments`
   回 401、member 帳號改指派得 403、且舊看板的 member 編輯仍得 200（lockout 回歸的線上
   確認，即流動度量 v7 上線前抓到的同一坑，本次沿用同一防線）。
+- **混版警告（本次唯一的掉資料路徑）**：全分支最終審查實測確認，Web Beta 發布後若有
+  裝置停在未重新載入的舊分頁（v7 client）操作已排期的 v8 board：member 編輯得 403
+  （指派簽章比對擋下，fail-safe），但 **owner 編輯得 200，且該 board 全部
+  `assignmentWindows` 被靜默抹除**（v7 client 不認得這個欄位，儲存時整份覆蓋不會
+  保留）。因此 Web Beta 發布後，管理者裝置必須重新載入頁面才能開始排期，否則舊分頁
+  的 owner 儲存會把剛排好的投入期間洗掉而不會有任何錯誤提示。
 - `tests/board-flow-metrics.test.ts` 在 `TZ=Pacific/Niue`（UTC-11）下有一個既有測試
   失敗：`monthly flow stats compute cycle time and flag unmeasured cards`（該檔案
   第 250 行斷言，`0 !== 1`）。人力甘特圖 v1 實作時（Task 5）順手發現，Task 8 複驗
@@ -625,10 +635,16 @@ git diff --check
   直接存進 `assignmentWindows`。`/assignments` 讀取端已對此做縱深防禦（視為未排期，不會
   500 或算出 NaN 座標），但寫入端仍會落庫；應評估是否值得在 `normalizeAssignmentWindows`
   加一次來回驗證（比照 `app/projects/resource-model.ts` 的 `isValidDay`）。
-- 卡片 `title` 或 `cardId` 為空字串、但 `assignmentWindows` 日期合法時，該筆會同時從
-  `/assignments` 的 `bars` 與 `unscheduled` 兩個清單消失（塞進 `unscheduled` 會產生空
-  標題項，人力甘特圖 v1 審查時判斷為可接受的設計取捨，非本次修正範圍，但記錄於此避免
-  日後被誤讀為端點漏資料）。
+- 卡片 `title` 或 `cardId` 為空字串、缺席或型別不對時，`/assignments` 的 `bars`
+  （`toBar`）與 `unscheduled`（`unscheduledFromRow`）現在都會對稱跳過該筆，兩側
+  一致消失、不會出現空標題項——**此為修正後的行為，先前記錄誤判為「可接受的設計
+  取捨」，實際上 `unscheduled` 側原本沒有守門，是真正的故障，不是靜默消失**：
+  title 缺席且同卡有 ≥2 位未排期指派人時，`unscheduledAll.sort` 對 null 呼叫
+  `localeCompare` 會讓整個 `/assignments` 請求 500；title 為數字或空字串（≤1 位
+  未排期指派人、`sort` 比較函式未被呼叫）則會讓非字串洩漏進回應，client 端
+  `parseResourceUnscheduledItem` 解析失敗、整份回應變 `invalid_response`，甘特圖
+  同樣全掛。全分支最終審查發現並修正，已補測試釘住
+  （`worker-sync/test/assignments.integration.test.ts`）。
 - `worker-sync/src/board-diff.ts` 的 `sameValue` 對鍵順序敏感；人力甘特圖 v1 新增的
   `assignmentWindows` 沿用同一函式比對變更偵測，繼承既有的 `assigneeUserIds` 同款限制
   （鍵順序不同但內容相同時，Activity Log 可能誤記一次「變更」）。只影響 Log 精度，不
