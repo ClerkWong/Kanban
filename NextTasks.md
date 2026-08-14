@@ -613,8 +613,10 @@ git diff --check
   回 401、member 帳號改指派得 403、且舊看板的 member 編輯仍得 200（lockout 回歸的線上
   確認，即流動度量 v7 上線前抓到的同一坑，本次沿用同一防線）。
 - `tests/board-flow-metrics.test.ts` 在 `TZ=Pacific/Niue`（UTC-11）下有一個既有測試
-  失敗；人力甘特圖 v1 實作時（Task 5）順手發現，已確認與本次改動無關，屬先前 schema 的
-  既有時區換算缺陷，應獨立排查月份／日界線在極端負時區下的計算。
+  失敗：`monthly flow stats compute cycle time and flag unmeasured cards`（該檔案
+  第 250 行斷言，`0 !== 1`）。人力甘特圖 v1 實作時（Task 5）順手發現，Task 8 複驗
+  仍可重現，已確認與本次改動無關，屬先前 schema 的既有時區換算缺陷，應獨立排查
+  月份／日界線在極端負時區下的計算。
 - 指派人數 UI 目前無 20 上限提示（多看板指派 v1 遺留缺口，人力甘特圖 v1 審查時再次確認
   仍未補）：超過 20 位成員的專案勾選第 21 位指派人時，UI 無事前守門，要等 sync 才會吃
   Worker 400 `invalid_assignees`；應在勾選 UI 加上到 20 即停用其餘 checkbox 並提示上限。
