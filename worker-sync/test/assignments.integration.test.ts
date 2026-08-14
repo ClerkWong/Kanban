@@ -491,6 +491,69 @@ describe("GET /assignments", () => {
     expect(body.unscheduled[0]).toMatchObject({ cardId: "c1", title: "待排期任務", userId: ALICE });
   });
 
+  // 全分支最終審查找到的必修：unscheduledFromRow 原本沒有比照 toBar 做
+  // cardId／title 的型別與非空守門，與 bars 側不對稱。攻擊鏈：isBoardPayload
+  // （logic.ts:26）不驗卡片 title 的型別，title 不在指派簽章範圍內，member
+  // 改既有已指派卡的 title 不會 403，該卡未排期時就進這個函式——任何 member
+  // 都能讓全 workspace 管理者的甘特圖故障。
+  //
+  // 兩位未排期指派人（而非一位）是刻意的：JS 的 Array.sort 只有陣列長度 ≥2
+  // 才會呼叫比較函式，title 是 null 時 unscheduledAll.sort 的
+  // a.title.localeCompare(b.title) 才會真正被呼叫並對 null 拋錯（500）。
+  it("survives a card whose title key is missing, with two unscheduled assignees, instead of 500ing on the sort", async () => {
+    await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
+    await insertProject(projectAlpha, WORKSPACE_ID, "Alpha", creatorId);
+    await insertUser(ALICE);
+    await insertUser(BOB);
+    const cardWithoutTitle = cardFixture({
+      id: "c1", assigneeUserIds: [ALICE, BOB], assignmentWindows: [],
+    });
+    delete (cardWithoutTitle as Record<string, unknown>).title;
+    await insertBoard(boardAlpha, projectAlpha, "Alpha Board", { c1: cardWithoutTitle });
+
+    const response = await dispatch(tokenFor(adminUserId), `/assignments?workspaceId=${WORKSPACE_ID}&from=${FROM}&to=${TO}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AssignmentsResponseBody;
+    expect(body.unscheduled.map((item) => item.cardId)).not.toContain("c1");
+  });
+
+  // 一位未排期指派人（而非兩位）是刻意的：這裡驗證的是「型別不對但不觸發
+  // sort 崩潰」的另一條故障路徑——title 是數字時仍會通過既有的 truthy 檢查
+  // （42 是 truthy），若只有一筆未排期項，sort 的比較函式甚至不會被呼叫，
+  // 伺服器端不會 500，但 title: 42（number）會直接流進回應，讓 client 端
+  // parseResourceUnscheduledItem 嚴格要求非空字串的解析失敗，整份回應變成
+  // invalid_response，甘特圖同樣全掛，只是故障點在 client 而非 server。
+  it("survives a card whose title is a number instead of leaking a non-string title into the response", async () => {
+    await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
+    await insertProject(projectAlpha, WORKSPACE_ID, "Alpha", creatorId);
+    await insertUser(ALICE);
+    await insertBoard(boardAlpha, projectAlpha, "Alpha Board", {
+      c1: {
+        ...cardFixture({ id: "c1", assigneeUserIds: [ALICE], assignmentWindows: [] }),
+        title: 42,
+      },
+    });
+
+    const response = await dispatch(tokenFor(adminUserId), `/assignments?workspaceId=${WORKSPACE_ID}&from=${FROM}&to=${TO}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AssignmentsResponseBody;
+    expect(body.unscheduled.map((item) => item.cardId)).not.toContain("c1");
+  });
+
+  it("survives a card whose title is an empty string", async () => {
+    await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
+    await insertProject(projectAlpha, WORKSPACE_ID, "Alpha", creatorId);
+    await insertUser(ALICE);
+    await insertBoard(boardAlpha, projectAlpha, "Alpha Board", {
+      c1: cardFixture({ id: "c1", title: "", assigneeUserIds: [ALICE], assignmentWindows: [] }),
+    });
+
+    const response = await dispatch(tokenFor(adminUserId), `/assignments?workspaceId=${WORKSPACE_ID}&from=${FROM}&to=${TO}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as AssignmentsResponseBody;
+    expect(body.unscheduled.map((item) => item.cardId)).not.toContain("c1");
+  });
+
   it("omits cards with no assignees entirely", async () => {
     await insertWorkspaceMember(WORKSPACE_ID, adminUserId, "admin");
     await insertProject(projectAlpha, WORKSPACE_ID, "Alpha", creatorId);

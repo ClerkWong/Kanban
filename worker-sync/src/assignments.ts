@@ -136,13 +136,16 @@ function toBar(row: BarRow): Bar | null {
   };
 }
 
+/** card_id／title 宣告為 `string | null`，與 BarRow 的誠實標注一致（見 toBar
+ *  註解）——D1 的 `.all<T>()` 是不受檢查的型別斷言，這兩個欄位在極端情況下
+ *  不保證是字串。 */
 type AssignedCardRow = {
   project_id: string;
   project_name: string;
   board_id: string;
   board_name: string;
-  card_id: string;
-  title: string;
+  card_id: string | null;
+  title: string | null;
   assignee_ids: string | null;
   windows_json: string | null;
 };
@@ -173,8 +176,30 @@ type UnscheduledItem = {
  *
  *  複審追加（P12，真實 D1 實測確認）：兩個日期各自格式合法但起訖顛倒
  *  （startDate 晚於 endDate）也要視同沒有排期，與 toBar 的處理一致——見
- *  toBar 註解，顛倒的窗會讓下游 barSpanInWindow 算出負的跨距。 */
+ *  toBar 註解，顛倒的窗會讓下游 barSpanInWindow 算出負的跨距。
+ *
+ *  全分支最終審查找到的必修：這裡原本沒有比照 toBar 做 cardId／title 的型別
+ *  與非空守門，造成兩側不對稱。攻擊鏈已驗證完整：`isBoardPayload`
+ *  （logic.ts:26）不驗卡片 title 的型別；title 不在 assignmentSignaturesByCard
+ *  的簽章範圍內，member 改既有已指派卡的 title 不會觸發 403；該卡未排期時就
+ *  會進這個函式。也就是說任何 member 都能讓全 workspace 管理者的甘特圖故障：
+ *  (1) title 鍵缺席（json_extract 回傳 SQL NULL）且有 ≥2 個未排期指派人時，
+ *  下游 `unscheduledAll.sort` 的 `a.title.localeCompare(b.title)` 對 null 呼叫
+ *  方法直接 500——JS 的 Array.sort 只有陣列長度 ≥2 才會呼叫比較函式，這也是
+ *  為什麼重現時需要至少兩位未排期指派人。(2) title 是數字或空字串時不會讓
+ *  伺服器端 500（如果未排期指派人只有 1 個，sort 比較函式甚至不會被呼叫），
+ *  但型別不對或空字串的 title 會流進回應，讓 client 端 `parseResourceUnscheduledItem`
+ *  嚴格要求非空字串的解析失敗，整份回應變成 invalid_response，甘特圖同樣全
+ *  掛。在函式最前面就擋掉，兩種故障路徑一次解決，且不執行後續任何多餘的
+ *  assignee/window 解析。 */
 function unscheduledFromRow(row: AssignedCardRow): UnscheduledItem[] {
+  const { card_id: cardId, title } = row;
+  if (
+    typeof cardId !== "string" || !cardId ||
+    typeof title !== "string" || !title
+  ) {
+    return [];
+  }
   let assigneeIds: string[] = [];
   try {
     const parsed = JSON.parse(row.assignee_ids ?? "null") as unknown;
@@ -213,8 +238,8 @@ function unscheduledFromRow(row: AssignedCardRow): UnscheduledItem[] {
   return assigneeIds
     .filter((userId) => !scheduledUserIds.has(userId))
     .map((userId) => ({
-      cardId: row.card_id,
-      title: row.title,
+      cardId,
+      title,
       userId,
       projectId: row.project_id,
       projectName: row.project_name,
