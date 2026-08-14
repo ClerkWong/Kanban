@@ -18,7 +18,7 @@ import {
   type ProjectMember,
   type ProjectReport,
 } from "../../projects/api";
-import { currentMonth } from "../../projects/calendar-model";
+import { currentMonth, todayString } from "../../projects/calendar-model";
 import {
   boardBelongsToRoute,
   canViewManagerViews,
@@ -29,6 +29,7 @@ import {
   type BoardAccess,
   type ProjectRoute,
 } from "../../projects/navigation";
+import { rangeFrom } from "../../projects/resource-model";
 import {
   calendarWorkspaceId,
   fetchRuntimeSession,
@@ -50,6 +51,7 @@ import { LoginView } from "../auth/LoginView";
 import { BoardNavigation } from "./BoardNavigation";
 import { CalendarView } from "./CalendarView";
 import { MyProjectsView } from "./MyProjectsView";
+import { ResourceView } from "./ResourceView";
 import { ProjectOverview } from "./ProjectOverview";
 import { LegacyMigrationGate } from "./LegacyMigrationGate";
 import { AdminProjectsView } from "./AdminProjectsView";
@@ -225,6 +227,7 @@ export function ProjectApp({
           userName={bootstrap.session.user.displayName}
           showAdmin={hasPlatformAdminAccess(bootstrap.session)}
           showCalendar={canViewManagerViews(bootstrap.projects, hasPlatformAdminAccess(bootstrap.session))}
+          showResources={canViewManagerViews(bootstrap.projects, hasPlatformAdminAccess(bootstrap.session))}
           onSignOut={() => void signOut()}
         />
       </LegacyMigrationGate>
@@ -275,17 +278,25 @@ export function ProjectApp({
     );
   }
   if (route.kind === "resources") {
-    // 人力甘特圖本體與導覽入口是後續任務的範疇（見
-    // docs/superpowers/plans/2026-08-13-resource-gantt-v1.md Task 6），這裡先放
-    // 一個佔位畫面：本任務只確保路由本身可解析、可授權、可序列化，不讓
-    // ProjectRouteView（下方）在型別上被迫處理一個它從未支援過的 route.kind。
+    const workspaceId = calendarWorkspaceId(bootstrap.session);
+    // from／to 一次算出：route.from 可能來自 URL，若各自獨立算會讓 to 停在
+    // 「今天起 13 天」那一段，跟使用者在 URL 指定的 from 對不起來。
+    const range = rangeFrom(route.from ?? todayString());
     return (
       <LegacyMigrationGate
         config={bootstrap.config}
         session={bootstrap.session}
         projects={bootstrap.projects}
       >
-        <LoadingState message="人力甘特圖開發中，敬請期待。" />
+        <ResourceView
+          config={bootstrap.config}
+          workspaceId={workspaceId}
+          from={range.from}
+          to={range.to}
+          userName={bootstrap.session.user.displayName}
+          showAdmin={hasPlatformAdminAccess(bootstrap.session)}
+          onSignOut={() => void signOut()}
+        />
       </LegacyMigrationGate>
     );
   }

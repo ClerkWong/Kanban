@@ -3066,3 +3066,256 @@ textarea {
     display: block;
   }
 }
+
+/* Resource gantt view (resource-gantt-v1) */
+.resourceShell {
+  width: min(1180px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding:
+    calc(36px + var(--safe-top))
+    calc(20px + var(--safe-right))
+    calc(48px + var(--safe-bottom))
+    calc(20px + var(--safe-left));
+}
+
+.resourceNarrowNotice {
+  display: none;
+  margin: 48px auto 0;
+  max-width: 480px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--muted);
+  font-weight: 700;
+  text-align: center;
+}
+
+.resourceLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  align-items: start;
+  margin-top: 20px;
+}
+
+.resourceHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.resourceHeader h1 {
+  margin: 4px 0 0;
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  line-height: 1;
+}
+
+.resourceRangeLabel {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.resourceNav {
+  display: flex;
+  gap: 8px;
+}
+
+.resourceNav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper-strong);
+  color: var(--ink);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.resourceNav a:hover {
+  border-color: var(--teal);
+  color: var(--teal-strong);
+}
+
+.resourceGridScroll {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+
+.resourceGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  min-width: 640px;
+}
+
+.resourceDateHeader {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 4px;
+  align-items: end;
+}
+
+.resourceCorner {
+  min-width: 0;
+}
+
+.resourceDateHeadRow {
+  display: grid;
+  gap: 4px;
+}
+
+.resourceDateHead {
+  display: grid;
+  gap: 0;
+  padding: 4px 0;
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.resourceDateHead.today {
+  border: 2px solid var(--teal);
+  color: var(--teal-strong);
+}
+
+.resourceDateHead strong {
+  font-size: 0.86rem;
+  color: var(--ink);
+}
+
+.resourceRow {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+
+.resourceRowLabel {
+  overflow-wrap: anywhere;
+  font-weight: 800;
+  font-size: 0.86rem;
+}
+
+.resourceRowEmpty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.resourceRowLanes {
+  display: grid;
+  gap: 4px;
+}
+
+.resourceOverload {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2px;
+  border-radius: calc(var(--radius) * 0.5);
+  background: color-mix(in srgb, var(--rose) 16%, var(--paper));
+  color: var(--rose);
+  font-size: 0.62rem;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.resourceBar {
+  display: grid;
+  gap: 1px;
+  align-content: center;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) * 0.75);
+  background: var(--paper-strong);
+  font-size: 0.72rem;
+  line-height: 1.25;
+  overflow: hidden;
+}
+
+.resourceBar strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resourceBar.blocked {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--amber) 14%, var(--paper));
+}
+
+.resourceBar.expedite {
+  border-width: 2px;
+  border-color: var(--rose);
+}
+
+.resourceBarFlags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.resourceBarFlags span {
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 0.6rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.resourceEmpty {
+  margin-top: 16px;
+  color: var(--muted);
+}
+
+.resourceSidebar {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
+
+.resourceSidebar h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.resourceUnscheduledList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.resourceUnscheduledList li {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-strong);
+}
+
+@media (max-width: 899px) {
+  .resourceLayout {
+    display: none;
+  }
+
+  .resourceNarrowNotice {
+    display: block;
+  }
+}

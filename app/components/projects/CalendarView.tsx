@@ -69,6 +69,7 @@ export function CalendarView({
         userName={userName}
         showAdmin={showAdmin}
         showCalendar
+        showResources
         onSignOut={onSignOut}
       />
 

@@ -78,6 +78,7 @@ export function AdminProjectsView({
           userName={session.user.displayName}
           showAdmin={hasPlatformAdminAccess(session)}
           showCalendar={hasPlatformAdminAccess(session)}
+          showResources={hasPlatformAdminAccess(session)}
           onSignOut={onSignOut}
         />
         <header className="projectHero adminHero">
@@ -119,6 +120,7 @@ export function AdminProjectsView({
         userName={session.user.displayName}
         showAdmin={hasPlatformAdminAccess(session)}
         showCalendar={hasPlatformAdminAccess(session)}
+        showResources={hasPlatformAdminAccess(session)}
         onSignOut={onSignOut}
       />
       <header className="projectHero adminHero">

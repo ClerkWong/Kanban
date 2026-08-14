@@ -7,12 +7,14 @@ export function MyProjectsView({
   userName,
   showAdmin,
   showCalendar,
+  showResources,
   onSignOut,
 }: {
   projects: ProjectSummary[];
   userName: string;
   showAdmin: boolean;
   showCalendar: boolean;
+  showResources: boolean;
   onSignOut: () => void;
 }) {
   return (
@@ -22,6 +24,7 @@ export function MyProjectsView({
         userName={userName}
         showAdmin={showAdmin}
         showCalendar={showCalendar}
+        showResources={showResources}
         onSignOut={onSignOut}
       />
       <header className="projectHero">

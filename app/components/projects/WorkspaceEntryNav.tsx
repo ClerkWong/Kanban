@@ -3,12 +3,14 @@ export function WorkspaceEntryNav({
   userName,
   showAdmin,
   showCalendar,
+  showResources,
   onSignOut,
 }: {
-  current: "projects" | "admin" | "calendar";
+  current: "projects" | "admin" | "calendar" | "resources";
   userName: string;
   showAdmin: boolean;
   showCalendar: boolean;
+  showResources: boolean;
   onSignOut: () => void;
 }) {
   return (
@@ -40,6 +42,16 @@ export function WorkspaceEntryNav({
           >
             <strong>日曆</strong>
             <small>本月可推進的任務</small>
+          </a>
+        )}
+        {showResources && (
+          <a
+            href="#/resources"
+            className={current === "resources" ? "active" : ""}
+            aria-current={current === "resources" ? "page" : undefined}
+          >
+            <strong>人力甘特圖</strong>
+            <small>誰有空、誰被排爆</small>
           </a>
         )}
       </div>
