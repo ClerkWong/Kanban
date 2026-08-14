@@ -122,7 +122,13 @@ function ResourceBody({ from, to, data }: { from: string; to: string; data: Reso
   // 不一致的名稱。
   const names = new Map(data.people.map((person) => [person.userId, person.displayName]));
   const nameOf = (userId: string) => names.get(userId) || `已離開 (${userId.slice(0, 8)})`;
-  const dayColumns = `repeat(${days.length}, minmax(30px, 1fr))`;
+  // 欄寬下限 50px：量過 .resourceOverload 徽章（0.62rem／900 字重／左右各 2px
+  // padding）實際需要的寬度——單位數（「9 項並行」）量到 43.5px、雙位數
+  // （「12 項並行」）量到 49.1px，50px 對兩者都留一點餘裕，不必縮文案或縮字級
+  // 就能在窄欄位下維持數字不被裁切。超過 50px 仍嫌窄的極端情形（例如個位數
+  // 天數的查詢窗，理論上不會發生）交給 .resourceGridScroll 既有的水平捲動
+  // 吸收，與看板欄位溢出時的既有慣例一致。
+  const dayColumns = `repeat(${days.length}, minmax(50px, 1fr))`;
   const windowLength = days.length;
   const prevFrom = shiftRange(from, to, -windowLength).from;
   const nextFrom = shiftRange(from, to, windowLength).from;
@@ -274,7 +280,13 @@ function ResourceRow({
             if (bar.serviceClass === "expedite") classes.push("expedite");
             return (
               <div
-                key={`${bar.cardId}-${bar.startDate}-${bar.endDate}`}
+                // 同一人同一張卡出現兩段完全相同的投入期間時（理論上的退化情形，
+                // 見 resource-model.ts 的 packLanes 註解），cardId／startDate／
+                // endDate 三者都會撞在一起；加上 lane 保底唯一，因為 packLanes
+                // 對這種同鍵的 bar 一定會分到不同 lane（同一 lane 需要
+                // 「前一根 endDate < 本根 startDate」，兩段日期完全相同時這個
+                // 條件恆不成立)。
+                key={`${bar.cardId}-${bar.startDate}-${bar.endDate}-${lane}`}
                 className={classes.join(" ")}
                 style={{
                   gridColumn: `${placement.startIndex + 1} / span ${placement.span}`,
