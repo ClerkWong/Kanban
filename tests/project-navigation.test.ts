@@ -3,7 +3,7 @@ import test from "node:test";
 
 import {
   boardBelongsToRoute,
-  canViewCalendar,
+  canViewManagerViews,
   deriveBoardAccess,
   parseProjectHash,
   resolveAuthorizedRoute,
@@ -88,18 +88,38 @@ test("calendar route serializes with or without a month query", () => {
   assert.equal(serializeProjectRoute({ kind: "calendar", month: null }), "#/calendar");
 });
 
-test("canViewCalendar allows a workspace admin/owner or the owner of any active project", () => {
-  assert.equal(canViewCalendar([], true), true);
-  assert.equal(canViewCalendar(projects, false), true);
+test("parses the resources route with and without a from parameter", () => {
+  assert.deepEqual(parseProjectHash("#/resources"), { kind: "resources", from: null });
+  assert.deepEqual(
+    parseProjectHash("#/resources?from=2026-08-07"),
+    { kind: "resources", from: "2026-08-07" },
+  );
+  assert.deepEqual(
+    parseProjectHash("#/resources?from=2026-8-7"),
+    { kind: "resources", from: null },
+  );
+});
+
+test("serializes the resources route", () => {
+  assert.equal(
+    serializeProjectRoute({ kind: "resources", from: "2026-08-07" }),
+    "#/resources?from=2026-08-07",
+  );
+  assert.equal(serializeProjectRoute({ kind: "resources", from: null }), "#/resources");
+});
+
+test("canViewManagerViews allows a workspace admin/owner or the owner of any active project", () => {
+  assert.equal(canViewManagerViews([], true), true);
+  assert.equal(canViewManagerViews(projects, false), true);
 
   // owner 角色成立，但專案已封存——archived owner 不算，與 Worker 端
   // resolveCalendarScope 的 `projects.status = 'active'` 篩選一致。
   const archivedOwnerProjects: ProjectSummary[] = [{ ...projects[0], status: "archived" }];
-  assert.equal(canViewCalendar(archivedOwnerProjects, false), false);
+  assert.equal(canViewManagerViews(archivedOwnerProjects, false), false);
 
   // 只是 active 專案的 member，不是 owner——不成立。
   const memberOnlyProjects: ProjectSummary[] = [{ ...projects[0], myRole: "member" }];
-  assert.equal(canViewCalendar(memberOnlyProjects, false), false);
+  assert.equal(canViewManagerViews(memberOnlyProjects, false), false);
 });
 
 test("calendar route falls back to #/projects unless admin or an active project owner", () => {
@@ -123,6 +143,23 @@ test("calendar route falls back to #/projects unless admin or an active project 
   const memberOnlyProjects: ProjectSummary[] = [{ ...projects[0], myRole: "member" }];
   assert.deepEqual(
     resolveAuthorizedRoute({ kind: "calendar", month: null }, memberOnlyProjects, null, false),
+    { kind: "projects" },
+  );
+});
+
+test("resources route follows the same gate as the calendar", () => {
+  const ownerProjects = [
+    { id: "p1", name: "A", status: "active", myRole: "owner" } as ProjectSummary,
+  ];
+  assert.deepEqual(
+    resolveAuthorizedRoute({ kind: "resources", from: null }, ownerProjects, null, false),
+    { kind: "resources", from: null },
+  );
+  const memberProjects = [
+    { id: "p1", name: "A", status: "active", myRole: "member" } as ProjectSummary,
+  ];
+  assert.deepEqual(
+    resolveAuthorizedRoute({ kind: "resources", from: null }, memberProjects, null, false),
     { kind: "projects" },
   );
 });
@@ -166,12 +203,14 @@ test("role and archive state produce the visible Board actions", () => {
     canEdit: true,
     canConfigureWorkflow: true,
     canWriteAttachments: true,
+    canManageAssignments: true,
     readOnlyReason: null,
   });
   assert.deepEqual(deriveBoardAccess("member", "active", "active"), {
     canEdit: true,
     canConfigureWorkflow: false,
     canWriteAttachments: true,
+    canManageAssignments: false,
     readOnlyReason: null,
   });
   assert.equal(deriveBoardAccess("viewer", "active", "active").canEdit, false);
@@ -183,4 +222,10 @@ test("role and archive state produce the visible Board actions", () => {
     deriveBoardAccess("owner", "archived", "active").readOnlyReason ?? "",
     /專案已封存/,
   );
+});
+
+test("deriveBoardAccess grants assignment management only to the project owner", () => {
+  assert.equal(deriveBoardAccess("owner", "active", "active").canManageAssignments, true);
+  assert.equal(deriveBoardAccess("member", "active", "active").canManageAssignments, false);
+  assert.equal(deriveBoardAccess("owner", "archived", "active").canManageAssignments, false);
 });

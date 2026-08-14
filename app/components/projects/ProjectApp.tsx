@@ -21,7 +21,7 @@ import {
 import { currentMonth } from "../../projects/calendar-model";
 import {
   boardBelongsToRoute,
-  canViewCalendar,
+  canViewManagerViews,
   deriveBoardAccess,
   parseProjectHash,
   resolveAuthorizedRoute,
@@ -224,7 +224,7 @@ export function ProjectApp({
           projects={bootstrap.projects}
           userName={bootstrap.session.user.displayName}
           showAdmin={hasPlatformAdminAccess(bootstrap.session)}
-          showCalendar={canViewCalendar(bootstrap.projects, hasPlatformAdminAccess(bootstrap.session))}
+          showCalendar={canViewManagerViews(bootstrap.projects, hasPlatformAdminAccess(bootstrap.session))}
           onSignOut={() => void signOut()}
         />
       </LegacyMigrationGate>
@@ -274,6 +274,21 @@ export function ProjectApp({
       </LegacyMigrationGate>
     );
   }
+  if (route.kind === "resources") {
+    // 人力甘特圖本體與導覽入口是後續任務的範疇（見
+    // docs/superpowers/plans/2026-08-13-resource-gantt-v1.md Task 6），這裡先放
+    // 一個佔位畫面：本任務只確保路由本身可解析、可授權、可序列化，不讓
+    // ProjectRouteView（下方）在型別上被迫處理一個它從未支援過的 route.kind。
+    return (
+      <LegacyMigrationGate
+        config={bootstrap.config}
+        session={bootstrap.session}
+        projects={bootstrap.projects}
+      >
+        <LoadingState message="人力甘特圖開發中，敬請期待。" />
+      </LegacyMigrationGate>
+    );
+  }
   return (
     <LegacyMigrationGate
       config={bootstrap.config}
@@ -308,7 +323,10 @@ function ProjectRouteView({
   onProjectsChanged,
 }: {
   config: SyncConfig;
-  route: Exclude<ProjectRoute, { kind: "projects" } | { kind: "admin" } | { kind: "calendar" }>;
+  route: Exclude<
+    ProjectRoute,
+    { kind: "projects" } | { kind: "admin" } | { kind: "calendar" } | { kind: "resources" }
+  >;
   enableServiceWorker: boolean;
   appConfigUrl: string;
   onProjectsChanged: () => void;

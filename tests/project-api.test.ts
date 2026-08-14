@@ -7,6 +7,7 @@ import {
   archiveBoard,
   archiveAdminProject,
   createProject,
+  getAssignments,
   getBoard,
   getCalendar,
   getProject,
@@ -681,6 +682,113 @@ test("getCalendar rejects a response missing scheduled or carrying an unknown se
       (error: unknown) =>
         error instanceof ApiClientError && error.kind === "invalid_response",
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+const WORKSPACE_ID = context.workspaceId;
+const ALICE = "a0000000-0000-4000-8000-000000000006";
+
+const VALID_BAR = {
+  userId: ALICE,
+  cardId: "c1",
+  title: "共同任務",
+  startDate: "2026-08-07",
+  endDate: "2026-08-13",
+  projectId: "p1",
+  projectName: "覓夜",
+  boardId: "b1",
+  boardName: "主看板",
+  blocked: false,
+  serviceClass: "standard",
+};
+
+const VALID_BODY = {
+  from: "2026-08-07",
+  to: "2026-08-20",
+  scope: "workspace",
+  people: [{ userId: ALICE, displayName: "律師甲" }],
+  bars: [VALID_BAR],
+  unscheduled: [],
+  barsTruncated: false,
+  unscheduledTruncated: false,
+  boardsTruncated: false,
+  requestId: "req-1",
+};
+
+test("getAssignments parses a well-formed response", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => json(VALID_BODY);
+  try {
+    const data = await getAssignments(config, WORKSPACE_ID, "2026-08-07", "2026-08-20");
+    assert.equal(data.scope, "workspace");
+    assert.deepEqual(data.people, [{ userId: ALICE, displayName: "律師甲" }]);
+    assert.equal(data.bars.length, 1);
+    assert.equal(data.bars[0].endDate, "2026-08-13");
+    assert.equal(data.boardsTruncated, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("getAssignments rejects a bar missing startDate", async () => {
+  const originalFetch = globalThis.fetch;
+  const bad = { ...VALID_BAR };
+  delete (bad as Record<string, unknown>).startDate;
+  globalThis.fetch = async () => json({ ...VALID_BODY, bars: [bad] });
+  try {
+    await assert.rejects(
+      () => getAssignments(config, WORKSPACE_ID, "2026-08-07", "2026-08-20"),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("getAssignments rejects a non-array people field", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => json({ ...VALID_BODY, people: "nope" });
+  try {
+    await assert.rejects(
+      () => getAssignments(config, WORKSPACE_ID, "2026-08-07", "2026-08-20"),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("getAssignments rejects an unknown scope", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => json({ ...VALID_BODY, scope: "everything" });
+  try {
+    await assert.rejects(
+      () => getAssignments(config, WORKSPACE_ID, "2026-08-07", "2026-08-20"),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("getAssignments sends workspaceId, from and to as query parameters", async () => {
+  const originalFetch = globalThis.fetch;
+  let requested = "";
+  globalThis.fetch = async (input) => {
+    requested = String(input);
+    return json(VALID_BODY);
+  };
+  try {
+    await getAssignments(config, WORKSPACE_ID, "2026-08-07", "2026-08-20");
+    assert.match(requested, /\/assignments\?/);
+    assert.match(requested, new RegExp(`workspaceId=${WORKSPACE_ID}`));
+    assert.match(requested, /from=2026-08-07/);
+    assert.match(requested, /to=2026-08-20/);
   } finally {
     globalThis.fetch = originalFetch;
   }

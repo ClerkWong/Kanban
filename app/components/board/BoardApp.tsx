@@ -151,6 +151,7 @@ function LegacyBoardApp({
         canEdit: true,
         canConfigureWorkflow: true,
         canWriteAttachments: true,
+        canManageAssignments: true,
         readOnlyReason: null,
       }}
       enableServiceWorker={enableServiceWorker}
@@ -167,6 +168,7 @@ function ScopedBoardApp({
     canEdit: false,
     canConfigureWorkflow: false,
     canWriteAttachments: false,
+    canManageAssignments: false,
     readOnlyReason: "唯讀模式。",
   },
   navigation,

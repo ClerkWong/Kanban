@@ -22,7 +22,11 @@ import type {
   Project,
   ProjectRole,
   ProjectSummary,
+  ResourceBar,
+  ResourceData,
+  ResourcePerson,
   ResourceStatus,
+  ResourceUnscheduled,
 } from "./types";
 
 export type ApiErrorKind =
@@ -745,6 +749,119 @@ export async function getCalendar(
     unscheduledTruncated: raw.unscheduledTruncated === true,
     boardsTruncated: raw.boardsTruncated === true,
     assignees: assignees as Array<{ userId: string; displayName: string }>,
+  };
+}
+
+/** userId／cardId／title／startDate／endDate／projectId／projectName／boardId／
+ * boardName 一律要求非空字串——ResourceBar 沒有一個欄位像 CalendarCard.dueDate
+ * 那樣「空字串＝合法的未排期狀態」，型別不符就整筆丟棄，不用預設值墊過去。 */
+function parseResourceBar(value: unknown): ResourceBar | null {
+  const raw = asRecord(value);
+  if (!raw) return null;
+  const userId = typeof raw.userId === "string" ? raw.userId : "";
+  const cardId = typeof raw.cardId === "string" ? raw.cardId : "";
+  const title = typeof raw.title === "string" ? raw.title : "";
+  const startDate = typeof raw.startDate === "string" ? raw.startDate : "";
+  const endDate = typeof raw.endDate === "string" ? raw.endDate : "";
+  const projectId = typeof raw.projectId === "string" ? raw.projectId : "";
+  const projectName = typeof raw.projectName === "string" ? raw.projectName : "";
+  const boardId = typeof raw.boardId === "string" ? raw.boardId : "";
+  const boardName = typeof raw.boardName === "string" ? raw.boardName : "";
+  if (
+    !userId || !cardId || !title || !startDate || !endDate ||
+    !projectId || !projectName || !boardId || !boardName
+  ) {
+    return null;
+  }
+  if (!isServiceClass(raw.serviceClass)) return null;
+  return {
+    userId, cardId, title, startDate, endDate,
+    projectId, projectName, boardId, boardName,
+    blocked: raw.blocked === true,
+    serviceClass: raw.serviceClass,
+  };
+}
+
+function parseResourceBars(value: unknown, operation: string): ResourceBar[] {
+  if (!Array.isArray(value)) throw invalidResponse(operation);
+  const bars = value.map(parseResourceBar);
+  if (bars.some((bar) => bar === null)) throw invalidResponse(operation);
+  return bars as ResourceBar[];
+}
+
+/** displayName 刻意不要求非空：離職成員查無姓名時 Worker 會回空字串
+ * （見 worker-sync/src/assignments.ts 的 fetchDisplayNames 兜底），與
+ * getCalendar 的 assignees 解析一致，不能因此整批拒收。 */
+function parseResourcePerson(value: unknown): ResourcePerson | null {
+  const raw = asRecord(value);
+  if (!raw || typeof raw.userId !== "string" || !raw.userId) return null;
+  if (typeof raw.displayName !== "string") return null;
+  return { userId: raw.userId, displayName: raw.displayName };
+}
+
+function parseResourcePeople(value: unknown, operation: string): ResourcePerson[] {
+  if (!Array.isArray(value)) throw invalidResponse(operation);
+  const people = value.map(parseResourcePerson);
+  if (people.some((person) => person === null)) throw invalidResponse(operation);
+  return people as ResourcePerson[];
+}
+
+function parseResourceUnscheduledItem(value: unknown): ResourceUnscheduled | null {
+  const raw = asRecord(value);
+  if (!raw) return null;
+  const cardId = typeof raw.cardId === "string" ? raw.cardId : "";
+  const title = typeof raw.title === "string" ? raw.title : "";
+  const userId = typeof raw.userId === "string" ? raw.userId : "";
+  const projectId = typeof raw.projectId === "string" ? raw.projectId : "";
+  const projectName = typeof raw.projectName === "string" ? raw.projectName : "";
+  const boardId = typeof raw.boardId === "string" ? raw.boardId : "";
+  const boardName = typeof raw.boardName === "string" ? raw.boardName : "";
+  if (
+    !cardId || !title || !userId ||
+    !projectId || !projectName || !boardId || !boardName
+  ) {
+    return null;
+  }
+  return { cardId, title, userId, projectId, projectName, boardId, boardName };
+}
+
+function parseResourceUnscheduled(
+  value: unknown,
+  operation: string,
+): ResourceUnscheduled[] {
+  if (!Array.isArray(value)) throw invalidResponse(operation);
+  const items = value.map(parseResourceUnscheduledItem);
+  if (items.some((item) => item === null)) throw invalidResponse(operation);
+  return items as ResourceUnscheduled[];
+}
+
+export async function getAssignments(
+  config: SyncConfig,
+  workspaceId: string,
+  from: string,
+  to: string,
+): Promise<ResourceData> {
+  assertResourceId(workspaceId, "workspace_id");
+  const operation = "讀取甘特圖";
+  const query = new URLSearchParams({ workspaceId, from, to });
+  const raw = asRecord(await requestJson(config, `/assignments?${query}`, operation));
+  if (!raw) throw invalidResponse(operation);
+  const scope = raw.scope === "workspace" || raw.scope === "owned_projects"
+    ? raw.scope
+    : null;
+  if (typeof raw.from !== "string" || typeof raw.to !== "string" || !scope) {
+    throw invalidResponse(operation);
+  }
+  return {
+    from: raw.from,
+    to: raw.to,
+    scope,
+    people: parseResourcePeople(raw.people, operation),
+    bars: parseResourceBars(raw.bars, operation),
+    unscheduled: parseResourceUnscheduled(raw.unscheduled, operation),
+    barsTruncated: raw.barsTruncated === true,
+    unscheduledTruncated: raw.unscheduledTruncated === true,
+    boardsTruncated: raw.boardsTruncated === true,
   };
 }
 

@@ -101,6 +101,47 @@ export type CalendarData = {
   assignees: Array<{ userId: string; displayName: string }>;
 };
 
+/** 人力甘特圖的一根條子：某人在某張卡上、某段查詢窗內重疊的投入期間。同一張卡
+ * 有多位指派人、或一人有多段投入期間，可能各自產生多根。 */
+export type ResourceBar = {
+  userId: string;
+  cardId: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  projectId: string;
+  projectName: string;
+  boardId: string;
+  boardName: string;
+  blocked: boolean;
+  serviceClass: ServiceClass;
+};
+
+export type ResourcePerson = { userId: string; displayName: string };
+
+/** 已指派、但在查詢窗內找不到合法投入期間的卡片／人員配對——視同未排期。 */
+export type ResourceUnscheduled = {
+  cardId: string;
+  title: string;
+  userId: string;
+  projectId: string;
+  projectName: string;
+  boardId: string;
+  boardName: string;
+};
+
+export type ResourceData = {
+  from: string;
+  to: string;
+  scope: "workspace" | "owned_projects";
+  people: ResourcePerson[];
+  bars: ResourceBar[];
+  unscheduled: ResourceUnscheduled[];
+  barsTruncated: boolean;
+  unscheduledTruncated: boolean;
+  boardsTruncated: boolean;
+};
+
 /** One row of the caller's "我的專案" list. `GET /projects` only returns the
  * caller's own memberships (design spec §7.3, §10.1): Project name, the
  * caller's own role, how many active Boards it has, and when it was last
