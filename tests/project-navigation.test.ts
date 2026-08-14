@@ -228,4 +228,9 @@ test("deriveBoardAccess grants assignment management only to the project owner",
   assert.equal(deriveBoardAccess("owner", "active", "active").canManageAssignments, true);
   assert.equal(deriveBoardAccess("member", "active", "active").canManageAssignments, false);
   assert.equal(deriveBoardAccess("owner", "archived", "active").canManageAssignments, false);
+  // 看板本身封存（專案仍 active）：即使角色是 owner，也不能開放指派管理入口，
+  // 否則 UI 會讓人以為可以操作，實際送出去會被 Worker 端 403。
+  assert.equal(deriveBoardAccess("owner", "active", "archived").canManageAssignments, false);
+  // viewer 角色本來就不能編輯看板內容，指派管理不能是唯一的例外。
+  assert.equal(deriveBoardAccess("viewer", "active", "active").canManageAssignments, false);
 });

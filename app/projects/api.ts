@@ -754,7 +754,14 @@ export async function getCalendar(
 
 /** userId／cardId／title／startDate／endDate／projectId／projectName／boardId／
  * boardName 一律要求非空字串——ResourceBar 沒有一個欄位像 CalendarCard.dueDate
- * 那樣「空字串＝合法的未排期狀態」，型別不符就整筆丟棄，不用預設值墊過去。 */
+ * 那樣「空字串＝合法的未排期狀態」，型別不符就整筆丟棄，不用預設值墊過去。
+ * startDate／endDate 額外驗 date-only 格式（複審 Important 追加）：這是跨網路
+ * 邊界的資料，Worker 保證格式合法不代表 client 端可以略過——Task 5 的
+ * barSpanInWindow 會對這兩個值直接做日期運算，非法格式（甚至只是非字串意外
+ * 通過 typeof 檢查後被塞入的垃圾字串）進去就是 NaN 座標，讓 Task 6 的格線壞掉。
+ * 在 parser 邊界擋掉是最便宜的位置。只驗數字位數形狀（不驗月份 01-12／日期
+ * 01-31 範圍），與 parseProjectHash 的 resources 分支對 `from` 查詢參數的驗證
+ * 一致，不重複 Worker 端 DATE_ONLY 的完整曆法驗證。 */
 function parseResourceBar(value: unknown): ResourceBar | null {
   const raw = asRecord(value);
   if (!raw) return null;
@@ -768,7 +775,8 @@ function parseResourceBar(value: unknown): ResourceBar | null {
   const boardId = typeof raw.boardId === "string" ? raw.boardId : "";
   const boardName = typeof raw.boardName === "string" ? raw.boardName : "";
   if (
-    !userId || !cardId || !title || !startDate || !endDate ||
+    !userId || !cardId || !title ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) ||
     !projectId || !projectName || !boardId || !boardName
   ) {
     return null;
@@ -849,7 +857,11 @@ export async function getAssignments(
   const scope = raw.scope === "workspace" || raw.scope === "owned_projects"
     ? raw.scope
     : null;
-  if (typeof raw.from !== "string" || typeof raw.to !== "string" || !scope) {
+  if (
+    typeof raw.from !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw.from) ||
+    typeof raw.to !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw.to) ||
+    !scope
+  ) {
     throw invalidResponse(operation);
   }
   return {

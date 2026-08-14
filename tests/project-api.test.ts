@@ -776,6 +776,82 @@ test("getAssignments rejects an unknown scope", async () => {
   }
 });
 
+test("getAssignments rejects an empty projectName in a bar or an unscheduled item", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => json({
+      ...VALID_BODY,
+      bars: [{ ...VALID_BAR, projectName: "" }],
+    });
+    await assert.rejects(
+      () => getAssignments(config, WORKSPACE_ID, "2026-08-07", "2026-08-20"),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+
+    globalThis.fetch = async () => json({
+      ...VALID_BODY,
+      unscheduled: [{
+        cardId: "c2",
+        title: "未排期任務",
+        userId: ALICE,
+        projectId: "p1",
+        projectName: "",
+        boardId: "b1",
+        boardName: "主看板",
+      }],
+    });
+    await assert.rejects(
+      () => getAssignments(config, WORKSPACE_ID, "2026-08-07", "2026-08-20"),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("getAssignments rejects malformed date-only startDate, endDate, from, and to", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => json({
+      ...VALID_BODY,
+      bars: [{ ...VALID_BAR, startDate: "not-a-date" }],
+    });
+    await assert.rejects(
+      () => getAssignments(config, WORKSPACE_ID, "2026-08-07", "2026-08-20"),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+
+    globalThis.fetch = async () => json({
+      ...VALID_BODY,
+      bars: [{ ...VALID_BAR, endDate: "2026/08/13" }],
+    });
+    await assert.rejects(
+      () => getAssignments(config, WORKSPACE_ID, "2026-08-07", "2026-08-20"),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+
+    globalThis.fetch = async () => json({ ...VALID_BODY, from: "2026/08/07" });
+    await assert.rejects(
+      () => getAssignments(config, WORKSPACE_ID, "2026-08-07", "2026-08-20"),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+
+    globalThis.fetch = async () => json({ ...VALID_BODY, to: "08-20-2026" });
+    await assert.rejects(
+      () => getAssignments(config, WORKSPACE_ID, "2026-08-07", "2026-08-20"),
+      (error: unknown) =>
+        error instanceof ApiClientError && error.kind === "invalid_response",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("getAssignments sends workspaceId, from and to as query parameters", async () => {
   const originalFetch = globalThis.fetch;
   let requested = "";
