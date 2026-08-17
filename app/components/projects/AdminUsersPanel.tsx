@@ -141,16 +141,19 @@ export function AdminUsersPanel({
                 </span>
                 {!user.hasPassword && <span className="loginMissingBadge">未設定密碼</span>}
               </div>
-              <button className="secondaryButton" type="button" onClick={() => setEditing(user)}>
-                管理
-              </button>
-              <button
-                className="secondaryButton"
-                type="button"
-                onClick={() => setAssigning(user)}
-              >
-                專案
-              </button>
+              {/* 兩個按鈕同屬一個動作區，避免超出 .adminUserRow 的欄數而被擠到下一列。 */}
+              <div className="adminUserActions">
+                <button className="secondaryButton" type="button" onClick={() => setEditing(user)}>
+                  管理
+                </button>
+                <button
+                  className="secondaryButton"
+                  type="button"
+                  onClick={() => setAssigning(user)}
+                >
+                  專案
+                </button>
+              </div>
             </article>
           ))}
         </section>

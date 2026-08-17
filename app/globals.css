@@ -1973,6 +1973,17 @@ textarea {
   background: rgba(255, 253, 248, 0.9);
 }
 
+/* 使用者列的動作區：管理與專案並排在同一列的最右側。 */
+.adminUserActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.adminUserActions .secondaryButton {
+  white-space: nowrap;
+}
+
 .userAvatar {
   display: grid;
   width: 44px;
@@ -2810,8 +2821,12 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .adminUserRow > .secondaryButton {
+  .adminUserActions {
     grid-column: 1 / -1;
+  }
+
+  .adminUserActions .secondaryButton {
+    flex: 1;
   }
 
   .loginShell {
