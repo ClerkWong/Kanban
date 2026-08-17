@@ -16,6 +16,9 @@ import type {
 } from "../../projects/types";
 import type { SyncConfig } from "../../sync/config";
 
+/** 勾選「參與」時套用的角色。取最低權限，需要 owner 時再由角色下拉調整。 */
+const DEFAULT_ASSIGN_ROLE: ProjectRole = "member";
+
 function membershipErrorMessage(cause: unknown): string {
   if (cause instanceof ApiClientError && cause.code === "last_owner") {
     return "此專案至少需要一位 owner，請先指派其他 owner。";
@@ -187,11 +190,24 @@ export function AdminUserProjectsModal({
                   <div className="memberList">
                     {activeProjects.map((project) => {
                       const membership = memberships.find((entry) => entry.projectId === project.id);
+                      const joined = membership !== undefined;
                       return (
                         <div className="memberRow" key={project.id}>
-                          <div><strong>{project.name}</strong></div>
+                          <label className="memberJoinToggle">
+                            <input
+                              type="checkbox"
+                              checked={joined}
+                              onChange={(event) => void applyRole(
+                                project.id,
+                                event.target.checked ? DEFAULT_ASSIGN_ROLE : "",
+                              )}
+                            />
+                            <strong>{project.name}</strong>
+                          </label>
                           <AssignmentRoleSelect
-                            value={membership?.role ?? ""}
+                            projectName={project.name}
+                            joined={joined}
+                            value={membership?.role ?? DEFAULT_ASSIGN_ROLE}
                             onChange={(next) => void applyRole(project.id, next)}
                           />
                         </div>
@@ -228,18 +244,30 @@ export function AdminUserProjectsModal({
   );
 }
 
+/** 角色只在已勾選參與時可改；未參與時停用並顯示勾選後會套用的預設角色。
+ *  「是否參與」一律由 checkbox 表達，因此這裡不再提供「未參與」選項——
+ *  否則同一件事會有兩個入口，兩者不一致時使用者無從判斷哪個才算。 */
 function AssignmentRoleSelect({
+  projectName,
+  joined,
   value,
   onChange,
 }: {
-  value: ProjectRole | "";
-  onChange: (next: ProjectRole | "") => void;
+  projectName: string;
+  joined: boolean;
+  value: ProjectRole;
+  onChange: (next: ProjectRole) => void;
 }) {
   return (
-    <select value={value} onChange={(event) => onChange(event.target.value as ProjectRole | "")}>
-      <option value="">未參與</option>
+    <select
+      value={value}
+      disabled={!joined}
+      aria-label={`${projectName} 的角色`}
+      onChange={(event) => onChange(event.target.value as ProjectRole)}
+    >
       <option value="owner">Project Owner</option>
       <option value="member">Project Member</option>
+      {/* 舊版 viewer 只呈現不可再選；select 本身仍可用，管理者才能改成 owner／member。 */}
       {value === "viewer" && <option value="viewer" disabled>唯讀成員（舊版）</option>}
     </select>
   );

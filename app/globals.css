@@ -2382,6 +2382,26 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+/* 使用者管理的專案指派：checkbox 與專案名稱同屬一個 label，點名稱即可勾選。 */
+.memberJoinToggle {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.memberJoinToggle input {
+  width: 18px;
+  min-height: 18px;
+}
+
+.memberJoinToggle strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .memberRow .fieldGroup {
   grid-column: 1 / -1;
 }
