@@ -1,10 +1,23 @@
 apply plugin: 'com.android.application'
 
+// 先讀 Gradle project property，再退回同名環境變數。
+// project property 才是可靠的來源：--no-daemon 仍會為了套用 JVM 設定 fork 一個 single-use
+// daemon，build script 內的 System.getenv 讀到的是那個 daemon 的環境，命令列前綴設定的
+// 環境變數會遺失。ORG_GRADLE_PROJECT_<name> 由 Gradle client 讀取後轉成 project property
+// 傳給 daemon，因此不受影響，且密碼不會像 -P 那樣出現在 ps 的參數列裡。
+def signingInput = { String propertyName, String envName ->
+    def value = project.findProperty(propertyName)
+    if (value == null || value.toString().trim().isEmpty()) {
+        value = System.getenv(envName)
+    }
+    return value
+}
+
 def releaseSigningValues = [
-    storePath: System.getenv('KANBAN_ANDROID_KEYSTORE_PATH'),
-    storePassword: System.getenv('KANBAN_ANDROID_KEYSTORE_PASSWORD'),
-    keyAlias: System.getenv('KANBAN_ANDROID_KEY_ALIAS'),
-    keyPassword: System.getenv('KANBAN_ANDROID_KEY_PASSWORD'),
+    storePath: signingInput('kanbanKeystorePath', 'KANBAN_ANDROID_KEYSTORE_PATH'),
+    storePassword: signingInput('kanbanKeystorePassword', 'KANBAN_ANDROID_KEYSTORE_PASSWORD'),
+    keyAlias: signingInput('kanbanKeyAlias', 'KANBAN_ANDROID_KEY_ALIAS'),
+    keyPassword: signingInput('kanbanKeyPassword', 'KANBAN_ANDROID_KEY_PASSWORD'),
 ]
 def releaseSigningConfigured = releaseSigningValues.values().every {
     it != null && !it.trim().isEmpty()
@@ -52,9 +65,11 @@ android {
 
 if (releaseTaskRequested && !releaseSigningConfigured) {
     throw new GradleException(
-        'Release signing is not configured. Set KANBAN_ANDROID_KEYSTORE_PATH, ' +
-        'KANBAN_ANDROID_KEYSTORE_PASSWORD, KANBAN_ANDROID_KEY_ALIAS, and ' +
-        'KANBAN_ANDROID_KEY_PASSWORD.'
+        'Release signing is not configured. Set the Gradle project properties ' +
+        'kanbanKeystorePath, kanbanKeystorePassword, kanbanKeyAlias and kanbanKeyPassword ' +
+        '(easiest via ORG_GRADLE_PROJECT_<name> environment variables, or ' +
+        '~/.gradle/gradle.properties). The legacy KANBAN_ANDROID_* environment variables are ' +
+        'still read as a fallback, but they are lost when Gradle forks a single-use daemon.'
     )
 }
 
