@@ -1517,4 +1517,20 @@ describe("Card hierarchy (parentCardId) validation and Activity Log tracking", (
     expect(JSON.stringify(metadata)).not.toContain('"task-1","task-2"');
     expect(JSON.stringify(metadata)).not.toContain('"task-2","task-1"');
   });
+
+  // 審查發現：`!cards[parentCardId]` 是原型鏈屬性查找，`cards` 來自 JSON.parse，
+  // 原型是 Object.prototype，所以 parentCardId 為 "constructor"／"__proto__" 等
+  // 名稱時 `cards[parentCardId]` 會落到繼承屬性（皆為 truthy），存在性檢查被
+  // 繞過——board 內沒有任何一張卡叫這個名字，仍會被誤判為「父卡存在」而放行。
+  it.each(["constructor", "__proto__"])(
+    "rejects a parentCardId of %s even though it resolves via the prototype chain",
+    async (poisoned) => {
+      await createBoard(managerToken, projectA, boardA, "Hierarchy");
+      const response = await putBoardContentAt(managerToken, 0, boardWithCards({
+        "task-1": { parentCardId: poisoned },
+      }));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: "invalid_card_hierarchy" });
+    },
+  );
 });

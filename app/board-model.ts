@@ -932,7 +932,10 @@ export function assertBoardInvariants(board: BoardState): void {
   }
   for (const cardId of cardIds) {
     const parentCardId = board.cards[cardId].parentCardId;
-    if (parentCardId !== null && !board.cards[parentCardId]) {
+    // `board.cards[x]` 是原型鏈屬性查找：x 為 "constructor"／"__proto__" 等
+    // Object.prototype 上既有的名稱時一律 truthy，會把「不存在的父卡」誤判成
+    // 「存在」。必須用 Object.hasOwn 只認自身屬性，不能用真假值判斷存在性。
+    if (parentCardId !== null && !Object.hasOwn(board.cards, parentCardId)) {
       throw new Error(`Card ${cardId} points at a missing parent ${parentCardId}.`);
     }
     if (parentCardId === cardId) {
@@ -948,6 +951,14 @@ export function assertBoardInvariants(board: BoardState): void {
     while (current !== null) {
       if (seen.has(current)) {
         throw new Error(`Card hierarchy contains a cycle at ${current}.`);
+      }
+      // 防禦性重複檢查（上面的迴圈理論上已保證每個非 null parentCardId 都是
+      // board.cards 的自身鍵）：一旦這裡失守，下一行會對繼承屬性（如
+      // "constructor" 解析出的建構函式）取 .parentCardId 得到 undefined、
+      // 而非 null，讓迴圈多走一步查詢字面鍵 "undefined" 而真正變成 undefined，
+      // 對 undefined 取屬性就會拋出未分類的 TypeError，而不是這裡這種明確錯誤。
+      if (!Object.hasOwn(board.cards, current)) {
+        throw new Error(`Card ${cardId} points at a missing parent ${current}.`);
       }
       seen.add(current);
       depth += 1;
@@ -1379,12 +1390,17 @@ export function normalizeAssignmentWindows(
   return windows.sort((left, right) => left.userId.localeCompare(right.userId));
 }
 
-/** 卡片所在層級；頂層為 1。走訪上限 MAX_CARD_DEPTH + 1 層，含環輸入亦保證終止。 */
+/** 卡片所在層級；頂層為 1。走訪上限 MAX_CARD_DEPTH + 1 層，含環輸入亦保證終止。
+ *  存在性判斷用 Object.hasOwn，不能用 `cards[x]` 的真假值——x 為
+ *  "constructor"／"__proto__" 等 Object.prototype 上既有的名稱時一律 truthy，
+ *  會把不存在的父卡誤判成存在的一層，算出比實際多一層的深度。這個函式可能被
+ *  直接餵未經 normalizeCardHierarchy 正規化的 cards（例如 eligibleParentCards），
+ *  不能假設呼叫端已經清過壞連結。 */
 export function cardDepth(cards: Record<string, Card>, cardId: string): number {
   let depth = 1;
   let current = cards[cardId]?.parentCardId ?? null;
   const seen = new Set<string>([cardId]);
-  while (current !== null && !seen.has(current) && cards[current]) {
+  while (current !== null && !seen.has(current) && Object.hasOwn(cards, current)) {
     depth += 1;
     seen.add(current);
     if (depth > MAX_CARD_DEPTH + 1) break;
@@ -1412,14 +1428,17 @@ export function descendantCardIds(
   return result;
 }
 
-/** 以該卡為根的子樹高度；葉節點為 1。 */
+/** 以該卡為根的子樹高度；葉節點為 1。存在性判斷用 Object.hasOwn，理由同
+ *  cardDepth——descendants 由 descendantCardIds 以「值相等」找出，往上走時
+ *  理論上不會遇到繼承屬性，但直接用 `cards[x]` 真假值判斷仍是同一種脆弱寫法，
+ *  一併改掉以防未來呼叫方式改變而重新暴露。 */
 export function subtreeHeight(cards: Record<string, Card>, cardId: string): number {
   const descendants = descendantCardIds(cards, cardId);
   let height = 1;
   for (const id of descendants) {
     let depth = 1;
     let current: string | null = cards[id]?.parentCardId ?? null;
-    while (current !== null && current !== cardId && cards[current]) {
+    while (current !== null && current !== cardId && Object.hasOwn(cards, current)) {
       depth += 1;
       current = cards[current].parentCardId;
       if (depth > MAX_CARD_DEPTH) break;
@@ -1455,18 +1474,26 @@ export function normalizeCardHierarchy(cards: Record<string, Card>): void {
   const ids = Object.keys(cards).sort();
 
   // 1. 指向不存在的卡片，或指向自己
+  // `cards[x]` 是原型鏈屬性查找：x 為 "constructor"／"__proto__" 等
+  // Object.prototype 上既有的名稱時一律 truthy，會把「不存在的父卡」誤判成
+  // 「存在」而放過壞連結。必須用 Object.hasOwn 只認自身屬性。
   for (const id of ids) {
     const parentCardId = cards[id].parentCardId;
-    if (parentCardId !== null && (parentCardId === id || !cards[parentCardId])) {
+    if (parentCardId !== null && (parentCardId === id || !Object.hasOwn(cards, parentCardId))) {
       cards[id] = { ...cards[id], parentCardId: null };
     }
   }
 
-  // 2. 斷環：從每張卡往上走，遇到已在本次路徑上的卡就斷掉造成閉合的那一條
+  // 2. 斷環：從每張卡往上走，遇到已在本次路徑上的卡就斷掉造成閉合的那一條。
+  // 上面第 1 步理論上已保證每個非 null parentCardId 都是 cards 的自身鍵，這裡的
+  // Object.hasOwn 是防禦性重複檢查：一旦失守，`cards[current]` 落到繼承屬性
+  // （如 "constructor" 解析出的建構函式）取 .parentCardId 會得到 undefined
+  // 而非 null，迴圈會多走一步查詢字面鍵 "undefined"、對真正的 undefined 取屬性
+  // 而拋出未分類的 TypeError（審查實測到的當機路徑），而不是乾淨地結束。
   for (const id of ids) {
     const path = new Set<string>([id]);
     let current = id;
-    while (cards[current].parentCardId !== null) {
+    while (Object.hasOwn(cards, current) && cards[current].parentCardId !== null) {
       const parentCardId = cards[current].parentCardId as string;
       if (path.has(parentCardId)) {
         cards[current] = { ...cards[current], parentCardId: null };

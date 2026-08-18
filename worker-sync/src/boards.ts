@@ -171,7 +171,7 @@ function requireValidCardHierarchy(value: unknown): void {
       typeof parentCardId !== "string" ||
       !parentCardId ||
       parentCardId === cardId ||
-      !cards[parentCardId]
+      !Object.hasOwn(cards, parentCardId)
     ) {
       throw new RequestError(400, "invalid_card_hierarchy");
     }

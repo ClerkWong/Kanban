@@ -84,6 +84,21 @@ test("a self reference is cleared", () => {
   assert.equal(board.cards.a.parentCardId, null);
 });
 
+// 審查發現：正規化第一步用 `!cards[parentCardId]` 判斷父卡是否存在，這是原型鏈
+// 屬性查找。cards 的原型是 Object.prototype，parentCardId 為 "constructor"／
+// "__proto__" 時 `cards[parentCardId]` 會落到繼承屬性（皆為 truthy），存在性
+// 判斷被繞過，壞連結不會被清掉，接著第二步（斷環）沿著這條「看似存在」的連結
+// 往上走，在它自己的 .parentCardId（undefined，不是 null）處誤判成「還沒到頂」
+// 再走一步、查詢字面鍵 "undefined"（真的不存在）才對 undefined 取
+// .parentCardId，normalizeBoard 因此拋出
+// `TypeError: Cannot read properties of undefined (reading 'parentCardId')`。
+for (const poisoned of ["constructor", "__proto__"]) {
+  test(`a parentCardId of ${poisoned} does not crash normalizeBoard and is cleared`, () => {
+    const board = boardWith({ a: poisoned });
+    assert.equal(board.cards.a.parentCardId, null);
+  });
+}
+
 test("a two-card cycle is broken", () => {
   const board = boardWith({ a: "b", b: "a" });
   const links = [board.cards.a.parentCardId, board.cards.b.parentCardId];
@@ -125,6 +140,17 @@ test("cardDepth counts the top level as 1", () => {
   assert.equal(cardDepth(board.cards, "a"), 1);
   assert.equal(cardDepth(board.cards, "b"), 2);
   assert.equal(cardDepth(board.cards, "c"), 3);
+});
+
+// cardDepth／subtreeHeight 是匯出函式，可能被直接餵未經 normalizeCardHierarchy
+// 正規化的 cards（例如 eligibleParentCards 在正規化完成前被呼叫）。這裡直接構造
+// 一筆帶壞連結的 Record，不透過 boardWith／normalizeBoard，才能測到函式本身
+// 的存在性判斷，而不是測到正規化已經先清過連結。
+test("cardDepth does not treat a prototype property name as an existing ancestor", () => {
+  const cards: Record<string, Card> = {
+    a: { id: "a", title: "a", parentCardId: "constructor" } as Card,
+  };
+  assert.equal(cardDepth(cards, "a"), 1);
 });
 
 test("descendantCardIds collects the whole subtree but not the card itself", () => {
@@ -183,6 +209,25 @@ test("assertBoardInvariants rejects a chain deeper than the limit", () => {
       column.id === "todo" ? { ...column, cardIds: [...column.cardIds, "d"] } : column),
   };
   assert.throws(() => assertBoardInvariants(broken), /maximum depth/);
+});
+
+// 同一個原型鏈繞過，但站在 assertBoardInvariants 這一側：手動把已正規化過的卡片
+// 改壞（不重跑 normalizeCardHierarchy），模擬「呼叫端直接把未經正規化的資料
+// 交給 assertBoardInvariants」的情境。修補前，缺父卡檢查（`!board.cards[x]`）
+// 被繞過、不會在這裡拋錯，接著環/深度檢查那段的
+// `current = board.cards[current].parentCardId` 沒有存在性防護，會在走到字面
+// 鍵 "undefined" 時對 undefined 取 .parentCardId 而拋出
+// TypeError，而不是預期的「missing parent」錯誤。
+test("assertBoardInvariants rejects a parentCardId that collides with a prototype property name", () => {
+  const board = boardWith({ a: null });
+  const broken = {
+    ...board,
+    cards: {
+      ...board.cards,
+      a: { ...board.cards.a, parentCardId: "constructor" },
+    },
+  };
+  assert.throws(() => assertBoardInvariants(broken), /missing parent/);
 });
 
 test("the hierarchy does not affect completion, WIP or aging", () => {
