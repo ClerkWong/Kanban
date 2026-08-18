@@ -111,10 +111,18 @@ export function BoardTimeline({
   // document 層的 keydown，關閉時（不論是按這裡的 Esc 還是點退出鈕）移除。
   //
   // overlayOpen 為真時直接 return，不關全螢幕：DetailModal／ConfirmModal
-  // 等 modal 自己的 Esc 關閉走 React onKeyDown、不會（也不該）呼叫
-  // stopPropagation，這個 document 層 listener 一定還是會收到同一次按鍵。
-  // Esc 的慣例是只關最上層——overlay 開著時「最上層」是那個 overlay，不是
-  // 全螢幕；overlay 關閉後再按一次 Esc，才會輪到全螢幕自己退出。
+  // 等 modal 自己的 Esc 關閉走 React onKeyDown（bubble phase、掛在 root
+  // container），不會（也不該）呼叫 stopPropagation。這個 listener**必須**
+  // 掛在 capture phase：bubble phase 的 document listener 會在 React 的
+  // root container 之後才收到同一次原生事件，但 React 對 discrete event
+  // （keydown 屬於這一類）會同步 flush——modal 的 onClose 觸發的
+  // setState／重渲染／這個 effect 的清理＋重跑，全部在原生事件抵達
+  // document 的 bubble 階段之前就完成，屆時 document 上已經換成
+  // overlayOpen:false 的新 handler，guard 形同沒設（實測踩過這個坑，
+  // 用時間戳證實：closure 置換發生在原生事件到達 document 之前）。
+  // capture phase 在事件抵達 root container 之前就執行，讀到的
+  // overlayOpen 一定是「這次按鍵發生前」的狀態，不會被同一次事件觸發的
+  // 重渲染搶先換班。
   useEffect(() => {
     if (!fullscreen) return;
     function handleKeyDown(event: KeyboardEvent) {
@@ -123,8 +131,8 @@ export function BoardTimeline({
       if (overlayOpen) return;
       setFullscreen(false);
     }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [fullscreen, overlayOpen]);
 
   const cards = useMemo(() => Object.values(board.cards), [board.cards]);
