@@ -1438,6 +1438,12 @@ export function eligibleParentCards(
   const descendants = descendantCardIds(cards, cardId);
   const height = subtreeHeight(cards, cardId);
   return Object.keys(cards).filter((candidateId) => {
+    // 在目前 MAX_CARD_DEPTH = 3 下，任何子孫的 cardDepth + height 恆 >= 4 > 3
+    // （cardId 深度至少 1、子孫相對深度至少 1，兩者疊加後 height 至少 2），下面
+    // 那行深度檢查已經隱含排除子孫，descendants.has 這行看起來像死碼。但這個
+    // 等價只在 MAX_CARD_DEPTH <= 3 成立——上限一旦調到 4 以上，深度檢查不再自動
+    // 擋掉子孫，這行就是唯一防止選單推薦「把卡片掛到自己子孫底下」（等於直接
+    // 造環）的防線，別因為看似死碼而簡化掉。
     if (candidateId === cardId || descendants.has(candidateId)) return false;
     return cardDepth(cards, candidateId) + height <= MAX_CARD_DEPTH;
   });

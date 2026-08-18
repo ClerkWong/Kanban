@@ -12,6 +12,7 @@ import {
   eligibleParentCards,
   getBoardStats,
   normalizeBoard,
+  parsePersistedBoard,
   subtreeHeight,
   updateCard,
   type BoardState,
@@ -50,6 +51,25 @@ test("existing cards migrate to a null parent without inventing links", () => {
   const migrated = normalizeBoard(legacy as never);
   assert.equal(migrated.version, 9);
   for (const card of Object.values(migrated.cards)) {
+    assert.equal(card.parentCardId, null);
+  }
+});
+
+// 上一個測試直接呼叫 normalizeBoard()，完全沒經過 parsePersistedBoard() 的版本
+// 白名單（app/board-model.ts 的 `version !== 8 && ... version !== BOARD_SCHEMA_VERSION`
+// 那段）。白名單本身是純手工維護的條列式清單，下次升版若忘記加一行、或重構時
+// 不小心漏掉，使用者本機現役的 v8 看板會被判定為不相容、整份換成示範資料——
+// 且如果只測 normalizeBoard()，這個迴歸不會讓任何測試轉紅。這裡改成真正打
+// parsePersistedBoard()，確保白名單缺一行時測試會壞。
+test("parsePersistedBoard migrates a serialized v8 board to v9 with a null parent", () => {
+  const legacy = JSON.stringify({ ...createDemoBoard(), version: 8 });
+
+  const parsed = parsePersistedBoard(legacy);
+
+  assert.equal(parsed.recovered, false);
+  assert.equal(parsed.error, null);
+  assert.equal(parsed.board.version, 9);
+  for (const card of Object.values(parsed.board.cards)) {
     assert.equal(card.parentCardId, null);
   }
 });
