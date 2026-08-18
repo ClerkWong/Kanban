@@ -19,7 +19,7 @@ export type ProjectRoute =
   | { kind: "calendar"; month: string | null }
   | { kind: "resources"; from: string | null }
   | { kind: "project"; projectId: string }
-  | { kind: "board"; projectId: string; boardId: string };
+  | { kind: "board"; projectId: string; boardId: string; view: "board" | "timeline" };
 
 export type BoardAccess = {
   canEdit: boolean;
@@ -74,6 +74,22 @@ export function parseProjectHash(hash: string): ProjectRoute | null {
       kind: "board",
       projectId: segments[1],
       boardId: segments[3],
+      view: "board",
+    };
+  }
+  if (
+    segments.length === 5 &&
+    segments[0] === "projects" &&
+    segments[2] === "boards" &&
+    segments[4] === "timeline" &&
+    isServerResourceId(segments[1]) &&
+    isServerResourceId(segments[3])
+  ) {
+    return {
+      kind: "board",
+      projectId: segments[1],
+      boardId: segments[3],
+      view: "timeline",
     };
   }
   return null;
@@ -89,7 +105,8 @@ export function serializeProjectRoute(route: ProjectRoute): string {
     return route.from ? `#/resources?from=${route.from}` : "#/resources";
   }
   if (route.kind === "project") return `#/projects/${route.projectId}`;
-  return `#/projects/${route.projectId}/boards/${route.boardId}`;
+  const boardPath = `#/projects/${route.projectId}/boards/${route.boardId}`;
+  return route.view === "timeline" ? `${boardPath}/timeline` : boardPath;
 }
 
 /** 日曆與人力甘特圖皆是管理者專屬：workspace owner／admin，或任一 active 專案的
@@ -135,6 +152,7 @@ export function resolveAuthorizedRoute(
       kind: "board",
       projectId: lastContext.projectId,
       boardId: lastContext.boardId,
+      view: "board",
     };
   }
   return { kind: "projects" };

@@ -33,7 +33,7 @@ export function ArchivedBoardsPanel({
           };
           return (
             <div className="archivedRow" key={board.id}>
-              <a href={serializeProjectRoute({ kind: "board", projectId: detail.project.id, boardId: board.id })}>{board.name}</a>
+              <a href={serializeProjectRoute({ kind: "board", projectId: detail.project.id, boardId: board.id, view: "board" })}>{board.name}</a>
               {canManage && (
                 <button className="secondaryButton" type="button" onClick={() => {
                   if (!navigator.onLine) {

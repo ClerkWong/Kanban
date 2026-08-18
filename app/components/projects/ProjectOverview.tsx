@@ -155,7 +155,7 @@ export function ProjectOverview({
           <div className="boardDirectoryGrid">
             {activeBoards.map((board) => (
               <article className="boardDirectoryCard boardManageCard" key={board.id}>
-                <a href={serializeProjectRoute({ kind: "board", projectId: detail.project.id, boardId: board.id })}>
+                <a href={serializeProjectRoute({ kind: "board", projectId: detail.project.id, boardId: board.id, view: "board" })}>
                   <h3>{board.name}</h3><p>Revision {board.revision}</p>
                 </a>
                 <span className="statusBadge active">使用中</span>

@@ -37,6 +37,7 @@ export function BoardNavigation({
                 kind: "board",
                 projectId: project.id,
                 boardId: event.target.value,
+                view: "board",
               });
             }}
           >

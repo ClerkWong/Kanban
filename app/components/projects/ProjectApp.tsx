@@ -402,6 +402,7 @@ function ProjectRouteView({
             kind: "board",
             projectId: route.projectId,
             boardId: activeBoards[0].id,
+            view: "board",
           });
           return;
         }
@@ -460,6 +461,7 @@ function ProjectRouteView({
         kind: "board",
         projectId: route.projectId,
         boardId: created.meta.id,
+        view: "board",
       });
       onProjectsChanged();
     } catch (error) {

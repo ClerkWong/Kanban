@@ -46,7 +46,7 @@ test("project hash routes parse and serialize as canonical round trips", () => {
     { kind: "projects" } as const,
     { kind: "admin" } as const,
     { kind: "project", projectId } as const,
-    { kind: "board", projectId, boardId } as const,
+    { kind: "board", projectId, boardId, view: "board" } as const,
   ];
   for (const route of routes) {
     assert.deepEqual(parseProjectHash(serializeProjectRoute(route)), route);
@@ -55,6 +55,33 @@ test("project hash routes parse and serialize as canonical round trips", () => {
   assert.equal(parseProjectHash("#/projects/not-a-uuid"), null);
   assert.equal(parseProjectHash(`#/projects/${projectId}/boards/local:legacy-board`), null);
   assert.equal(parseProjectHash(`#/projects/${projectId}/unknown/${boardId}`), null);
+});
+
+test("parses a board route with the default view", () => {
+  assert.deepEqual(parseProjectHash(`#/projects/${projectId}/boards/${boardId}`), {
+    kind: "board", projectId, boardId, view: "board",
+  });
+});
+
+test("parses the timeline view of a board route", () => {
+  assert.deepEqual(parseProjectHash(`#/projects/${projectId}/boards/${boardId}/timeline`), {
+    kind: "board", projectId, boardId, view: "timeline",
+  });
+});
+
+test("rejects an unknown board sub-view", () => {
+  assert.equal(parseProjectHash(`#/projects/${projectId}/boards/${boardId}/nope`), null);
+});
+
+test("serializes both board views", () => {
+  assert.equal(
+    serializeProjectRoute({ kind: "board", projectId, boardId, view: "board" }),
+    `#/projects/${projectId}/boards/${boardId}`,
+  );
+  assert.equal(
+    serializeProjectRoute({ kind: "board", projectId, boardId, view: "timeline" }),
+    `#/projects/${projectId}/boards/${boardId}/timeline`,
+  );
 });
 
 test("platform administration route requires an explicit workspace capability", () => {
@@ -191,26 +218,26 @@ test("unauthorized or malformed routes fall back to a valid recent context, then
       projects,
       lastContext,
     ),
-    { kind: "board", projectId, boardId },
+    { kind: "board", projectId, boardId, view: "board" },
   );
   assert.deepEqual(resolveAuthorizedRoute(null, projects), { kind: "projects" });
   assert.deepEqual(
     resolveAuthorizedRoute(
-      { kind: "board", projectId, boardId },
+      { kind: "board", projectId, boardId, view: "board" },
       projects,
     ),
-    { kind: "board", projectId, boardId },
+    { kind: "board", projectId, boardId, view: "board" },
   );
 });
 
 test("board route validation rejects a board from another project", () => {
   assert.equal(
-    boardBelongsToRoute({ kind: "board", projectId, boardId }, [board]),
+    boardBelongsToRoute({ kind: "board", projectId, boardId, view: "board" }, [board]),
     true,
   );
   assert.equal(
     boardBelongsToRoute(
-      { kind: "board", projectId, boardId: otherBoardId },
+      { kind: "board", projectId, boardId: otherBoardId, view: "board" },
       [board],
     ),
     false,

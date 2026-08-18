@@ -51,6 +51,7 @@ export function MyProjectsView({
                 kind: "board",
                 projectId: project.id,
                 boardId: project.boardId,
+                view: "board",
               })
               : serializeProjectRoute({ kind: "project", projectId: project.id });
             return (
