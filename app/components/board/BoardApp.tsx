@@ -298,6 +298,13 @@ function BoardSurface({
     syncOpen: syncModalOpen,
     reportOpen,
   });
+  // 給 BoardTimeline 的全螢幕 Esc handler 用：只要「detail／確認刪除／同步
+  // 設定／月報表」任一個 modal 開著，或欄位改名／新增欄位這兩個非 modal 的
+  // inline 編輯器開著，就代表最上層另有東西要接收這次 Esc。不用
+  // getBoardOverlayKey 本身（那個值還驅動 modalRef 的 focus 管理，混進欄位
+  // 編輯器會讓它在編輯欄位時錯誤搶焦），改算一個獨立的布林。
+  const hasOpenOverlay =
+    activeOverlay !== null || columnEditor !== null || newColumnEditor !== null;
 
   useEffect(() => {
     let cancelled = false;
@@ -1051,7 +1058,7 @@ function BoardSurface({
       )}
 
       {view === "timeline" ? (
-        <BoardTimeline board={board} onOpenCard={openEdit} />
+        <BoardTimeline board={board} onOpenCard={openEdit} overlayOpen={hasOpenOverlay} />
       ) : (
         <section
           className="board"

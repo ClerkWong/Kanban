@@ -93,9 +93,15 @@ function anchorPoint(node: TimelineNode, centerY: number): { x: number; y: numbe
 export function BoardTimeline({
   board,
   onOpenCard,
+  overlayOpen,
 }: {
   board: BoardState;
   onOpenCard: (cardId: string) => void;
+  /** BoardApp 目前是否開著 DetailModal／確認刪除／同步設定／月報表／欄位
+   *  編輯這類最上層 overlay。全螢幕的 Esc handler 靠這個判斷「這次 Esc
+   *  該不該連坐關全螢幕」，而不是自己去嗅探 DOM 或依賴其他元件有沒有呼叫
+   *  preventDefault——那兩種做法都會讓這裡偷偷依賴別的元件的實作細節。 */
+  overlayOpen: boolean;
 }) {
   const [pxPerDay, setPxPerDay] = useState<number>(DEFAULT_PX_PER_DAY);
   const [fullscreen, setFullscreen] = useState(false);
@@ -103,15 +109,23 @@ export function BoardTimeline({
   // 全螢幕是 CSS 覆蓋視窗（見下方 .timelineFullscreen 的取捨），不是瀏覽器
   // Fullscreen API，沒有內建的 Esc 退出，這裡補上；只在全螢幕開著時掛
   // document 層的 keydown，關閉時（不論是按這裡的 Esc 還是點退出鈕）移除。
+  //
+  // overlayOpen 為真時直接 return，不關全螢幕：DetailModal／ConfirmModal
+  // 等 modal 自己的 Esc 關閉走 React onKeyDown、不會（也不該）呼叫
+  // stopPropagation，這個 document 層 listener 一定還是會收到同一次按鍵。
+  // Esc 的慣例是只關最上層——overlay 開著時「最上層」是那個 overlay，不是
+  // 全螢幕；overlay 關閉後再按一次 Esc，才會輪到全螢幕自己退出。
   useEffect(() => {
     if (!fullscreen) return;
     function handleKeyDown(event: KeyboardEvent) {
       if (isImeComposing(event)) return;
-      if (event.key === "Escape") setFullscreen(false);
+      if (event.key !== "Escape") return;
+      if (overlayOpen) return;
+      setFullscreen(false);
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [fullscreen]);
+  }, [fullscreen, overlayOpen]);
 
   const cards = useMemo(() => Object.values(board.cards), [board.cards]);
   const today = useMemo(() => todayString(), []);
