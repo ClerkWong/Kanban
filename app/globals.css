@@ -946,6 +946,13 @@ textarea {
   margin: 0;
 }
 
+/* 上層任務欄位不是 fieldset（沒有多個子控制項要一起唯讀），沿用 .fieldGroup 的
+   邊框語彙加一條頂部分隔線，視覺上仍是「這一區」的一部分，與上方指派區隔開。 */
+.parentTaskField {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .assignmentWindowRow {
   display: flex;
   flex-wrap: wrap;

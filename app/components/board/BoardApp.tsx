@@ -13,6 +13,7 @@ import {
   deleteCard,
   deleteColumn,
   diffAttachmentRefs,
+  eligibleParentCards,
   filterCards,
   getBoardStats,
   getColumnWip,
@@ -384,6 +385,28 @@ function BoardSurface({
         ),
     [projectMembers],
   );
+  // 新增模式列出全部卡片；編輯模式用 eligibleParentCards 排除自己、子孫，以及會讓
+  // 子樹超過 MAX_CARD_DEPTH 的候選——UI 只顯示合法選項，不會選到必然被 Worker 400
+  // 擋下的值。標題重複時才附短 id（卡片 id 尾 6 碼，比照 CardItem 既有的短 id 呈現
+  // 慣例），避免選單出現兩個看不出差異的同名選項。
+  const parentOptions = useMemo(() => {
+    if (!detail) return [];
+    const candidateIds = detail.mode === "edit"
+      ? eligibleParentCards(board.cards, detail.cardId)
+      : Object.keys(board.cards);
+    const titleCounts = new Map<string, number>();
+    for (const candidateId of candidateIds) {
+      const title = board.cards[candidateId].title;
+      titleCounts.set(title, (titleCounts.get(title) ?? 0) + 1);
+    }
+    return candidateIds.map((candidateId) => {
+      const title = board.cards[candidateId].title;
+      const label = (titleCounts.get(title) ?? 0) > 1
+        ? `${title}（${candidateId.slice(-6)}）`
+        : title;
+      return { cardId: candidateId, label };
+    });
+  }, [board.cards, detail]);
 
   useEffect(() => {
     if (!enableServiceWorker) {
@@ -1290,6 +1313,7 @@ function BoardSurface({
           canManageAssignments={access.canManageAssignments}
           attachmentContext={context}
           projectMembers={projectMembers}
+          parentOptions={parentOptions}
         />
       )}
 

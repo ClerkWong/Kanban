@@ -161,3 +161,16 @@ test("IME 組字期間辨識標準旗標與 Safari keyCode 229", () => {
   assert.equal(isImeComposing({ isComposing: false, keyCode: 229 }), true);
   assert.equal(isImeComposing({ isComposing: false, keyCode: 13 }), false);
 });
+
+test("draftFromCard and draftToCardInput round-trip parentCardId", () => {
+  const board = createDemoBoard();
+  const [parentId, childId] = Object.keys(board.cards);
+  const linked = updateCard(board, childId, { parentCardId: parentId });
+  const draft = draftFromCard(linked.cards[childId]);
+  assert.equal(draft.parentCardId, parentId);
+  assert.equal(draftToCardInput(draft).parentCardId, parentId);
+});
+
+test("createDraft starts with no parent", () => {
+  assert.equal(createDraft().parentCardId, null);
+});

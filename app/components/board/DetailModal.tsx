@@ -33,6 +33,7 @@ export function DetailModal({
   canManageAssignments = true,
   attachmentContext,
   projectMembers,
+  parentOptions,
 }: {
   detail: DetailState;
   labels: Label[];
@@ -50,6 +51,9 @@ export function DetailModal({
   attachmentContext?: BoardContext;
   /** Undefined for a legacy local board; an array (including empty) for a Project board. */
   projectMembers?: ProjectMember[];
+  /** 可設為上層任務的候選卡片；由呼叫端以 eligibleParentCards（編輯模式）或全部卡片
+   *  （新增模式）算好傳入，本元件不重新計算資格。 */
+  parentOptions: Array<{ cardId: string; label: string }>;
 }) {
   const draft = detail.draft;
   const currentProjectMemberIds = new Set(
@@ -368,6 +372,34 @@ export function DetailModal({
               )}
             </>
           )}
+
+          {/* 上層任務是工作內容的組織方式，與清單、標籤同一層，不是指派——刻意不受
+              canManageAssignments 影響（那個旗標只管指派名單與投入期間），member
+              也能改。readOnly（整卡唯讀，如封存看板或 viewer）時才 disabled。 */}
+          <label className="formField parentTaskField" htmlFor="parentCardId">
+            <span>上層任務</span>
+            <select
+              id="parentCardId"
+              aria-describedby="parentCardIdHint"
+              value={draft.parentCardId ?? ""}
+              disabled={readOnly}
+              onChange={(event) =>
+                setDraft({
+                  parentCardId: event.target.value === "" ? null : event.target.value,
+                })
+              }
+            >
+              <option value="">（直接掛在時間軸上）</option>
+              {parentOptions.map((option) => (
+                <option key={option.cardId} value={option.cardId}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <small id="parentCardIdHint" className="fieldHint">
+            上層任務只表示工作的歸屬，不影響完成狀態。
+          </small>
           </fieldset>
 
           <AttachmentSection
