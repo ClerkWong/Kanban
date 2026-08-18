@@ -213,4 +213,26 @@ describe("Legacy /board alias", () => {
     expect(put.status).toBe(400);
     expect(await put.json()).toMatchObject({ error: "invalid_assignment_windows" });
   });
+
+  it("rejects an invalid card hierarchy on a card while migration is pending", async () => {
+    // 同上一條測試的理由：putLegacyRow 沒有 project role，這條路徑也沒有其他
+    // 機制會替 requireValidCardHierarchy 兜底——boards.integration.test.ts 裡
+    // 涵蓋這個驗證函式的測試全部走 createBoard／putBoardContent，一個都不經過
+    // putLegacyRow。若日後 boards.ts 裡呼叫這個函式的那一行被誤刪，全套測試
+    // 仍會全綠，必須直接測 legacy 路徑本身才能抓到。
+    const selfReference = {
+      version: 9,
+      columns: [],
+      cards: {
+        "task-1": { title: "Task", parentCardId: "task-1" },
+      },
+      marker: "self-reference",
+    };
+    const put = await dispatch(memberToken, "/board", {
+      method: "PUT",
+      body: JSON.stringify({ baseRevision: 7, board: selfReference }),
+    });
+    expect(put.status).toBe(400);
+    expect(await put.json()).toMatchObject({ error: "invalid_card_hierarchy" });
+  });
 });
