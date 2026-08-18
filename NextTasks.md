@@ -654,10 +654,14 @@ git diff --check
 
 ### 內部測試版
 
-1. 在 release commit 執行 final `pnpm mobile:sync`。
+完整步驟見 [行動版發布 runbook](./docs/runbooks/mobile-release.md)（含升版號、
+`pnpm mobile:sync`、iOS archive、`pnpm mobile:release:android` 簽章 AAB、AAB 驗證、
+實機驗收與混版風險）。摘要：
+
+1. 兩平台一起升 build number，並在 release commit 執行 final `pnpm mobile:sync`。
 2. 確認沒有非預期變更 Xcode signing/team 或 Android signing 設定。
-3. iOS 使用 `.xcworkspace` 建置並在實機測試。
-4. Android 產出最新 debug APK 或內部 release build。
+3. iOS 使用 `.xcworkspace` 建置 archive 並在實機測試。
+4. Android 以 `pnpm mobile:release:android` 產出已簽章 AAB。
 5. 驗證安裝升級與上一版回退。
 
 ### App Store / Google Play

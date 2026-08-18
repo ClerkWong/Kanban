@@ -92,6 +92,9 @@ tests 使用 Cloudflare Vitest integration，在本機 D1/R2 模擬環境驗證�
 
 ## 行動版
 
+完整的發布流程（升版號、archive、簽章 AAB、混版風險）見
+[mobile release runbook](./docs/runbooks/mobile-release.md)。
+
 ```bash
 pnpm mobile:assets
 pnpm mobile:sync
@@ -113,6 +116,9 @@ cd android
 
 `mobile:sync` 會先重建 `dist/mobile`，再更新 iOS/Android 原生資產。發布候選版必須在
 同一 commit 上重跑此命令，不能沿用舊 bundle。
+
+已簽章的 Android release AAB 用 `pnpm mobile:release:android`：密碼只從不回顯的提示或
+stdin 讀取，keystore 的 alias 由 keytool 自動偵測。
 
 ## 同步 Worker
 
@@ -235,6 +241,7 @@ create 只從隱藏提示或 stdin 讀取明文，list 不查詢 token hash，pr
 ## 相關文件
 
 - [NextTasks.md](./NextTasks.md)：目前狀態、後續任務、驗收與 rollback runbook。
+- [行動版發布 runbook](./docs/runbooks/mobile-release.md)：升版號、archive、簽章 AAB 與混版風險。
 - [人力甘特圖 v1 規格](./docs/superpowers/specs/2026-08-13-resource-gantt-design.md)
 - [人力甘特圖 v1 實作計畫](./docs/superpowers/plans/2026-08-13-resource-gantt-v1.md)
 - [多專案／多看板 v1 規格](./docs/superpowers/specs/2026-07-24-multi-project-multi-board-design.md)

@@ -25,6 +25,7 @@
     "mobile:sync:android": "pnpm mobile:build && cap sync android",
     "mobile:sync:ios": "pnpm mobile:build && cap sync ios",
     "mobile:ios": "cap open ios",
+    "mobile:release:android": "tsx scripts/build-android-release.ts",
     "sync:dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler dev -c worker-sync/wrangler.jsonc",
     "sync:migrate:local": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler d1 migrations apply kanban-sync --local -c worker-sync/wrangler.jsonc",
     "sync:bootstrap": "tsx scripts/bootstrap-sync-workspace.ts",
