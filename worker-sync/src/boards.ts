@@ -151,6 +151,47 @@ function requireValidAssignmentWindows(value: unknown): void {
   }
 }
 
+/** 卡片層級上限，與 app/board-model.ts 的 MAX_CARD_DEPTH 一致。 */
+const MAX_CARD_DEPTH = 3;
+
+/** v8 舊 client 相容：`parentCardId` 缺席即通過，出現才驗格式。
+ *  絕不能把缺席當成違規——現存所有 board 的卡片都沒有這個鍵，那會讓舊看板的任何編輯都 400。
+ *  語意與 app/board-model.ts 的 normalizeCardHierarchy 一致（缺父卡／自我指向／環／超深皆非法），
+ *  但行為不同：client 端靜默清掉壞連結，這裡發現就直接 400，交由送出方修正。 */
+function requireValidCardHierarchy(value: unknown): void {
+  const cards = asRecord(asRecord(value)?.cards);
+  if (!cards) return;
+
+  const parents = new Map<string, string>();
+  for (const [cardId, raw] of Object.entries(cards)) {
+    const card = asRecord(raw);
+    if (!card || card.parentCardId === undefined || card.parentCardId === null) continue;
+    const parentCardId = card.parentCardId;
+    if (
+      typeof parentCardId !== "string" ||
+      !parentCardId ||
+      parentCardId === cardId ||
+      !cards[parentCardId]
+    ) {
+      throw new RequestError(400, "invalid_card_hierarchy");
+    }
+    parents.set(cardId, parentCardId);
+  }
+
+  for (const cardId of parents.keys()) {
+    const seen = new Set<string>([cardId]);
+    let depth = 1;
+    let current: string | undefined = parents.get(cardId);
+    while (current !== undefined) {
+      if (seen.has(current)) throw new RequestError(400, "invalid_card_hierarchy");
+      seen.add(current);
+      depth += 1;
+      if (depth > MAX_CARD_DEPTH) throw new RequestError(400, "invalid_card_hierarchy");
+      current = parents.get(current);
+    }
+  }
+}
+
 /** 與 app/board-model.ts 的 DEFAULT_BOARD_SETTINGS 保持一致：無 settings 鍵的舊 board（功能上線前建立）
  * 在 v7 client 一律會被 normalizeBoard 補上這組預設值，故視為「缺席 = 預設值」，
  * 否則 member 對這類舊 board 的任何編輯都會被誤判為「變更了 settings」而 403。 */
@@ -502,6 +543,7 @@ async function createBoard(context: ApiContext, projectId: string): Promise<Resp
   }
   requireValidFlowFields(body.board);
   requireValidAssignmentWindows(body.board);
+  requireValidCardHierarchy(body.board);
   await requireNewAssigneesAreProjectMembers(
     context.env.DB,
     projectId,
@@ -810,6 +852,7 @@ async function putBoardContent(
   }
   requireValidFlowFields(payload.board);
   requireValidAssignmentWindows(payload.board);
+  requireValidCardHierarchy(payload.board);
   const previousBoard = JSON.parse(row.data) as unknown;
   const effectiveBoard = preserveBoardSettings(previousBoard, payload.board);
   requireWorkflowManagement(access, previousBoard, effectiveBoard);
@@ -906,6 +949,7 @@ async function putLegacyRow(context: ApiContext): Promise<Response> {
   }
   requireValidFlowFields(payload.board);
   requireValidAssignmentWindows(payload.board);
+  requireValidCardHierarchy(payload.board);
   const row = await getLegacyBoard(context.env.DB);
   if (payload.baseRevision !== (row?.revision ?? 0)) {
     return row

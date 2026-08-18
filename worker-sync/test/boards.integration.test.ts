@@ -1357,3 +1357,164 @@ describe("Assignment windows validation and owner-only assignment management", (
     expect(JSON.stringify(metadata)).not.toContain("2026-08-07");
   });
 });
+
+/** 多卡 board：cardPatches 的 key 是卡片 id，value 覆蓋該卡片欄位；所有卡片放進同一個
+ *  「todo」欄位。沿用 boardWithCard 的「缺席即缺席」原則：不主動塞入 parentCardId，
+ *  由呼叫端決定，模擬卡片層級（parentCardId）測試需要跨卡片互相參照的情境。 */
+function boardWithCards(
+  cardPatches: Record<string, Record<string, unknown>>,
+  marker = "hierarchy",
+): Record<string, unknown> {
+  const cardIds = Object.keys(cardPatches);
+  return {
+    version: 9,
+    marker,
+    columns: [{ id: "todo", title: "待辦", wipLimit: null, cardIds }],
+    cards: Object.fromEntries(
+      cardIds.map((cardId) => [cardId, { title: cardId, ...cardPatches[cardId] }]),
+    ),
+  };
+}
+
+describe("Card hierarchy (parentCardId) validation and Activity Log tracking", () => {
+  beforeEach(async () => {
+    // ALICE 在這裡扮演「已指派的一般成員」，讓涉及 assigneeUserIds 的測試可以先
+    // 合法建立指派，不與 requireNewAssigneesAreProjectMembers 的 400 混在一起判讀。
+    const now = "2026-07-27T00:00:00.000Z";
+    await env.DB.prepare(
+      `INSERT INTO project_members (project_id, user_id, role, created_at, updated_at)
+       VALUES (?, ?, 'contributor', ?, ?)`,
+    ).bind(projectA, ALICE, now, now).run();
+  });
+
+  it("rejects a non-string non-null parentCardId", async () => {
+    await createBoard(managerToken, projectA, boardA, "Hierarchy");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCards({
+      "task-1": { parentCardId: 42 },
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_card_hierarchy" });
+  });
+
+  it("rejects a parentCardId pointing at a missing card", async () => {
+    await createBoard(managerToken, projectA, boardA, "Hierarchy");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCards({
+      "task-1": { parentCardId: "ghost" },
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_card_hierarchy" });
+  });
+
+  it("rejects a self reference", async () => {
+    await createBoard(managerToken, projectA, boardA, "Hierarchy");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCards({
+      "task-1": { parentCardId: "task-1" },
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_card_hierarchy" });
+  });
+
+  it("rejects a two-card cycle", async () => {
+    await createBoard(managerToken, projectA, boardA, "Hierarchy");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCards({
+      "task-1": { parentCardId: "task-2" },
+      "task-2": { parentCardId: "task-1" },
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_card_hierarchy" });
+  });
+
+  it("rejects a chain deeper than three levels", async () => {
+    await createBoard(managerToken, projectA, boardA, "Hierarchy");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCards({
+      "task-1": { parentCardId: null },
+      "task-2": { parentCardId: "task-1" },
+      "task-3": { parentCardId: "task-2" },
+      "task-4": { parentCardId: "task-3" },
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_card_hierarchy" });
+  });
+
+  it("accepts a chain at exactly three levels", async () => {
+    await createBoard(managerToken, projectA, boardA, "Hierarchy");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCards({
+      "task-1": { parentCardId: null },
+      "task-2": { parentCardId: "task-1" },
+      "task-3": { parentCardId: "task-2" },
+    }));
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects an invalid card hierarchy when creating a board", async () => {
+    // 甘特圖那次漏了 createBoard，是審查才抓到的——createBoard 也會把 board JSON
+    // 直接寫進資料庫，格式錯誤的資料若在這裡漏網，會在建立看板時就進到 D1。
+    const response = await createBoard(managerToken, projectA, boardA, "Hierarchy", boardWithCards({
+      "task-1": { parentCardId: "task-1" },
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_card_hierarchy" });
+  });
+
+  it("lets a member change parentCardId even on a card that already has an assignee", async () => {
+    // 這條釘住 parentCardId 不在 assignmentSignaturesByCard 內的界線：上層任務是工作
+    // 內容的組織方式（與 checklist、標籤同層），member 本來就該能改——即使該卡本身
+    // 已有指派人也一樣，只要指派內容沒變就不該被判定成「動了指派」。
+    //
+    // 兩張卡都刻意帶指派人（而非留空）：assignmentSignaturesByCard 對「沒有指派內容」
+    // 的卡片會整條跳過、不建立簽章條目，若卡片沒有指派人，即使誤把 parentCardId
+    // 混進簽章輸出也測不出破壞性（見 Step 7 mutation 2 的實際記錄）。
+    await createBoard(managerToken, projectA, boardA, "Hierarchy", boardWithCards({
+      "task-1": { assigneeUserIds: [ALICE] },
+      "task-2": { assigneeUserIds: [ALICE] },
+    }));
+    const response = await putBoardContentAt(contributorToken, 0, boardWithCards({
+      "task-1": { assigneeUserIds: [ALICE], parentCardId: null },
+      "task-2": { assigneeUserIds: [ALICE], parentCardId: "task-1" },
+    }));
+    expect(response.status).toBe(200);
+  });
+
+  it("still forbids a member from changing assignees", async () => {
+    await createBoard(managerToken, projectA, boardA, "Hierarchy", boardWithCards({
+      "task-1": {},
+    }));
+    const response = await putBoardContentAt(contributorToken, 0, boardWithCards({
+      "task-1": { assigneeUserIds: [ALICE] },
+    }));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "forbidden" });
+  });
+
+  it("lets a member edit a legacy board whose cards have no parentCardId key", async () => {
+    await createBoard(
+      managerToken, projectA, boardA, "Hierarchy",
+      boardWithCard({}, "pre-feature-hierarchy"),
+    );
+    const response = await putBoardContentAt(
+      contributorToken, 0,
+      boardWithCard({ title: "member 編輯" }, "pre-feature-hierarchy-edited"),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("records parentCardId as a changed field in the activity log without leaking card ids as values", async () => {
+    await createBoard(managerToken, projectA, boardA, "Hierarchy", boardWithCards({
+      "task-1": { parentCardId: null },
+      "task-2": { parentCardId: null },
+    }));
+    const response = await putBoardContentAt(managerToken, 0, boardWithCards({
+      "task-1": { parentCardId: null },
+      "task-2": { parentCardId: "task-1" },
+    }));
+    expect(response.status).toBe(200);
+
+    const metadata = await latestBoardContentMetadata(boardA);
+    const cardUpdated = metadata.changes.find(
+      (change) => change.kind === "card.updated" && change.fields?.includes("parentCardId"),
+    );
+    expect(cardUpdated).toBeDefined();
+    expect(JSON.stringify(metadata)).not.toContain('"task-1","task-2"');
+    expect(JSON.stringify(metadata)).not.toContain('"task-2","task-1"');
+  });
+});
