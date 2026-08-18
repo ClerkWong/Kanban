@@ -299,7 +299,7 @@ test("v4 boards gain an empty assignee list without rewriting completion history
 
   const parsed = parsePersistedBoard(legacy);
 
-  assert.equal(parsed.board.version, 8);
+  assert.equal(parsed.board.version, 9);
   assert.deepEqual(parsed.board.cards["card-done"].assigneeUserIds, []);
   assert.equal(
     parsed.board.cards["card-done"].completedAt,
@@ -320,7 +320,7 @@ test("v5 boards gain clear blocker fields and migrate to schema v6", () => {
   const parsed = parsePersistedBoard(JSON.stringify(legacy));
 
   assert.equal(parsed.error, null);
-  assert.equal(parsed.board.version, 8);
+  assert.equal(parsed.board.version, 9);
   for (const card of Object.values(parsed.board.cards)) {
     assert.equal(card.blocked, false);
     assert.equal(card.blockedReason, "");
@@ -410,6 +410,7 @@ describe("getMonthlyCompletionStats", () => {
       blockedMs: 0,
       serviceClass: "standard",
       assignmentWindows: [],
+      parentCardId: null,
     };
   }
 

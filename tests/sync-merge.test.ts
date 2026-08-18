@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  addCard,
   assertBoardInvariants,
   createDemoBoard,
   deleteCard,
@@ -476,4 +477,44 @@ test("兩台裝置以相反順序合併收斂到同一結果", () => {
     { columns: ba.columns, cards: ba.cards, deletedCards: ba.deletedCards },
     "相反順序合併必須收斂",
   );
+});
+
+test("merging two acyclic boards never produces a cycle", () => {
+  // local：b 的父是 a，且 b.updatedAt 較新，卡片級 LWW 會採用 local 這張 b。
+  // remote：a 的父是 b，且 a.updatedAt 較新，卡片級 LWW 會採用 remote 這張 a。
+  // 兩條連結各自在較新的一側存活，合併後、normalizeBoard 收斂前會短暫形成環，
+  // 交給 mergeBoards 結尾既有的 normalizeBoard 呼叫斷開——這裡只是把保證釘住。
+  const base = createDemoBoard(new Date(2026, 7, 1));
+  const withA = addCard(base, base.columns[0].id, { id: "a", title: "a" });
+  const withAB = addCard(withA, withA.columns[0].id, { id: "b", title: "b" });
+
+  const local = {
+    ...withAB,
+    cards: {
+      ...withAB.cards,
+      b: {
+        ...withAB.cards.b,
+        parentCardId: "a",
+        updatedAt: later(withAB.cards.b.updatedAt, 5000),
+      },
+    },
+  };
+  const remote = {
+    ...withAB,
+    cards: {
+      ...withAB.cards,
+      a: {
+        ...withAB.cards.a,
+        parentCardId: "b",
+        updatedAt: later(withAB.cards.a.updatedAt, 5000),
+      },
+    },
+  };
+
+  const merged = mergeBoards(local, remote);
+
+  // 兩張卡都保留，但只有一條連結存活（不會是 a↔b 互指）。
+  assert.equal(merged.cards.a === undefined || merged.cards.b === undefined, false);
+  assert.equal(merged.cards.a.parentCardId === "b" && merged.cards.b.parentCardId === "a", false);
+  assert.doesNotThrow(() => assertBoardInvariants(merged));
 });

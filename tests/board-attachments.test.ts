@@ -24,7 +24,7 @@ function makeRef(id: string, overrides: Partial<AttachmentRef> = {}): Attachment
 }
 
 test("schema 版本為 6 且示範卡片帶空附件陣列", () => {
-  assert.equal(BOARD_SCHEMA_VERSION, 8);
+  assert.equal(BOARD_SCHEMA_VERSION, 9);
   const board = createDemoBoard(new Date(2026, 6, 16));
   for (const card of Object.values(board.cards)) {
     assert.deepEqual(card.attachments, []);

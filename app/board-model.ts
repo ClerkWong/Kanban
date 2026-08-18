@@ -1,4 +1,4 @@
-export const BOARD_SCHEMA_VERSION = 8;
+export const BOARD_SCHEMA_VERSION = 9;
 
 export type ServiceClass = "standard" | "expedite" | "fixedDate" | "intangible";
 export const SERVICE_CLASSES = ["standard", "expedite", "fixedDate", "intangible"] as const;
@@ -12,6 +12,9 @@ export type AssignmentWindow = {
 };
 
 export const MAX_ASSIGNMENT_WINDOWS_PER_CARD = 20;
+
+/** 卡片層級上限：頂層為第 1 層，其下最多再兩層。 */
+export const MAX_CARD_DEPTH = 3;
 
 export type BoardSettings = {
   agingWarnDays: number;
@@ -73,6 +76,9 @@ export type Card = {
   serviceClass: ServiceClass;
   /** 每位指派人各自的計畫投入期間；缺項＝該指派尚未排期，不是錯誤。 */
   assignmentWindows: AssignmentWindow[];
+  /** 上層任務的卡片 id；null 表示直接掛在時間軸上。
+   *  純結構分解：不影響完成、WIP、老化、Cycle Time 或加急排序的任何計算。 */
+  parentCardId: string | null;
 };
 
 export type Column = {
@@ -440,6 +446,7 @@ export function addCard(
     blockedMs: normalizeBlockedMs(input.blockedMs),
     serviceClass: isServiceClass(input.serviceClass) ? input.serviceClass : "standard",
     assignmentWindows: normalizeAssignmentWindows(input.assignmentWindows, assigneeUserIds),
+    parentCardId: typeof input.parentCardId === "string" ? input.parentCardId : null,
   };
 
   if (!card.title) {
@@ -518,6 +525,7 @@ export function updateCard(
       patch.assignmentWindows ?? existing.assignmentWindows,
       assigneeUserIds,
     ),
+    parentCardId: patch.parentCardId !== undefined ? patch.parentCardId : existing.parentCardId,
     columnEnteredAt: existing.columnEnteredAt,
     startedAt: patch.startedAt !== undefined
       ? normalizeTimestamp(patch.startedAt)
@@ -816,6 +824,7 @@ export function parsePersistedBoard(raw: string | null): {
         version !== 5 &&
         version !== 6 &&
         version !== 7 &&
+        version !== 8 &&
         version !== BOARD_SCHEMA_VERSION)
     ) {
       return {
@@ -842,6 +851,8 @@ export function parsePersistedBoard(raw: string | null): {
 export function normalizeBoard(board: BoardState): BoardState {
   const labels = Array.isArray(board.labels) ? board.labels : STARTER_LABELS;
   const cards = normalizeCards(board.cards);
+  // 層級關聯需要完整卡片集合，因此在 normalizeCards 之後另跑一輪。
+  normalizeCardHierarchy(cards);
   const columns = normalizeColumns(board.columns, cards);
   const sourceVersion = Number(board.version);
   const needsCompletionMigration = sourceVersion >= 1 && sourceVersion <= 3;
@@ -917,6 +928,33 @@ export function assertBoardInvariants(board: BoardState): void {
         );
       }
       if (!isExpedite) sawNonExpedite = true;
+    }
+  }
+  for (const cardId of cardIds) {
+    const parentCardId = board.cards[cardId].parentCardId;
+    if (parentCardId !== null && !board.cards[parentCardId]) {
+      throw new Error(`Card ${cardId} points at a missing parent ${parentCardId}.`);
+    }
+    if (parentCardId === cardId) {
+      throw new Error(`Card ${cardId} cannot be its own parent.`);
+    }
+  }
+  // 環與深度一起走：往上走時重複造訪即為環。這裡不能改用 cardDepth——它遇到環會在
+  // 回到起點時就停下並回傳一個小的值，偵測不到環。
+  for (const cardId of cardIds) {
+    const seen = new Set<string>([cardId]);
+    let depth = 1;
+    let current = board.cards[cardId].parentCardId;
+    while (current !== null) {
+      if (seen.has(current)) {
+        throw new Error(`Card hierarchy contains a cycle at ${current}.`);
+      }
+      seen.add(current);
+      depth += 1;
+      if (depth > MAX_CARD_DEPTH) {
+        throw new Error(`Card ${cardId} exceeds the maximum depth ${MAX_CARD_DEPTH}.`);
+      }
+      current = board.cards[current].parentCardId;
     }
   }
 }
@@ -1106,6 +1144,7 @@ function createSeedCard(input: {
     blockedMs: 0,
     serviceClass: "standard",
     assignmentWindows: [],
+    parentCardId: null,
   };
 }
 
@@ -1236,6 +1275,9 @@ function normalizeCards(cards: Record<string, Card>): Record<string, Card> {
         (raw as { assignmentWindows?: unknown }).assignmentWindows,
         assigneeUserIds,
       ),
+      parentCardId: typeof (raw as { parentCardId?: unknown }).parentCardId === "string"
+        ? (raw as { parentCardId: string }).parentCardId
+        : null,
     };
   }
 
@@ -1335,6 +1377,106 @@ export function normalizeAssignmentWindows(
     if (windows.length >= MAX_ASSIGNMENT_WINDOWS_PER_CARD) break;
   }
   return windows.sort((left, right) => left.userId.localeCompare(right.userId));
+}
+
+/** 卡片所在層級；頂層為 1。走訪上限 MAX_CARD_DEPTH + 1 層，含環輸入亦保證終止。 */
+export function cardDepth(cards: Record<string, Card>, cardId: string): number {
+  let depth = 1;
+  let current = cards[cardId]?.parentCardId ?? null;
+  const seen = new Set<string>([cardId]);
+  while (current !== null && !seen.has(current) && cards[current]) {
+    depth += 1;
+    seen.add(current);
+    if (depth > MAX_CARD_DEPTH + 1) break;
+    current = cards[current].parentCardId;
+  }
+  return depth;
+}
+
+/** 該卡的全部子孫，不含自己。 */
+export function descendantCardIds(
+  cards: Record<string, Card>,
+  cardId: string,
+): Set<string> {
+  const result = new Set<string>();
+  const queue = [cardId];
+  while (queue.length) {
+    const current = queue.shift()!;
+    for (const [id, card] of Object.entries(cards)) {
+      if (card.parentCardId === current && !result.has(id) && id !== cardId) {
+        result.add(id);
+        queue.push(id);
+      }
+    }
+  }
+  return result;
+}
+
+/** 以該卡為根的子樹高度；葉節點為 1。 */
+export function subtreeHeight(cards: Record<string, Card>, cardId: string): number {
+  const descendants = descendantCardIds(cards, cardId);
+  let height = 1;
+  for (const id of descendants) {
+    let depth = 1;
+    let current: string | null = cards[id]?.parentCardId ?? null;
+    while (current !== null && current !== cardId && cards[current]) {
+      depth += 1;
+      current = cards[current].parentCardId;
+      if (depth > MAX_CARD_DEPTH) break;
+    }
+    height = Math.max(height, depth + 1);
+  }
+  return height;
+}
+
+/** 可以當這張卡上層任務的卡片 id：排除自己、自己的子孫，以及會讓自身子樹超過
+ *  MAX_CARD_DEPTH 的目標。UI 用它產生選單，使用者就選不到必然被 Worker 400 擋下的值。 */
+export function eligibleParentCards(
+  cards: Record<string, Card>,
+  cardId: string,
+): string[] {
+  const descendants = descendantCardIds(cards, cardId);
+  const height = subtreeHeight(cards, cardId);
+  return Object.keys(cards).filter((candidateId) => {
+    if (candidateId === cardId || descendants.has(candidateId)) return false;
+    return cardDepth(cards, candidateId) + height <= MAX_CARD_DEPTH;
+  });
+}
+
+/** 原地修正三種壞連結。卡片 id 以字典序走訪以確保決定性；
+ *  清連結只會讓深度變小，因此第二次執行不會再有變動。 */
+export function normalizeCardHierarchy(cards: Record<string, Card>): void {
+  const ids = Object.keys(cards).sort();
+
+  // 1. 指向不存在的卡片，或指向自己
+  for (const id of ids) {
+    const parentCardId = cards[id].parentCardId;
+    if (parentCardId !== null && (parentCardId === id || !cards[parentCardId])) {
+      cards[id] = { ...cards[id], parentCardId: null };
+    }
+  }
+
+  // 2. 斷環：從每張卡往上走，遇到已在本次路徑上的卡就斷掉造成閉合的那一條
+  for (const id of ids) {
+    const path = new Set<string>([id]);
+    let current = id;
+    while (cards[current].parentCardId !== null) {
+      const parentCardId = cards[current].parentCardId as string;
+      if (path.has(parentCardId)) {
+        cards[current] = { ...cards[current], parentCardId: null };
+        break;
+      }
+      path.add(parentCardId);
+      current = parentCardId;
+    }
+  }
+
+  // 3. 深度超過上限的降為頂層，而非整條鏈重排
+  for (const id of ids) {
+    if (cardDepth(cards, id) > MAX_CARD_DEPTH) {
+      cards[id] = { ...cards[id], parentCardId: null };
+    }
+  }
 }
 
 function normalizeBlockedReason(value: unknown): string {

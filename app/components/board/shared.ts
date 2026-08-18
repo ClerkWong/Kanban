@@ -28,6 +28,7 @@ export type CardDraft = {
   attachments: AttachmentRef[];
   serviceClass: ServiceClass;
   assignmentWindows: AssignmentWindow[];
+  parentCardId: string | null;
 };
 
 export type DetailState =
@@ -102,6 +103,7 @@ export function createDraft(): CardDraft {
     attachments: [],
     serviceClass: "standard",
     assignmentWindows: [],
+    parentCardId: null,
   };
 }
 
@@ -120,6 +122,7 @@ export function draftFromCard(card: Card): CardDraft {
     attachments: card.attachments.map((ref) => ({ ...ref })),
     serviceClass: card.serviceClass,
     assignmentWindows: card.assignmentWindows.map((entry) => ({ ...entry })),
+    parentCardId: card.parentCardId,
   };
 }
 
@@ -143,6 +146,7 @@ export function draftToCardInput(draft: CardDraft) {
     assignmentWindows: draft.assignmentWindows.filter((entry) =>
       draft.assigneeUserIds.includes(entry.userId),
     ),
+    parentCardId: draft.parentCardId,
   };
 }
 

@@ -14,8 +14,8 @@ import {
 const ALICE = "11111111-2222-4333-8444-555555555555";
 const BOB = "22222222-3333-4444-8555-666666666666";
 
-test("schema version is 8", () => {
-  assert.equal(BOARD_SCHEMA_VERSION, 8);
+test("schema version is 9", () => {
+  assert.equal(BOARD_SCHEMA_VERSION, 9);
 });
 
 test("normalizeAssignmentWindows keeps only windows whose userId is assigned", () => {
@@ -138,7 +138,7 @@ test("existing cards migrate to an empty window list without inventing dates", (
     version: 7,
   };
   const migrated = normalizeBoard(legacy as never);
-  assert.equal(migrated.version, 8);
+  assert.equal(migrated.version, 9);
   for (const card of Object.values(migrated.cards)) {
     assert.deepEqual(card.assignmentWindows, []);
   }
@@ -191,7 +191,7 @@ test("a hand-built v7 board whose cards have no assignmentWindows key migrates t
 
   const migrated = normalizeBoard(handBuilt as never);
 
-  assert.equal(migrated.version, 8);
+  assert.equal(migrated.version, 9);
   assert.equal(Object.keys(migrated.cards).length, 1);
   for (const card of Object.values(migrated.cards)) {
     assert.deepEqual(card.assignmentWindows, []);
@@ -212,7 +212,7 @@ test("parsePersistedBoard migrates a serialized v7 board to v8 with empty window
 
   assert.equal(parsed.recovered, false);
   assert.equal(parsed.error, null);
-  assert.equal(parsed.board.version, 8);
+  assert.equal(parsed.board.version, 9);
   for (const card of Object.values(parsed.board.cards)) {
     assert.deepEqual(card.assignmentWindows, []);
   }
@@ -233,7 +233,7 @@ test("parsePersistedBoard round-trips a v8 board and preserves assignment window
 
   assert.equal(parsed.recovered, false);
   assert.equal(parsed.error, null);
-  assert.equal(parsed.board.version, 8);
+  assert.equal(parsed.board.version, 9);
   const card = Object.values(parsed.board.cards).find((entry) => entry.title === "排程卡");
   assert.deepEqual(card?.assignmentWindows, [
     { userId: ALICE, startDate: "2026-08-07", endDate: "2026-08-13" },
