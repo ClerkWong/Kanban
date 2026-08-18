@@ -86,7 +86,13 @@ export function mergeBoards(local: BoardState, remote: BoardState): BoardState {
   const placed = new Set<string>();
   const placeCard = (cardId: string, fallbackColumnId: string) => {
     if (placed.has(cardId)) return;
-    const sourceColumnId = cardSources[cardId].columns.find((column) =>
+    // 防禦性檢查：呼叫端（見下方兩個迴圈）已用 Object.hasOwn(cards, cardId)
+    // 保證 cardId 在 cards 表裡有自身鍵，而 cards／cardSources 在上面的主
+    // 迴圈裡永遠同步賦值（61-62 行），source 理論上不會是 undefined——一旦
+    // 失守，寧可讓這張卡落回 fallback 欄位也不要在 undefined 上取 .columns
+    // 而炸掉整個合併。
+    const source = ownOrUndefined(cardSources, cardId);
+    const sourceColumnId = source?.columns.find((column) =>
       column.cardIds.includes(cardId),
     )?.id;
     const target =
@@ -97,14 +103,21 @@ export function mergeBoards(local: BoardState, remote: BoardState): BoardState {
     placed.add(cardId);
   };
 
+  // 這裡查的是本次合併新建的 cards／cardSources，不是任何已正規化的 board：
+  // 「winner／loser 的欄位仍列著這張卡、但 merged cards 已經沒有它」正是
+  // tombstone 剔除的正常工作輸入（這兩個迴圈存在的目的就是把這種卡濾掉、
+  // 不要放進任何欄位）。cardId 為 "constructor" 等名稱時 `cards[cardId]`
+  // 的真假值判斷會落到繼承屬性（truthy），把「已被墓碑剔除」誤判成
+  // 「還在」，讓 placeCard 對一張根本沒被建立的卡片位置生成失敗、整個合併
+  // 拋錯——必須用 Object.hasOwn 只認自身鍵。
   for (const column of winner.columns) {
     for (const cardId of column.cardIds) {
-      if (cards[cardId]) placeCard(cardId, column.id);
+      if (Object.hasOwn(cards, cardId)) placeCard(cardId, column.id);
     }
   }
   for (const column of loser.columns) {
     for (const cardId of column.cardIds) {
-      if (cards[cardId]) placeCard(cardId, column.id);
+      if (Object.hasOwn(cards, cardId)) placeCard(cardId, column.id);
     }
   }
   for (const cardId of Object.keys(cards)) {

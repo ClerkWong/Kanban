@@ -570,3 +570,56 @@ test("merging a tombstone whose card id collides with a prototype property name 
   assertBoardInvariants(merged);
   assert.equal(typeof merged.deletedCards[poisonedId], "string");
 });
+
+// 審查發現第三批同型漏網：mergeBoards 的 placement 迴圈
+// `if (cards[cardId]) placeCard(cardId, column.id);` 查的不是任何已正規化的
+// board，而是這次合併新建的 cards record——「columns 仍列這張卡、merged
+// cards 已經沒有它」正是 tombstone 剔除的正常工作輸入（這兩行存在的目的就是
+// 過濾被刪掉的卡）。cardId 為 "constructor" 且被 tombstone 剔除時，
+// `cards[cardId]` 落到繼承屬性（truthy），誤觸發 placeCard，其內部
+// `cardSources[cardId].columns.find(...)` 對同一個原因取到的函式值再取
+// `.columns`（undefined）、`.find`（拋錯）而當機——merge 永久失敗、該裝置
+// 同步永久癱瘓。
+test("merging a card removed by a newer tombstone whose id collides with a prototype property name does not crash placement", () => {
+  const base = createDemoBoard(new Date(2026, 6, 20));
+  const poisonedId = "constructor";
+  // 卡片的 updatedAt 明確覆寫成 base.lastSavedAt（而不是沿用 card-roadmap
+  // 原有、寫死在 demo 資料裡的 2026-07-01），確保這筆墓碑的時間戳落在
+  // normalizeDeletedCards 30 天保留期內——否則墓碑會被 TTL 機制正常剔除，
+  // 跟這條測試要驗的原型鏈問題無關，卻會讓斷言失敗得毫無意義（已實測踩到）。
+  const cardUpdatedAt = base.lastSavedAt;
+  const local = {
+    ...base,
+    cards: {
+      ...base.cards,
+      [poisonedId]: {
+        ...base.cards["card-roadmap"],
+        id: poisonedId,
+        title: "被墓碑剔除的卡",
+        updatedAt: cardUpdatedAt,
+      },
+    },
+    columns: base.columns.map((column) =>
+      column.id === "todo" ? { ...column, cardIds: [...column.cardIds, poisonedId] } : column,
+    ),
+  };
+  const remote = {
+    ...base,
+    lastSavedAt: later(local.lastSavedAt, 10_000),
+    deletedCards: { ...base.deletedCards, [poisonedId]: later(cardUpdatedAt, 5000) },
+  };
+
+  const merged = mergeBoards(local, remote);
+  assertBoardInvariants(merged);
+  // 用 Object.hasOwn 而非 `merged.cards[poisonedId] === undefined`：後者
+  // 本身就是這條測試要防的同一個原型鏈陷阱——若程式碼修復失敗，bracket 存取
+  // 會落到繼承屬性（一個函式），直接 `=== undefined` 比較恆為 false，讓斷言
+  // 對「其實沒修好」給出誤導性的失敗訊息（看起來像別的原因）。
+  assert.equal(Object.hasOwn(merged.cards, poisonedId), false);
+  assert.equal(typeof merged.deletedCards[poisonedId], "string");
+  // 其餘卡片仍正常安置：不會因為這張毒卡而讓 merge 半途拋錯、丟掉其他卡片的位置。
+  assert.equal(
+    merged.columns.flatMap((column) => column.cardIds).length,
+    Object.keys(merged.cards).length,
+  );
+});
