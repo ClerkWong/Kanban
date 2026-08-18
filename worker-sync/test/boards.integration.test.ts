@@ -1534,3 +1534,43 @@ describe("Card hierarchy (parentCardId) validation and Activity Log tracking", (
     },
   );
 });
+
+type ActivityLogChange = { kind: string; cardId?: string; fields?: string[] };
+
+describe("Activity Log diff safety against card ids that collide with prototype properties", () => {
+  // board-diff.ts 的 diffBoardStates 用 `before.cards[cardId]`／
+  // `after.cards[cardId]` 的真假值判斷「這張卡片在另一版是否存在」，cardId 為
+  // "constructor" 等名稱時會落到繼承屬性（一個函式，truthy），把「不存在」
+  // 誤判成「存在」。後果是 Activity Log 失真：新建的卡漏記 card.created（被
+  // 誤記成內容全變的 card.updated），刪除的卡漏記 card.deleted（誤判成
+  // 「這張卡還在」而完全不記錄）。
+
+  it("records card.created (not a misfired card.updated) for a card id that collides with a prototype property", async () => {
+    await createBoard(managerToken, projectA, boardA, "Diff safety");
+    const response = await putBoardContentAt(managerToken, 0, boardWithCards({
+      constructor: {},
+    }));
+    expect(response.status).toBe(200);
+
+    const metadata = await latestBoardContentMetadata(boardA);
+    const changes = metadata.changes as ActivityLogChange[];
+    expect(
+      changes.some((change) => change.kind === "card.created" && change.cardId === "constructor"),
+    ).toBe(true);
+    expect(changes.some((change) => change.kind === "card.updated")).toBe(false);
+  });
+
+  it("records card.deleted for a card id that collides with a prototype property", async () => {
+    await createBoard(managerToken, projectA, boardA, "Diff safety", boardWithCards({
+      constructor: {},
+    }));
+    const response = await putBoardContentAt(managerToken, 0, boardWithCards({}));
+    expect(response.status).toBe(200);
+
+    const metadata = await latestBoardContentMetadata(boardA);
+    const changes = metadata.changes as ActivityLogChange[];
+    expect(
+      changes.some((change) => change.kind === "card.deleted" && change.cardId === "constructor"),
+    ).toBe(true);
+  });
+});

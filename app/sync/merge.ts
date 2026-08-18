@@ -10,6 +10,14 @@ import {
   normalizeBoard,
 } from "../board-model";
 
+/** `obj[key]` 是原型鏈屬性查找：key 為 "constructor"／"__proto__" 等
+ *  Object.prototype 上既有的名稱時一律 truthy，會把「這一側沒有這筆資料」
+ *  誤判成「有」。這裡查的 cards／deletedCards 都是遠端 board JSON 內容，鍵
+ *  可能是任意字串，必須用 Object.hasOwn 只認自身屬性。 */
+function ownOrUndefined<T>(record: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
 export function mergeBoards(local: BoardState, remote: BoardState): BoardState {
   const localWins = (local.lastSavedAt || "") >= (remote.lastSavedAt || "");
   const winner = localWins ? local : remote;
@@ -17,7 +25,8 @@ export function mergeBoards(local: BoardState, remote: BoardState): BoardState {
 
   const deletedCards: Record<string, string> = { ...loser.deletedCards };
   for (const [cardId, deletedAt] of Object.entries(winner.deletedCards)) {
-    if (!deletedCards[cardId] || deletedCards[cardId] < deletedAt) {
+    const existing = ownOrUndefined(deletedCards, cardId);
+    if (!existing || existing < deletedAt) {
       deletedCards[cardId] = deletedAt;
     }
   }
@@ -26,8 +35,8 @@ export function mergeBoards(local: BoardState, remote: BoardState): BoardState {
   const cardSources: Record<string, BoardState> = {};
   const allIds = new Set([...Object.keys(local.cards), ...Object.keys(remote.cards)]);
   for (const cardId of allIds) {
-    const mine = local.cards[cardId];
-    const theirs = remote.cards[cardId];
+    const mine = ownOrUndefined(local.cards, cardId);
+    const theirs = ownOrUndefined(remote.cards, cardId);
     // updatedAt 平手時判給勝方（而非固定判給 local），確保兩台裝置以相反順序
     // 合併仍收斂到同一結果，位置不會在裝置間永久互推。
     const source =
@@ -36,8 +45,13 @@ export function mergeBoards(local: BoardState, remote: BoardState): BoardState {
       : mine.updatedAt > theirs.updatedAt ? local
       : theirs.updatedAt > mine.updatedAt ? remote
       : winner;
-    const candidate = source.cards[cardId];
-    const tombstone = deletedCards[cardId];
+    const candidate = ownOrUndefined(source.cards, cardId);
+    // 防禦性檢查：cardId 保證是 local／remote 其中一方的自身鍵，且上面的
+    // source 選擇邏輯保證選到確實擁有這張卡片的一側，candidate 理論上不會是
+    // undefined——一旦失守（例如以上邏輯被改動而破壞這個保證），寧可跳過這張
+    // 卡也不要把 undefined 寫進最終的 cards 表。
+    if (!candidate) continue;
+    const tombstone = ownOrUndefined(deletedCards, cardId);
     if (tombstone && tombstone >= candidate.updatedAt) {
       continue;
     }

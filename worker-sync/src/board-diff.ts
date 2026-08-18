@@ -225,6 +225,17 @@ function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+/** `record[key]` 是原型鏈屬性查找：key 為 "constructor"／"__proto__" 等
+ *  Object.prototype 上既有的名稱時一律 truthy，會把「這張卡在另一版不存在」
+ *  誤判成「存在」，讓 card.created／card.deleted 事件漏記。cardId 來自遠端
+ *  board JSON，必須用 Object.hasOwn 只認自身屬性。 */
+function ownCardOrUndefined(
+  cards: Record<string, CardSnapshot>,
+  cardId: string,
+): CardSnapshot | undefined {
+  return Object.hasOwn(cards, cardId) ? cards[cardId] : undefined;
+}
+
 function changedFields(before: CardSnapshot, after: CardSnapshot): CardField[] {
   const fields: CardField[] = [];
   if (before.title !== after.title) fields.push("title");
@@ -362,7 +373,7 @@ export function diffBoardStates(beforeValue: unknown, afterValue: unknown): Boar
 
   for (const cardId of Object.keys(after.cards).sort()) {
     const next = after.cards[cardId];
-    const previous = before.cards[cardId];
+    const previous = ownCardOrUndefined(before.cards, cardId);
     const nextPosition = afterPositions.get(cardId);
     if (!previous) {
       record({
@@ -417,7 +428,7 @@ export function diffBoardStates(beforeValue: unknown, afterValue: unknown): Boar
   }
 
   for (const cardId of Object.keys(before.cards).sort()) {
-    if (after.cards[cardId]) continue;
+    if (Object.hasOwn(after.cards, cardId)) continue;
     const previous = before.cards[cardId];
     record({
       kind: "card.deleted",

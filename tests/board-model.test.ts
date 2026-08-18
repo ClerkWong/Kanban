@@ -356,6 +356,57 @@ test("normalization removes duplicate column order safely", () => {
   );
 });
 
+// 審查發現：normalizeColumns 用 `!cards[cardId]` 的真假值判斷「這個 cardId 是否
+// 真的對應一張卡片」，這是原型鏈屬性查找——cards 來自 JSON.parse，原型是
+// Object.prototype，cardId 為 "constructor"／"__proto__" 等既有名稱時
+// `cards[cardId]` 一律 truthy，讓不存在的卡片 id 活著留在 column.cardIds 裡。
+// 這個 phantom id 接著被 filterCards 的 `.map((cardId) => board.cards[cardId])`
+// 拿去查找，同樣落到繼承屬性（例如 Object 建構函式），`.filter(Boolean)` 濾不掉
+// 它，於是這個「假卡片」混進渲染列表，UI 對它取 `.checklist.filter(...)` 時就會
+// 拋 `TypeError: Cannot read properties of undefined (reading 'filter')`——這與
+// parentCardId 那條漏洞是同一條可遠端觸發、看板對全體 client 失效的路徑，只是
+// 入口從 parentCardId 換成 column.cardIds。
+const noFilters = {
+  query: "", labelId: "", priority: "all" as const, due: "all" as const,
+  assigneeUserId: "", blocked: "all" as const, serviceClass: "all" as const,
+};
+for (const poisoned of ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"]) {
+  test(`a column.cardIds entry named ${poisoned} with no matching card is dropped, not kept alive`, () => {
+    const board = createDemoBoard(new Date(2026, 6, 10));
+    const malformed = {
+      ...board,
+      columns: board.columns.map((column) =>
+        column.id === "todo"
+          ? { ...column, cardIds: [...column.cardIds, poisoned] }
+          : column,
+      ),
+    };
+    const normalized = normalizeBoard(malformed);
+
+    // 模擬 CardItem 元件對渲染列表逐卡讀 checklist 的行為：若 phantom id 混進
+    // 結果，這裡就會像審查實測那樣拋 TypeError，而不是乾淨地被排除在外。放在
+    // 最前面斷言，讓修正前的紅燈訊息直接顯示這個 TypeError 而不是後面兩個
+    // 斷言的訊息。
+    const filtered = filterCards(normalized, noFilters, "2026-07-10");
+    assert.doesNotThrow(() => {
+      for (const cardsInColumn of Object.values(filtered)) {
+        for (const card of cardsInColumn) {
+          card.checklist.filter((item) => item.done);
+        }
+      }
+    });
+
+    assert.equal(
+      normalized.columns.some((column) => column.cardIds.includes(poisoned)),
+      false,
+    );
+    // normalizeBoard 產出的結果本身也不該違反「每張卡片恰好屬於一個欄位」的
+    // 不變量——phantom id 若被誤留在 cardIds 裡，這裡會先於上面兩個斷言拋出
+    // 「Each card must belong to exactly one column.」（實測記錄見 task-2-report）。
+    assertBoardInvariants(normalized);
+  });
+}
+
 test("overdue statistics use local YYYY-MM-DD comparisons", () => {
   const board = createDemoBoard(new Date(2026, 6, 10));
   const stats = getBoardStats(board, "2026-07-10");

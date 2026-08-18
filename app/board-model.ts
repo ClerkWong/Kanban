@@ -1213,7 +1213,11 @@ function normalizeColumns(columns: Column[], cards: Record<string, Card>): Colum
     const id = typeof column.id === "string" && column.id ? column.id : `column-${index}`;
     const cardIds = Array.isArray(column.cardIds)
       ? column.cardIds.filter((cardId) => {
-          if (typeof cardId !== "string" || !cards[cardId] || seen.has(cardId)) {
+          // `cards[x]` 是原型鏈屬性查找：x 為 "constructor"／"__proto__" 等
+          // Object.prototype 上既有的名稱時一律 truthy，會把不存在的卡片 id
+          // 誤判成「存在」而留在 cardIds 裡，讓下游（filterCards 等）拿去查找
+          // 時也落到同一個繼承屬性，混進一張形狀不對的「假卡片」而讓 UI 崩潰。
+          if (typeof cardId !== "string" || !Object.hasOwn(cards, cardId) || seen.has(cardId)) {
             return false;
           }
           seen.add(cardId);
@@ -1351,7 +1355,12 @@ function normalizeDeletedCards(
   const cutoff = new Date(Date.now() - TOMBSTONE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const result: Record<string, string> = {};
   for (const [cardId, deletedAt] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof deletedAt !== "string" || !deletedAt || cards[cardId] || deletedAt < cutoff) {
+    // 同一種原型鏈寫法：cardId 為 "constructor" 等名稱時 `cards[cardId]`
+    // 一律 truthy，會誤判「這張卡片仍存在」而把它的刪除墓碑丟掉。
+    if (
+      typeof deletedAt !== "string" || !deletedAt ||
+      Object.hasOwn(cards, cardId) || deletedAt < cutoff
+    ) {
       continue;
     }
     result[cardId] = deletedAt;

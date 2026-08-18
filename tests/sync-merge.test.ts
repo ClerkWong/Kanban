@@ -518,3 +518,55 @@ test("merging two acyclic boards never produces a cycle", () => {
   assert.equal(merged.cards.a.parentCardId === "b" && merged.cards.b.parentCardId === "a", false);
   assert.doesNotThrow(() => assertBoardInvariants(merged));
 });
+
+// 審查發現同一種原型鏈寫法在 merge.ts 的 `local.cards[cardId]`／
+// `remote.cards[cardId]`／`source.cards[cardId]` 也存在：cardId 為
+// "constructor" 等名稱、且只有一側真的有這張卡片時，沒有這張卡片的那一側
+// `xxx.cards[cardId]` 會落到繼承屬性（一個函式，truthy），被誤判成「這側也有
+// 這張卡」。若當時的勝方（source）恰好落在這個沒有真卡片的一側，
+// `candidate = source.cards[cardId]` 會拿到那個函式而不是 undefined，寫進
+// 合併結果的 `cards[cardId]`；normalizeBoard 收尾時 normalizeCards 發現這個值
+// 的 typeof 是 "function" 不是 "object"，會把它濾掉——原本只存在於另一側的
+// 真實卡片就此从合併結果裡憑空消失，而不是像正常「單邊獨有」那樣被保留。
+test("merging a card whose id collides with a prototype property name is not silently dropped", () => {
+  const base = createDemoBoard(new Date(2026, 6, 20));
+  const poisonedId = "constructor";
+  const local = {
+    ...base,
+    cards: {
+      ...base.cards,
+      [poisonedId]: { ...base.cards["card-roadmap"], id: poisonedId, title: "只有 local 有這張卡" },
+    },
+    columns: base.columns.map((column) =>
+      column.id === "todo" ? { ...column, cardIds: [...column.cardIds, poisonedId] } : column,
+    ),
+  };
+  // remote 完全沒有這張卡片，但 lastSavedAt 較新讓 remote 當 winner，逼
+  // mergeBoards 走到 `source.cards[cardId]` = `remote.cards["constructor"]`
+  // 這條原型鏈查找路徑（若 winner 落在 local 一側，candidate 會恰好正確，
+  // 測不出問題——這正是這條測試刻意讓 remote 當 winner 的理由）。
+  const remote = { ...base, lastSavedAt: later(local.lastSavedAt, 5000) };
+
+  const merged = mergeBoards(local, remote);
+  assertBoardInvariants(merged);
+  assert.equal(merged.cards[poisonedId]?.title, "只有 local 有這張卡");
+});
+
+// 同一個函式裡處理 deletedCards 合併的 `!deletedCards[cardId]` 也是同一種寫法：
+// cardId 為 "constructor" 時，若 loser 側沒有這筆 tombstone（不是自身鍵），
+// 會落到繼承屬性（truthy）被誤判成「已有更新的 tombstone」，winner 側真正的
+// 刪除記錄就此在合併時被跳過、丟失。
+test("merging a tombstone whose card id collides with a prototype property name is not dropped", () => {
+  const base = createDemoBoard(new Date(2026, 6, 20));
+  const poisonedId = "constructor";
+  const local = base; // loser：沒有這筆 tombstone（deletedCards 裡沒有這個鍵）
+  const remote = {
+    ...base,
+    lastSavedAt: later(base.lastSavedAt, 5000), // remote 當 winner
+    deletedCards: { ...base.deletedCards, [poisonedId]: later(base.lastSavedAt, 1000) },
+  };
+
+  const merged = mergeBoards(local, remote);
+  assertBoardInvariants(merged);
+  assert.equal(typeof merged.deletedCards[poisonedId], "string");
+});
