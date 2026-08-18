@@ -533,12 +533,14 @@ function ProjectRouteView({
         projectName={state.detail.project.name}
         access={access}
         projectMembers={state.members}
+        view={route.view}
         navigation={(
             <BoardNavigation
               project={state.detail.project}
               board={board}
               boards={state.allBoards}
               role={state.detail.myRole}
+              view={route.view}
             />
           )}
         enableServiceWorker={enableServiceWorker}
@@ -554,6 +556,7 @@ function ActiveBoard({
   access,
   projectMembers,
   navigation,
+  view,
   enableServiceWorker,
   appConfigUrl,
 }: {
@@ -562,6 +565,7 @@ function ActiveBoard({
   access: BoardAccess;
   projectMembers: ProjectMember[];
   navigation: ReactNode;
+  view: "board" | "timeline";
   enableServiceWorker: boolean;
   appConfigUrl: string;
 }) {
@@ -576,6 +580,7 @@ function ActiveBoard({
       access={access}
       projectMembers={projectMembers}
       navigation={navigation}
+      view={view}
       enableServiceWorker={enableServiceWorker}
       appConfigUrl={appConfigUrl}
     />

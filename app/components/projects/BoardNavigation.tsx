@@ -9,11 +9,14 @@ export function BoardNavigation({
   board,
   boards,
   role,
+  view,
 }: {
   project: Project;
   board: BoardMeta;
   boards: BoardMeta[];
   role: ProjectRole;
+  /** 目前的檢視（看板／魚骨圖）；切換看板時沿用，不強制跳回看板檢視。 */
+  view: "board" | "timeline";
 }) {
   return (
     <nav className="boardNavigation" aria-label="專案與看板導覽">
@@ -37,7 +40,7 @@ export function BoardNavigation({
                 kind: "board",
                 projectId: project.id,
                 boardId: event.target.value,
-                view: "board",
+                view,
               });
             }}
           >

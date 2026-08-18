@@ -45,6 +45,7 @@ import type {
   ReactNode,
   SetStateAction,
 } from "react";
+import { BoardTimeline } from "./BoardTimeline";
 import { CardItem } from "./CardItem";
 import { ConfirmModal } from "./ConfirmModal";
 import { DetailModal } from "./DetailModal";
@@ -59,7 +60,7 @@ import { useBoardSync, type BoardSyncHandle } from "../../sync/useBoardSync";
 import { useBoardStore } from "../../projects/useBoardStore";
 import type { BoardContext } from "../../projects/types";
 import type { ProjectMember } from "../../projects/api";
-import type { BoardAccess } from "../../projects/navigation";
+import { serializeProjectRoute, type BoardAccess } from "../../projects/navigation";
 import {
   type ConfirmState,
   type DetailState,
@@ -82,6 +83,7 @@ export function BoardApp({
   access,
   navigation,
   projectMembers,
+  view = "board",
 }: {
   enableServiceWorker?: boolean;
   appConfigUrl?: string;
@@ -90,6 +92,7 @@ export function BoardApp({
   access?: BoardAccess;
   navigation?: ReactNode;
   projectMembers?: ProjectMember[];
+  view?: "board" | "timeline";
 }) {
   return context ? (
     <ScopedBoardApp
@@ -100,6 +103,7 @@ export function BoardApp({
       projectMembers={projectMembers ?? []}
       enableServiceWorker={enableServiceWorker}
       appConfigUrl={appConfigUrl}
+      view={view}
     />
   ) : (
     <LegacyBoardApp
@@ -175,6 +179,7 @@ function ScopedBoardApp({
   projectMembers,
   enableServiceWorker,
   appConfigUrl,
+  view,
 }: {
   context: BoardContext;
   projectName?: string;
@@ -183,6 +188,7 @@ function ScopedBoardApp({
   projectMembers: ProjectMember[];
   enableServiceWorker: boolean;
   appConfigUrl: string;
+  view: "board" | "timeline";
 }) {
   const store = useBoardStore(context.boardId);
   const sync = useBoardSync(
@@ -205,6 +211,7 @@ function ScopedBoardApp({
       navigation={navigation}
       enableServiceWorker={enableServiceWorker}
       appConfigUrl={appConfigUrl}
+      view={view}
     />
   );
 }
@@ -222,6 +229,7 @@ function BoardSurface({
   enableServiceWorker,
   appConfigUrl,
   showSyncSettings = false,
+  view = "board",
 }: {
   board: BoardState;
   setBoard: Dispatch<SetStateAction<BoardState>>;
@@ -235,6 +243,7 @@ function BoardSurface({
   enableServiceWorker: boolean;
   appConfigUrl: string;
   showSyncSettings?: boolean;
+  view?: "board" | "timeline";
 }) {
   const [appTitle, setAppTitle] = useState(bundledAppConfig.title);
   const [filters, setFilters] = useState<Filters>(emptyFilters);
@@ -684,6 +693,34 @@ function BoardSurface({
   return (
     <main className="appShell">
       {navigation}
+      {context && (
+        <nav className="boardViewSwitch" aria-label="切換看板檢視">
+          <a
+            href={serializeProjectRoute({
+              kind: "board",
+              projectId: context.projectId,
+              boardId: context.boardId,
+              view: "board",
+            })}
+            className={view === "board" ? "active" : ""}
+            aria-current={view === "board" ? "page" : undefined}
+          >
+            看板
+          </a>
+          <a
+            href={serializeProjectRoute({
+              kind: "board",
+              projectId: context.projectId,
+              boardId: context.boardId,
+              view: "timeline",
+            })}
+            className={view === "timeline" ? "active" : ""}
+            aria-current={view === "timeline" ? "page" : undefined}
+          >
+            魚骨圖
+          </a>
+        </nav>
+      )}
       <section className="topBar" aria-label="看板摘要">
         <div className="brandBlock">
           <p className="eyebrow">本機優先 Kanban PWA</p>
@@ -1013,211 +1050,215 @@ function BoardSurface({
         </section>
       )}
 
-      <section
-        className="board"
-        aria-label="Kanban 看板"
-      >
-        {board.columns.map((column, columnIndex) => {
-          const wip = getColumnWip(column);
-          const cards = visibleCards[column.id];
-          const deletionError = validateColumnDeletion(board, column.id);
+      {view === "timeline" ? (
+        <BoardTimeline board={board} onOpenCard={openEdit} />
+      ) : (
+        <section
+          className="board"
+          aria-label="Kanban 看板"
+        >
+          {board.columns.map((column, columnIndex) => {
+            const wip = getColumnWip(column);
+            const cards = visibleCards[column.id];
+            const deletionError = validateColumnDeletion(board, column.id);
 
-          return (
-            <article
-              key={column.id}
-              className={`column ${wip.reached ? "wipReached" : ""}`}
-              onDragOver={(event) => {
-                if (access.canEdit && !filtersActive) {
-                  event.preventDefault();
-                }
-              }}
-              onDrop={() => dropCard(column.id, column.cardIds.length)}
-            >
-              <header
-                className={`columnHeader ${
-                  columnEditor?.columnId === column.id ? "columnTitleEditing" : ""
-                }`}
+            return (
+              <article
+                key={column.id}
+                className={`column ${wip.reached ? "wipReached" : ""}`}
+                onDragOver={(event) => {
+                  if (access.canEdit && !filtersActive) {
+                    event.preventDefault();
+                  }
+                }}
+                onDrop={() => dropCard(column.id, column.cardIds.length)}
               >
-                <div>
-                  {columnEditor?.columnId === column.id ? (
-                    <form className="columnTitleEditor" onSubmit={saveColumnTitle}>
+                <header
+                  className={`columnHeader ${
+                    columnEditor?.columnId === column.id ? "columnTitleEditing" : ""
+                  }`}
+                >
+                  <div>
+                    {columnEditor?.columnId === column.id ? (
+                      <form className="columnTitleEditor" onSubmit={saveColumnTitle}>
+                        <input
+                          aria-label="欄位名稱"
+                          autoFocus
+                          maxLength={COLUMN_TITLE_MAX_LENGTH}
+                          value={columnEditor.title}
+                          onChange={(event) => setColumnEditor({
+                            ...columnEditor,
+                            title: event.target.value,
+                            error: "",
+                          })}
+                          onKeyDown={(event) => {
+                            if (isImeComposing(event.nativeEvent)) return;
+                            if (event.key === "Escape") {
+                              setColumnEditor(null);
+                            }
+                          }}
+                        />
+                        <button type="submit" className="iconOnly" aria-label="儲存欄位名稱">
+                          ✓
+                        </button>
+                        <button
+                          type="button"
+                          className="iconOnly"
+                          aria-label="取消修改欄位名稱"
+                          onClick={() => setColumnEditor(null)}
+                        >
+                          ×
+                        </button>
+                        {columnEditor.error && (
+                          <small className="columnTitleError" role="alert">
+                            {columnEditor.error}
+                          </small>
+                        )}
+                      </form>
+                    ) : (
+                      <div className="columnTitleRow">
+                        <h2>{column.title}</h2>
+                        {access.canConfigureWorkflow && (
+                          <div className="columnTitleActions">
+                            <button
+                              type="button"
+                              className="columnRenameButton"
+                              aria-label={`重新命名「${column.title}」欄位`}
+                              onClick={() => startColumnRename(column.id, column.title)}
+                            >
+                              改名
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {wip.limit === null ? (
+                      <p className="columnMeta">
+                        {column.cardIds.length} 張，此欄為完成狀態且不設 WIP
+                      </p>
+                    ) : (
+                      <p className="columnMeta">
+                        WIP {wip.count}/{wip.limit}
+                        {wip.reached ? "，已達上限" : ""}
+                      </p>
+                    )}
+                  </div>
+                  {wip.limit !== null && access.canConfigureWorkflow && (
+                    <label className="wipInput">
+                      <span>上限</span>
                       <input
-                        aria-label="欄位名稱"
-                        autoFocus
-                        maxLength={COLUMN_TITLE_MAX_LENGTH}
-                        value={columnEditor.title}
-                        onChange={(event) => setColumnEditor({
-                          ...columnEditor,
-                          title: event.target.value,
-                          error: "",
-                        })}
-                        onKeyDown={(event) => {
-                          if (isImeComposing(event.nativeEvent)) return;
-                          if (event.key === "Escape") {
-                            setColumnEditor(null);
-                          }
-                        }}
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={wip.limit}
+                        onChange={(event) =>
+                          setBoard((current) =>
+                            updateWipLimit(current, column.id, Number(event.target.value)),
+                          )
+                        }
                       />
-                      <button type="submit" className="iconOnly" aria-label="儲存欄位名稱">
-                        ✓
-                      </button>
-                      <button
-                        type="button"
-                        className="iconOnly"
-                        aria-label="取消修改欄位名稱"
-                        onClick={() => setColumnEditor(null)}
-                      >
-                        ×
-                      </button>
-                      {columnEditor.error && (
-                        <small className="columnTitleError" role="alert">
-                          {columnEditor.error}
-                        </small>
-                      )}
-                    </form>
-                  ) : (
-                    <div className="columnTitleRow">
-                      <h2>{column.title}</h2>
-                      {access.canConfigureWorkflow && (
-                        <div className="columnTitleActions">
-                          <button
-                            type="button"
-                            className="columnRenameButton"
-                            aria-label={`重新命名「${column.title}」欄位`}
-                            onClick={() => startColumnRename(column.id, column.title)}
-                          >
-                            改名
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    </label>
                   )}
-                  {wip.limit === null ? (
-                    <p className="columnMeta">
-                      {column.cardIds.length} 張，此欄為完成狀態且不設 WIP
-                    </p>
-                  ) : (
-                    <p className="columnMeta">
-                      WIP {wip.count}/{wip.limit}
-                      {wip.reached ? "，已達上限" : ""}
-                    </p>
-                  )}
-                </div>
-                {wip.limit !== null && access.canConfigureWorkflow && (
-                  <label className="wipInput">
-                    <span>上限</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="99"
-                      value={wip.limit}
-                      onChange={(event) =>
-                        setBoard((current) =>
-                          updateWipLimit(current, column.id, Number(event.target.value)),
-                        )
-                      }
-                    />
-                  </label>
-                )}
-              </header>
+                </header>
 
-              {access.canConfigureWorkflow && (
-                <div className="columnWorkflowActions" aria-label={`管理「${column.title}」欄位`}>
-                  <button
-                    type="button"
-                    className="secondaryButton"
-                    disabled={columnIndex === 0}
-                    onClick={() => moveWorkflowColumn(column.id, "left")}
-                    aria-label={`將「${column.title}」向左移`}
-                  >
-                    ← 左移
-                  </button>
-                  <button
-                    type="button"
-                    className="secondaryButton"
-                    disabled={columnIndex === board.columns.length - 1}
-                    onClick={() => moveWorkflowColumn(column.id, "right")}
-                    aria-label={`將「${column.title}」向右移`}
-                  >
-                    右移 →
-                  </button>
-                  {column.id !== DONE_COLUMN_ID && (
+                {access.canConfigureWorkflow && (
+                  <div className="columnWorkflowActions" aria-label={`管理「${column.title}」欄位`}>
                     <button
                       type="button"
-                      className="columnDeleteButton"
-                      disabled={deletionError !== null}
-                      title={
-                        deletionError === "not_empty"
-                          ? "請先移走欄位內的任務"
-                          : deletionError === "minimum_columns"
-                            ? "看板至少需要一個工作欄位"
-                            : undefined
-                      }
-                      onClick={() => requestDeleteColumn(column.id, column.title)}
+                      className="secondaryButton"
+                      disabled={columnIndex === 0}
+                      onClick={() => moveWorkflowColumn(column.id, "left")}
+                      aria-label={`將「${column.title}」向左移`}
                     >
-                      刪除空欄
+                      ← 左移
                     </button>
-                  )}
-                </div>
-              )}
-
-              <div className="cardList">
-                {cards.length === 0 ? (
-                  <div className="emptyState">
-                    {filtersActive ? "此欄沒有符合條件的卡片" : "目前沒有卡片"}
+                    <button
+                      type="button"
+                      className="secondaryButton"
+                      disabled={columnIndex === board.columns.length - 1}
+                      onClick={() => moveWorkflowColumn(column.id, "right")}
+                      aria-label={`將「${column.title}」向右移`}
+                    >
+                      右移 →
+                    </button>
+                    {column.id !== DONE_COLUMN_ID && (
+                      <button
+                        type="button"
+                        className="columnDeleteButton"
+                        disabled={deletionError !== null}
+                        title={
+                          deletionError === "not_empty"
+                            ? "請先移走欄位內的任務"
+                            : deletionError === "minimum_columns"
+                              ? "看板至少需要一個工作欄位"
+                              : undefined
+                        }
+                        onClick={() => requestDeleteColumn(column.id, column.title)}
+                      >
+                        刪除空欄
+                      </button>
+                    )}
                   </div>
-                ) : (
-                  cards.map((card, index) => (
-                    <CardItem
-                      key={card.id}
-                      card={card}
-                      labels={board.labels}
-                      today={today}
-                      movementDisabled={filtersActive}
-                      assigneeNames={assigneeNames}
-                      readOnly={!access.canEdit}
-                      settings={board.settings}
-                      isDoneColumn={column.id === DONE_COLUMN_ID}
-                      onOpen={() => openEdit(card.id)}
-                      onMove={(direction) => moveWithButtons(card.id, direction)}
-                      onChecklistToggle={(itemId) => {
-                        if (access.canEdit) {
-                          setBoard((current) => toggleChecklistItem(current, card.id, itemId));
-                        }
-                      }}
-                      setRef={(node) => {
-                        if (node) {
-                          cardRefs.current.set(card.id, node);
-                        } else {
-                          cardRefs.current.delete(card.id);
-                        }
-                      }}
-                      onDragStart={() => setDraggedCardId(card.id)}
-                      onDragEnd={() => setDraggedCardId(null)}
-                      onDropBefore={() => dropCard(column.id, index)}
-                    />
-                  ))
                 )}
-              </div>
 
-              {access.canEdit && (
-                <div className="addCardRow">
-                  <button type="button" className="addCardButton" onClick={() => openAdd(column.id)}>
-                    ＋ 新增卡片
-                  </button>
-                  {speechAvailable && (
-                    <VoiceCaptureButton
-                      columnTitle={column.title}
-                      onResult={(text) => openAddWithTitle(column.id, text)}
-                      onError={reportCapabilityError}
-                    />
+                <div className="cardList">
+                  {cards.length === 0 ? (
+                    <div className="emptyState">
+                      {filtersActive ? "此欄沒有符合條件的卡片" : "目前沒有卡片"}
+                    </div>
+                  ) : (
+                    cards.map((card, index) => (
+                      <CardItem
+                        key={card.id}
+                        card={card}
+                        labels={board.labels}
+                        today={today}
+                        movementDisabled={filtersActive}
+                        assigneeNames={assigneeNames}
+                        readOnly={!access.canEdit}
+                        settings={board.settings}
+                        isDoneColumn={column.id === DONE_COLUMN_ID}
+                        onOpen={() => openEdit(card.id)}
+                        onMove={(direction) => moveWithButtons(card.id, direction)}
+                        onChecklistToggle={(itemId) => {
+                          if (access.canEdit) {
+                            setBoard((current) => toggleChecklistItem(current, card.id, itemId));
+                          }
+                        }}
+                        setRef={(node) => {
+                          if (node) {
+                            cardRefs.current.set(card.id, node);
+                          } else {
+                            cardRefs.current.delete(card.id);
+                          }
+                        }}
+                        onDragStart={() => setDraggedCardId(card.id)}
+                        onDragEnd={() => setDraggedCardId(null)}
+                        onDropBefore={() => dropCard(column.id, index)}
+                      />
+                    ))
                   )}
                 </div>
-              )}
-            </article>
-          );
-        })}
-      </section>
+
+                {access.canEdit && (
+                  <div className="addCardRow">
+                    <button type="button" className="addCardButton" onClick={() => openAdd(column.id)}>
+                      ＋ 新增卡片
+                    </button>
+                    {speechAvailable && (
+                      <VoiceCaptureButton
+                        columnTitle={column.title}
+                        onResult={(text) => openAddWithTitle(column.id, text)}
+                        onError={reportCapabilityError}
+                      />
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </section>
+      )}
 
       {noVisibleCards && filtersActive && (
         <p className="noResults">沒有符合目前搜尋與篩選條件的卡片。</p>

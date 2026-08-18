@@ -803,6 +803,10 @@ textarea {
   border-radius: var(--radius);
   color: var(--muted);
   text-align: center;
+  /* flex 系列屬性在非 flex 容器（例如既有的 .cardList grid）裡完全不生效，
+   * 加這一行不影響任何既有用法；只是讓這個既有類別在 timelineScroll 的 flex
+   * 版面裡（看板還沒有任務開工時的提示訊息）也能撐滿可用寬度。 */
+  flex: 1;
 }
 
 .noResults {
@@ -3383,6 +3387,260 @@ textarea {
   }
 
   .resourceNarrowNotice {
+    display: block;
+  }
+}
+
+/* 看板／魚骨圖檢視切換連結（board-timeline-fishbone-v1）。放在
+ * BoardApp.tsx 的標頭區，樣式比照 .calendarNav a／.resourceNav a。 */
+.boardViewSwitch {
+  display: flex;
+  gap: 8px;
+  max-width: 1560px;
+  margin: 0 auto 12px;
+}
+
+.boardViewSwitch a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper-strong);
+  color: var(--ink);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.boardViewSwitch a:hover {
+  border-color: var(--teal);
+  color: var(--teal-strong);
+}
+
+.boardViewSwitch a.active {
+  border-color: var(--teal);
+  background: #e8f6f2;
+  color: var(--teal-strong);
+}
+
+/* Board timeline fishbone view (board-timeline-fishbone-v1) */
+.timelineShell {
+  margin-top: 4px;
+}
+
+.timelineToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.timelineZoom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.timelineNarrowNotice {
+  display: none;
+  margin: 48px auto 0;
+  max-width: 480px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--muted);
+  font-weight: 700;
+  text-align: center;
+}
+
+.timelineScroll {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+}
+
+.timelineUnstarted {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: none;
+  width: 220px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-strong);
+  box-shadow: 0 8px 20px rgba(36, 45, 47, 0.08);
+}
+
+.timelineUnstarted h2 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+.timelineUnstarted ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timelineUnstarted .timelineCard {
+  width: 100%;
+}
+
+.timelineSpine {
+  position: relative;
+  flex: none;
+}
+
+.timelineBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--teal);
+}
+
+.timelineLinkLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.timelineLink {
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.timelineLink.toParent {
+  stroke: var(--teal-strong);
+  stroke-dasharray: 5 4;
+}
+
+.timelineTick {
+  position: absolute;
+  top: 0;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  color: var(--muted);
+  /* 字級刻意比 .resourceDateHead 小一截：這裡的刻度可以密到每日一格
+   * （pxPerDay=24 時每格只有 24px），較大字級會讓兩位數的月/日（例如
+   * 「8/10」「12/31」）跟隔壁刻度重疊。實測 0.62rem＋700 字重在最密的情形
+   * 下仍有餘裕（配合 BoardTimeline.tsx 的 buildTicks：跨月才顯示月份，
+   * 同月只顯示日，兩位數月加兩位數日的組合不會連續出現），同時維持可讀。 */
+  font-size: 0.62rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.timelineTick::after {
+  width: 1px;
+  height: 8px;
+  background: var(--line-strong);
+  content: "";
+}
+
+.timelineNode {
+  position: absolute;
+}
+
+.timelineCard {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 4px;
+  overflow: hidden;
+  border: 1px solid #d8d0c1;
+  border-radius: calc(var(--radius) * 0.75);
+  background: var(--paper-strong);
+  box-shadow: 0 6px 14px rgba(34, 40, 42, 0.08);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.timelineCardTitle {
+  overflow: hidden;
+  width: 100%;
+  color: var(--ink);
+  font-weight: 800;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timelineCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.timelineCardFlags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.timelineCardFlags span {
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 0.62rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.timelineCard.blocked {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--amber) 14%, var(--paper));
+}
+
+.timelineCard.expedite {
+  border-width: 2px;
+  border-color: var(--rose);
+}
+
+/* 全螢幕採 CSS 覆蓋視窗而非瀏覽器 Fullscreen API——後者需要使用者手勢且在
+ * 部分內嵌情境（例如沙盒 iframe）行為不一致，CSS 版更可預期。z-index 刻意
+ * 落在 .mobileInfoButton（10）與 .modalBackdrop（20）之間：全螢幕時仍要能
+ * 開 DetailModal／ConfirmModal 並讓它顯示在最上層。 */
+.timelineFullscreen {
+  position: fixed;
+  z-index: 15;
+  inset: 0;
+  overflow-y: auto;
+  padding:
+    calc(16px + var(--safe-top))
+    calc(16px + var(--safe-right))
+    calc(16px + var(--safe-bottom))
+    calc(16px + var(--safe-left));
+  background: var(--bg);
+}
+
+@media (max-width: 899px) {
+  .timelineScroll {
+    display: none;
+  }
+
+  .timelineNarrowNotice {
     display: block;
   }
 }
