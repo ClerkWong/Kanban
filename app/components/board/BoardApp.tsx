@@ -1260,7 +1260,10 @@ function BoardSurface({
         </section>
       )}
 
-      {noVisibleCards && filtersActive && (
+      {/* 魚骨圖不吃 filters／visibleCards（BoardTimeline 只吃未過濾的 board），
+          搜尋列雖然共用，這句「無結果」訊息卻是針對看板欄位算出來的，魚骨圖
+          檢視下卡片仍全部畫在圖上，兩者同時出現會自相矛盾，所以排除 timeline。 */}
+      {view !== "timeline" && noVisibleCards && filtersActive && (
         <p className="noResults">沒有符合目前搜尋與篩選條件的卡片。</p>
       )}
 

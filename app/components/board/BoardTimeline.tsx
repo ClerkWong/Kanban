@@ -10,7 +10,7 @@
 // 的整數（x、side、row）換算成像素座標，以及決定日期刻度多密——兩者都是純
 // 展示決策，不影響任何排版結果。
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { BoardState, Card } from "../../board-model";
 import { todayString } from "../../projects/calendar-model";
 import {
@@ -24,6 +24,7 @@ import {
   unstartedCards,
   type TimelineNode,
 } from "../../projects/timeline-model";
+import { isImeComposing } from "./shared";
 
 // 卡片節點的像素常數。只決定 layoutTimeline 算出的 x／side／row 要怎麼畫，
 // 不影響、也不重算那三個值本身；因此不需要跟 timeline-model.ts 共用或匯出。
@@ -98,6 +99,19 @@ export function BoardTimeline({
 }) {
   const [pxPerDay, setPxPerDay] = useState<number>(DEFAULT_PX_PER_DAY);
   const [fullscreen, setFullscreen] = useState(false);
+
+  // 全螢幕是 CSS 覆蓋視窗（見下方 .timelineFullscreen 的取捨），不是瀏覽器
+  // Fullscreen API，沒有內建的 Esc 退出，這裡補上；只在全螢幕開著時掛
+  // document 層的 keydown，關閉時（不論是按這裡的 Esc 還是點退出鈕）移除。
+  useEffect(() => {
+    if (!fullscreen) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (isImeComposing(event)) return;
+      if (event.key === "Escape") setFullscreen(false);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [fullscreen]);
 
   const cards = useMemo(() => Object.values(board.cards), [board.cards]);
   const today = useMemo(() => todayString(), []);

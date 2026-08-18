@@ -3636,6 +3636,13 @@ textarea {
 }
 
 @media (max-width: 899px) {
+  /* .timelineToolbar（縮放與全螢幕）操控的是下面這個被藏起來的時間軸；
+   * 日曆／甘特圖的對應控制項會跟著各自的 layout 容器一起消失，這裡的
+   * 縮放鈕與全螢幕鈕也不該留下來控制一個看不見的東西。 */
+  .timelineToolbar {
+    display: none;
+  }
+
   .timelineScroll {
     display: none;
   }
