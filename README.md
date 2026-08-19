@@ -23,6 +23,7 @@ D1、附件存入 R2，供多裝置共用。
 - 卡片欄位停留老化、Cycle Time／阻塞時長／流動效率流動報表、服務類別與加急 WIP 上限。
 - 管理者專屬的跨專案日曆檢視：依截止日呈現本月任務、未排程池與每人件數（桌面專用）。
 - 管理者專屬的人力甘特圖：以人為列、以日期為軸顯示每人投入期間、過載與未排期（桌面專用）。
+- 看板時間軸魚骨圖：任務以實際開工日從時間軸長出、子任務連到上層任務（桌面專用）。
 
 ## 架構
 
@@ -237,11 +238,17 @@ create 只從隱藏提示或 stdin 讀取明文，list 不查詢 token hash，pr
   不會被視為錯誤，也不阻擋任何編輯。
 - 每人投入期間隨卡片整體 LWW 合併，不做欄位級合併；兩台裝置同時改同一張卡的不同人期間時，
   後寫入者整份覆蓋。這是維持卡片級 LWW 簡單性所接受的精度損失。
+- 卡片可設定「上層任務」形成最多三層的結構分解；這只表示工作歸屬，**不影響**完成狀態、
+  WIP 計算、老化或任何流動度量。子任務沒完成，父任務也可能已達成目標。
+- 刪除父卡不會刪除子卡：子卡的上層任務關聯被清空，升為頂層。
+- 上層任務關聯隨卡片整體 LWW 合併；合併後一律重新正規化，因此跨裝置編輯不會產生循環。
 
 ## 相關文件
 
 - [NextTasks.md](./NextTasks.md)：目前狀態、後續任務、驗收與 rollback runbook。
 - [行動版發布 runbook](./docs/runbooks/mobile-release.md)：升版號、archive、簽章 AAB 與混版風險。
+- [看板時間軸魚骨圖 v1 規格](./docs/superpowers/specs/2026-08-18-board-timeline-fishbone-design.md)
+- [看板時間軸魚骨圖 v1 實作計畫](./docs/superpowers/plans/2026-08-18-board-timeline-fishbone-v1.md)
 - [人力甘特圖 v1 規格](./docs/superpowers/specs/2026-08-13-resource-gantt-design.md)
 - [人力甘特圖 v1 實作計畫](./docs/superpowers/plans/2026-08-13-resource-gantt-v1.md)
 - [多專案／多看板 v1 規格](./docs/superpowers/specs/2026-07-24-multi-project-multi-board-design.md)

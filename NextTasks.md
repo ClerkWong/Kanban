@@ -51,6 +51,7 @@
 | 平台管理指派專案成員 v1 | 已部署 staging，待人工驗收 | 已合入 main（`cb44d55`）；staging Worker version `40e86dc5-6393-479a-a32b-f6675f86d5a5`，無 token 對 `/me` 與 `/admin/users` 均回 401；Web Beta version `c1a2d9dd-8169-4241-be99-28d1ac8e9f24`，Access 仍正常擋下未授權請求（302）。無 D1 migration。workspace owner／admin 可從使用者管理指派任何專案的成員與角色；放寬只作用於 `PUT`／`DELETE /projects/:projectId/members/:userId`，其餘 manage 操作不變；新增 admin-only `GET /admin/users/:userId/projects`；專案外 admin 的變更在 Activity Log 標 `via: "platform_admin"`。指派 UI 已改為 checkbox 決定是否參與、同列 select 決定角色，未勾選時 select 停用；select 不再提供「未參與」選項，避免同一件事有兩個入口 |
 | 跨專案日曆檢視 v1 | 已部署 staging 與 Web Beta，待人工驗收 | 管理者專屬 `GET /calendar?workspaceId=&month=`；workspace owner／admin 得到全 workspace active 專案、Project owner 得到他 own 的、其餘 403；只回未完成卡與 active 看板，不含描述／checklist／附件／阻塞原因；卡片以 SQLite `json_each` 在 SQL 層過濾（D1 已實測支援）；未排程池上限 200、看板上限 50，超出以旗標明示；v1 純檢視、桌面專用（< 900 px 顯示引導訊息）。已合入 main（`df85fe8`）；無 D1 migration；staging Worker version `77070cdd-60f8-4cdc-b104-1451d7202487`，無 token／錯 token 對 `/calendar` 與 `/me` 均回 401；Web Beta version `b6033548-7155-40b8-99e5-0782cf7f0243`，Access 仍正常擋下未授權請求（302）。導覽日曆入口對 workspace admin 與非 admin 的 Project owner 皆可見，且 SQL 對非物件卡片有型別守門 |
 | 人力甘特圖 v1 | 已部署 staging 與 Web Beta，待人工驗收 | Card schema v8 新增 `assignmentWindows`（每位指派人各自的計畫投入期間，date-only 含頭尾；`userId` 須為 `assigneeUserIds` 子集、每人至多一筆、每卡上限 20；缺 window＝未排期，非錯誤）；migration 一律補空陣列，不替舊卡推導日期。指派名單與投入期間收斂為只有 Project owner 可變更，以逐卡 `assignmentSignature` 比對實作——只比對兩版都存在的卡片，缺席鍵與空陣列視為同一簽章（避免舊看板 member 編輯被誤 403 鎖死，即流動度量 v7 上線前抓到的同一坑）。新增 `GET /assignments?workspaceId=&from=&to=`，範圍複用 `resolveCalendarScope`，窗長上限含頭尾 31 天；看板選取為全域 Top-50（`updated_at DESC, id DESC`），bars 上限 2000、未排期上限 200，三者皆有對應截斷旗標；卡片與 window 以雙層 `json_each` 展開，內層以 `CASE` 守門，外層另加 `json_valid`／`json_type` 守門避免畸形資料致 500。新路由 `#/resources?from=YYYY-MM-DD`：每人一列、lane packing 分層、同日並行以文字＋樣式雙區隔標示過載、未排期側欄、預設 14 天可前後移動；v1 純檢視（不可在甘特圖上拖拉調整期間）、桌面專用（< 900px 顯示引導訊息）。無 D1 migration（`assignmentWindows` 住在 `boards.data` 的 JSON blob 內），但因權限收緊，部署順序不可顛倒，見下方 P1 部署備註。已合入 main（`ea6d46a`）；staging Worker version `6e36a147-aeb3-4b4a-9345-483c69f718e0`，無 token／錯 token 對 `/assignments`、`/calendar`、`/me` 均回 401；Web Beta version `f47eec1d-9676-4545-9d0f-41dd33424342`，Access 仍正常擋下未授權請求（302） |
+| 看板時間軸魚骨圖 v1 | 已實作並通過九項品質關卡，待合併 main 與 staging 部署 | Card schema v9 新增 `parentCardId: string \| null` 與 `MAX_CARD_DEPTH = 3`（頂層為第 1 層）；純結構分解，**不做狀態上捲**——完成、WIP、老化、Cycle Time、阻塞、加急排序全部各卡各算，不提供子樹聚合計數。`normalizeCardHierarchy` 幂等修正四種壞連結（指向不存在卡片、指向自己、成環、超深度）；刪除父卡時子卡升為頂層（由 normalize 第一步自然達成，`deleteCard` 未改）。migration 一律補 `null`。順帶修掉既有原型鏈缺陷：`parentCardId`／`column.cardIds`／`deletedCards` 等以外部可控字串查表的存在性判斷，`merge.ts` 的 placement 迴圈與 `normalizeCardHierarchy`／`cardDepth` 皆已改用 `Object.hasOwn`（修正前 Worker 會放行 `parentCardId: "constructor"` 寫入 D1，導致 client 端 TypeError 或該裝置同步永久癱瘓）。Worker `requireValidCardHierarchy` 在 `createBoard`／`putBoardContent`／`putLegacyRow` 三處接上，**缺席即通過**，五種違規各回 400 `invalid_card_hierarchy`；`parentCardId` 不在 `assignmentSignature` 內，member 可改（有測試釘住舊看板 lockout 回歸與權限界線）。Activity Log 新增 `parentCardId` 欄位（只記欄位名）。新路由 `#/projects/:projectId/boards/:boardId/timeline`：主骨為時間軸，已開工卡片依 `startedAt`（以檢視者本地時區取日）定位、上下交錯；子卡與父卡同側，以虛線連父卡，父卡未開工時子卡直接接主骨；同日向外堆疊；未啟動池在左端；縮放五級距 `8/12/16/24/32` px/日（預設 16）＋CSS 全螢幕（Esc 退出，overlay 疊層時只關最上層）；桌面專用（< 900px 顯示引導訊息並隱藏工具列）。卡片面板新增「上層任務」選單，候選來自 `eligibleParentCards`（編輯模式）或深度過濾（新增模式），排除自己、子孫與會超深度的目標；member 可改，只有整卡唯讀才 disabled。**無 D1 migration、無新 Worker 端點、無權限放寬**，但部署順序不可顛倒，見下方 P1 部署備註。尚未合入 main，仍在 `feature/board-timeline-fishbone-v1` 分支（實作完成點 `80b4487`）；九項品質關卡已於本次文件更新一併重跑並全綠（單元測試 336、Worker runtime tests 208，其餘七項為 lint／typecheck／build／mobile:build／worker:types:check／staging dry-run／`git diff --check`）。 |
 
 ### 已完成的驗證
 
@@ -405,6 +406,23 @@ git diff --check
 - [ ] 畸形卡片或畸形 window 不會讓端點 500。
 - [ ] 視窗縮到 900 px 以下顯示引導訊息而非破版時間軸。
 
+### 看板時間軸魚骨圖
+
+- [ ] 卡片面板可設定上層任務；member 也能設定（不被 403 擋下）。
+- [ ] 上層任務選單不列出自己、自己的子孫、以及會超過深度上限的卡片。
+- [ ] 舊看板（卡片無 `parentCardId`）的 member 編輯不會被 403 擋下。
+- [ ] 選不到會成環的上層任務，或選了會被 Worker 以 400 擋下且畫面有可讀訊息。
+- [ ] 刪除父卡後，子卡仍在且升為頂層（在魚骨圖上直接接到主骨）。
+- [ ] 已開工卡片依 `startedAt` 定位在主骨上，位置與日期刻度相符。
+- [ ] 子卡與父卡同側，虛線連到父卡，且子卡位置是它自己的 `startedAt`。
+- [ ] 同一天多張卡片向外堆疊，不互相遮蔽。
+- [ ] `startedAt` 為空的卡片出現在主骨左端的未啟動池，且不佔時間軸位置。
+- [ ] 卡面的 `N/M` 只反映該卡自己的 checklist，不含子卡。
+- [ ] 受阻與加急有文字加樣式的雙區隔。
+- [ ] 縮放與全螢幕可用；縮放後卡片位置與日期刻度仍相符。
+- [ ] 父卡完成、子卡未完成時，父卡在看板與魚骨圖上都顯示為完成（狀態不上捲）。
+- [ ] 視窗縮到 900 px 以下顯示引導訊息而非破版時間軸。
+
 ### Web/PWA 與客製設定
 
 - [x] private Beta v15 仍是 owner-only custom access。
@@ -649,6 +667,54 @@ git diff --check
   `assignmentWindows` 沿用同一函式比對變更偵測，繼承既有的 `assigneeUserIds` 同款限制
   （鍵順序不同但內容相同時，Activity Log 可能誤記一次「變更」）。只影響 Log 精度，不
   影響實際資料或權限判斷。
+- 部署看板時間軸魚骨圖 v1 時必須先 `pnpm sync:deploy:staging`（Worker 要先能驗證並接受
+  `parentCardId`，否則 v9 client 送上的新欄位會被舊 Worker 原樣存入而未經驗證），再
+  `pnpm web:deploy:beta`；部署順序不可顛倒。部署後須確認：無 token 對 `/me` 回 401、
+  舊看板的 member 編輯仍得 200（lockout 回歸的線上確認）、member 改上層任務得 200、
+  member 改指派仍得 403。
+- **混版警告**：v8 及更早的客戶端送出的 board 不含 `parentCardId`；該欄位由 Worker
+  「缺席即通過」放行、client 端 `normalizeCards` 對缺席補 `null`，因此舊客戶端的編輯會把
+  該看板**全部的上層任務關聯清空**（與甘特圖 v8 的投入期間、日曆的 schema 升級同型錯誤）。
+  Web Beta 發布後使用者裝置必須重新載入頁面；行動版須盡快跟上此次 schema v9，在新版安裝前
+  不要用舊 App 編輯卡片。
+- 接點取 `startedAt`，語意是「卡片首次離開第一欄」。若團隊習慣是卡片建立後很久才移動，
+  魚骨圖上的啟動時點會比真實開工晚。這是既有欄位語意，非本功能缺陷。
+- `normalizeCardHierarchy` 的深度修正以字典序走訪，超長鏈被截斷的是「排序在前」的那張卡，
+  而非最深的那張。結果決定且幂等，但不一定符合直覺；若日後要改成「從最深處截斷」，
+  需同時更新 `assertBoardInvariants` 的測試。實務上最常見的觸發情境是繞過 UI 硬塞違規
+  父卡（例如兩台裝置併發把不同子樹接到同一張卡上，合併後才發現超深）：normalize 不會
+  拒絕那次編輯，而是斷開子樹中的某一張卡——多為造成當時違規的那張本身，但不保證是鏈尾
+  最深的那張。多裝置合併若組出違規樹，修復語意是「犧牲某張卡的上層任務連結」，不是
+  「拒絕那次合併」。
+- **既有缺陷、未修**：`updateCard`／`deleteCard`／`moveCard`／`toggleChecklistItem`
+  （`app/board-model.ts`）與 `BoardApp.tsx` 內多處 UI 讀取（附件面板、刪除確認訊息、
+  標題回填等），仍是 `board.cards[cardId]` 形式的存在性判斷，而非 `Object.hasOwn`。
+  可達性需疊加「遠端注入原型屬性名（如 `constructor`）id 的卡」與「stale-id race」，
+  後果是單次操作 TypeError 或垃圾卡復活，嚴重度低於本次已修的 `merge.ts` placement 路徑。
+  根治方向：讓 `normalizeCards` 以 `Object.create(null)` 建 cards record（無原型，所有
+  bracket 查找天生安全），但需一併檢查 `cloneBoard` 等處的 `{ ...cards }` 展開會不會重新
+  引入原型。**不要**用「限制卡片 id 格式」堵——demo board 自帶 `card-roadmap` 這類 id，
+  且 `constructor` 本身符合一般字元白名單。
+- **既有缺陷、未修**：`JSON.parse` 可造出 `"__proto__"` 自身鍵，而 `normalizeCards`／
+  `normalizeDeletedCards`／`board-diff` 的「重建物件再賦值」寫法對這個 key 會觸發 setter，
+  造成該卡靜默丟棄＋物件實例原型局部污染（非全域、不 crash）。`Object.hasOwn` 對這一類
+  無效，是與上一則「讀取誤判存在」不同的缺陷類別，需要獨立的修復手段（例如用
+  `Object.keys`／`Map` 取代直接展開賦值，或建構後以 `Object.hasOwn` 過濾 `__proto__` 鍵）。
+- Worker 從未驗證 `column.cardIds` 是否對應存在的卡片——不是驗證被繞過，是根本沒有這道
+  驗證。補這道驗證也擋不住上述兩則原型污染類問題，因為毒卡本身是 id 合法的真實卡片；
+  新增前應先以 production 資料佐證是否真的出現過孤兒 `cardIds`，避免誤傷現存 D1 資料。
+- `MAX_CARD_DEPTH` 在 `app/board-model.ts` 與 `worker-sync/src/boards.ts` 各自維護一份
+  常數 `3`，只靠註解宣告一致、沒有機制強制同步；日後調整上限必須記得兩處都改。
+- 魚骨圖的日期刻度**永不顯示年份**，最早開工日超過一年前的看板會出現兩個無法區分的月
+  標籤（卡面本身的日期標籤有完整年月日可補救，不算資料遺失，僅刻度易讀性）。
+- `#/…/boards/:bid/timeline` 這條 5 段路由分支（`app/projects/navigation.ts`）的兩個
+  `isServerResourceId` 防護，以及 `timeline-model.ts` 的 `unstartedCards` 排序鍵第二層
+  tie-break（`id`），目前都沒有測試直接鎖住——前者程式本身正確，純屬回歸網缺口；後者
+  現有 fixture 的 `createdAt` 序與 `id` 序恰好一致，未真正走到 tie-break 分支。
+- `tests/board-attachments.test.ts`、`board-tombstones.test.ts`、`board-flow-metrics.test.ts`
+  三個測試名稱仍寫舊 schema 版號（分別為「版本為 6」「版本為 6」「v7」）而斷言
+  `BOARD_SCHEMA_VERSION` 為 9；`parsePersistedBoard` 也還沒有專屬直打 v2／v3 的版本白名單
+  測試。兩者都是歷次升版遺留的既有缺口，非本次引入，僅記錄以免長期遺忘。
 
 ## 行動版發行工作
 
