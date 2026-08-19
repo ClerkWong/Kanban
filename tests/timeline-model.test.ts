@@ -64,6 +64,34 @@ test("dayOffset counts whole days and crosses month, year and leap boundaries", 
   assert.equal(dayOffset("2026-08-20", "2026-08-17"), -3);
 });
 
+test("dayOffset is unaffected by the process timezone, including a half-hour offset", () => {
+  // dayOffset 刻意把 date-only 字串補 `Z` 尾碼走 UTC 算術（見 timeline-model.ts
+  // 的實作註解），跟 startedDay 不同、不該受 `process.env.TZ` 影響。規格 §6 明文
+  // 要求三個極端時區下結果一致；這裡選 UTC+14（最早跨日）、UTC-11（最晚跨日之一）
+  // 與 UTC+5:30（半小時偏移，驗證非整數小時時區也不影響）。切換方式與上面
+  // startedDay 的時區測試相同：同一行程內重設 process.env.TZ 立即生效，切完還原。
+  const originalTz = process.env.TZ;
+  const zones = ["Pacific/Kiritimati", "Pacific/Niue", "Asia/Kolkata"];
+  const cases: Array<[string, string]> = [
+    ["2026-08-17", "2026-08-20"],
+    ["2026-12-31", "2027-01-01"],
+    ["2028-02-28", "2028-03-01"],
+  ];
+  try {
+    const resultsByZone = zones.map((zone) => {
+      process.env.TZ = zone;
+      return cases.map(([from, day]) => dayOffset(from, day));
+    });
+    for (const results of resultsByZone) {
+      assert.deepEqual(results, resultsByZone[0]);
+    }
+    assert.deepEqual(resultsByZone[0], [3, 1, 2]);
+  } finally {
+    if (originalTz === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTz;
+  }
+});
+
 test("timelineBounds spans the earliest start to today", () => {
   const cards = [
     card("a", "2026-08-05T00:00:00.000Z"),
