@@ -45,7 +45,7 @@
 | staging Worker/D1/R2/token | 已建立 | 和 production 完全隔離；URL 與非敏感 inventory 見 staging runbook |
 | production Worker/D1 | 既有 3a 上線 | 尚未部署本次 3b Worker |
 | production R2 | **尚未建立** | 必須等 staging 驗收全數通過 |
-| iOS/Android | `1.1.0 (8)` 發布候選已建置，待上傳分發 | 在 `6aa4eed` 上執行完整 `pnpm mobile:sync`，兩平台四個 Capacitor plugins 均同步（bundle `index-_Gh2PLee.js`，含日曆、人力甘特圖與 schema v8）。iOS archive 已產出並驗證：`com.wong-chambers.WongKanban`、1.1.0 (8)、`ARCHIVE SUCCEEDED`，待由 Xcode Organizer 上傳 TestFlight。Android AAB 已簽章產出並驗證：`com.wongchamber.WongKanban`、versionName 1.1.0、versionCode 8、簽章者 `CN=Wong Chambers`（SHA384withRSA，效期至 2053），待上傳 Play Console 內部測試軌道。**build 7 及更早是 v7 客戶端**，以 owner 身分編輯已排期看板會靜默抹除該看板全部 `assignmentWindows`；本版修正此風險，裝上新版前手機端不應以 owner 編輯卡片。日曆與人力甘特圖為桌面專用（< 900px 顯示引導訊息），手機端不會出現這兩個檢視。尚缺實機安裝 smoke 與正式分發 |
+| iOS/Android | `1.1.0 (8)` 發布候選已建置，待上傳分發 | 在 `6aa4eed` 上執行完整 `pnpm mobile:sync`，兩平台四個 Capacitor plugins 均同步（bundle `index-_Gh2PLee.js`，含日曆、人力甘特圖與 schema v8）。iOS archive 已產出並驗證：`com.wong-chambers.WongKanban`、1.1.0 (8)、`ARCHIVE SUCCEEDED`，待由 Xcode Organizer 上傳 TestFlight。Android AAB 已簽章產出並驗證：`com.wongchamber.WongKanban`、versionName 1.1.0、versionCode 8、簽章者 `CN=Wong Chambers`（SHA384withRSA，效期至 2053），待上傳 Play Console 內部測試軌道。**build 7 及更早是 v7 客戶端，其 `parsePersistedBoard` 版本白名單不含 8**：讀取或推送已排期的 v8 看板時會被判定為無法辨識而中止同步（fail-closed、本機編輯滯留），不是靜默抹除 `assignmentWindows`（原記錄方向有誤，複審已更正，詳見下方 P1 部署備註）；本版加入 v8 支援後才能正常同步，裝上新版前手機端仍應避免用舊 build 編輯已排期看板（會卡在同步錯誤，不是資料損失）。日曆與人力甘特圖為桌面專用（< 900px 顯示引導訊息），手機端不會出現這兩個檢視。尚缺實機安裝 smoke 與正式分發 |
 | 流動度量與服務類別 v1 | Worker 已部署 staging，待 Web Beta 發布與驗收 | Card schema v7：欄位進入／開工時間、累計阻塞、服務類別與加急 WIP；卡面老化與流動報表；Worker 驗證與 summary 流動度量。已推送 `3329721`；staging Worker version `8070b48c-4ee6-4544-a069-b7a1f23f54be`，無 token／錯 token 均回 401；Web Beta v16 待從 Sites 發布 |
 | 多看板與看板指派 v1 | 已部署 staging，待人工驗收 | migration `0005` 已套用 staging D1（5 commands）；staging Worker version `f132bf43-4d3f-4b62-94d7-af612fb47cf5`，無 token／錯 token 對 `/me`、`/projects` 均回 401；Web Beta version `c9646e12-249d-40ae-a523-17fb70c7dedd`，Access 仍正常擋下未授權請求（302）。migration `0005_multi_board_assignments.sql`：移除 `0003` 單看板唯一索引，新增 `project_member_boards`；owner-only 指派 API（`GET`／`PUT /projects/:projectId/members/:userId/boards`，每位 member 上限 50 個看板，空陣列＝回到 fallback，寫入 `member.boards_assigned` audit）；member 依指派列決定可見 Board，完全沒有指派列時 fallback 到主要看板（active 看板中 `updated_at DESC, id DESC` 第一個），owner／legacy viewer 恆全可見；member 對未可見 Board 的內容、附件與 Log 一律 404，`listBoards`、summary 與 `listProjects` 代表看板均已收斂到可見集合；owner 可在專案總覽新增看板，member 面板以 checkbox 群指派（樂觀更新），單一可見看板時自動落板且不顯示切換器，被移除指派時顯示可關閉 banner |
 | 平台管理指派專案成員 v1 | 已部署 staging，待人工驗收 | 已合入 main（`cb44d55`）；staging Worker version `40e86dc5-6393-479a-a32b-f6675f86d5a5`，無 token 對 `/me` 與 `/admin/users` 均回 401；Web Beta version `c1a2d9dd-8169-4241-be99-28d1ac8e9f24`，Access 仍正常擋下未授權請求（302）。無 D1 migration。workspace owner／admin 可從使用者管理指派任何專案的成員與角色；放寬只作用於 `PUT`／`DELETE /projects/:projectId/members/:userId`，其餘 manage 操作不變；新增 admin-only `GET /admin/users/:userId/projects`；專案外 admin 的變更在 Activity Log 標 `via: "platform_admin"`。指派 UI 已改為 checkbox 決定是否參與、同列 select 決定角色，未勾選時 select 停用；select 不再提供「未參與」選項，避免同一件事有兩個入口 |
@@ -634,12 +634,18 @@ git diff --check
   再 `pnpm web:deploy:beta`；部署順序不可顛倒。部署後須確認：無 token 對 `/assignments`
   回 401、member 帳號改指派得 403、且舊看板的 member 編輯仍得 200（lockout 回歸的線上
   確認，即流動度量 v7 上線前抓到的同一坑，本次沿用同一防線）。
-- **混版警告（本次唯一的掉資料路徑）**：全分支最終審查實測確認，Web Beta 發布後若有
-  裝置停在未重新載入的舊分頁（v7 client）操作已排期的 v8 board：member 編輯得 403
-  （指派簽章比對擋下，fail-safe），但 **owner 編輯得 200，且該 board 全部
-  `assignmentWindows` 被靜默抹除**（v7 client 不認得這個欄位，儲存時整份覆蓋不會
-  保留）。因此 Web Beta 發布後，管理者裝置必須重新載入頁面才能開始排期，否則舊分頁
-  的 owner 儲存會把剛排好的投入期間洗掉而不會有任何錯誤提示。
+- **混版警告（更正版；原記錄方向有誤，全分支最終審查已查證並修正）**：先前記錄「舊
+  分頁（v7 client）owner 編輯已排期 v8 board 會得 200 並靜默抹除全部
+  `assignmentWindows`」不成立。複審查出當時的「實測」是直接構造缺欄位請求打 Worker
+  整合測試得到的結果，不是真的跑舊客戶端程式碼；`parsePersistedBoard` 的版本白名單是
+  明確列舉（`git show ea6d46a` 顯示 v8 當時是 `{1..7, 8}`），v7 client 遇到
+  `version: 8` 的 board 一律判定無法辨識並中止（多專案 API 路徑拋 `invalid_response`、
+  legacy 單板路徑回 422「暫停同步以保護本機資料」），在送出任何 PUT 之前就擋下；乾淨
+  （非衝突）推送更只會發生在雙方 revision 一致時，代表期間沒人動過看板、沒有東西可
+  蓋掉。真正行為是**同步斷線（fail-closed）、本機編輯滯留**，不是資料悄悄消失；殘留
+  風險只是同一張卡雙邊都編輯時的每卡 LWW，屬既有慣例、非本項獨有。Web Beta 發布後
+  仍建議管理者裝置重新載入頁面，理由改為避免卡在同步錯誤、看不到新排期功能，不是
+  資料風險。
 - `tests/board-flow-metrics.test.ts` 在 `TZ=Pacific/Niue`（UTC-11）下有一個既有測試
   失敗：`monthly flow stats compute cycle time and flag unmeasured cards`（該檔案
   第 250 行斷言，`0 !== 1`）。人力甘特圖 v1 實作時（Task 5）順手發現，Task 8 複驗
@@ -672,11 +678,17 @@ git diff --check
   `pnpm web:deploy:beta`；部署順序不可顛倒。部署後須確認：無 token 對 `/me` 回 401、
   舊看板的 member 編輯仍得 200（lockout 回歸的線上確認）、member 改上層任務得 200、
   member 改指派仍得 403。
-- **混版警告**：v8 及更早的客戶端送出的 board 不含 `parentCardId`；該欄位由 Worker
-  「缺席即通過」放行、client 端 `normalizeCards` 對缺席補 `null`，因此舊客戶端的編輯會把
-  該看板**全部的上層任務關聯清空**（與甘特圖 v8 的投入期間、日曆的 schema 升級同型錯誤）。
-  Web Beta 發布後使用者裝置必須重新載入頁面；行動版須盡快跟上此次 schema v9，在新版安裝前
-  不要用舊 App 編輯卡片。
+- **混版風險（非資料遺失）**：`parsePersistedBoard` 的版本白名單是明確列舉（目前
+  `1`～`8` 加 `BOARD_SCHEMA_VERSION`＝`9`），v8 及更早客戶端遇到 `version: 9` 的
+  board 一律判定無法辨識、`recovered` 為真而拒絕——多專案 API 路徑（`parseStrictBoard`）
+  拋 `invalid_response`、legacy 單板路徑（`useSync.ts` 的 `toBoardState`）回 422
+  「暫停同步以保護本機資料」，兩者都在送出任何 PUT 之前就中止。因此 v9 board 上雲後，
+  v8 及更早客戶端對那張看板是**同步斷線（fail-closed）、本機編輯滯留**，不會發生
+  Worker「缺席即通過」造成的靜默覆蓋——要靜默覆蓋，舊客戶端必須先成功讀懂 v9 board
+  再省略欄位存回，但它連讀都讀不過這道版本檢查。真正殘留的風險只是同一張卡被兩側
+  裝置同時改到時的每卡 LWW（規格 §2.4 已明文接受，後寫入者勝，非本項獨有）。Web Beta
+  發布後仍建議使用者裝置重新載入頁面，理由是避免卡在同步錯誤，不是資料風險；行動版
+  仍須盡快跟上 schema v9 才能繼續同步已升級的看板。
 - 接點取 `startedAt`，語意是「卡片首次離開第一欄」。若團隊習慣是卡片建立後很久才移動，
   魚骨圖上的啟動時點會比真實開工晚。這是既有欄位語意，非本功能缺陷。
 - `normalizeCardHierarchy` 的深度修正以字典序走訪：超長鏈中，走訪時第一個測得深度仍超限
@@ -700,6 +712,17 @@ git diff --check
   造成該卡靜默丟棄＋物件實例原型局部污染（非全域、不 crash）。`Object.hasOwn` 對這一類
   無效，是與上一則「讀取誤判存在」不同的缺陷類別，需要獨立的修復手段（例如用
   `Object.keys`／`Map` 取代直接展開賦值，或建構後以 `Object.hasOwn` 過濾 `__proto__` 鍵）。
+- **既有威脅模型延伸**：`parentCardId` 為空字串 `""` 時，client／Worker 判定不一致。
+  `normalizeCards`（`app/board-model.ts`）不驗證卡片 id 本身的格式，若輸入含一張 id
+  為 `""` 的卡，`normalizeCardHierarchy` 的存在性檢查 `Object.hasOwn(cards, "")` 會
+  成立，於是任何指向它的 `parentCardId: ""` 都被視為指向真實存在的卡而放過；Worker 端
+  `requireValidCardHierarchy`（`worker-sync/src/boards.ts:172`）用 `!parentCardId`
+  額外擋下空字串本身，不論它是否指向存在的卡，一律 400。複審以 3000 輪隨機圖 fuzz
+  交叉比對 client／Worker 判定，找到的 114 件矛盾全部同一根因，此外零矛盾。需要精心
+  構造含 `""` id 卡片的畸形 board 才可達（一般 UI 不會產生這種卡），後果是該裝置對
+  含這張卡的看板 push 恆 400（fail-closed，資料不掉，刪掉那張畸形卡即可解套）。修法
+  是一行（normalize 時把空字串 `parentCardId` 清 null，或直接捨棄空字串鍵的卡），
+  評估為既有威脅模型（與上述原型鏈問題同一類）的延伸，記錄即可、非阻擋項。
 - Worker 從未驗證 `column.cardIds` 是否對應存在的卡片——不是驗證被繞過，是根本沒有這道
   驗證。補這道驗證也擋不住上述兩則原型污染類問題，因為毒卡本身是 id 合法的真實卡片；
   新增前應先以 production 資料佐證是否真的出現過孤兒 `cardIds`，避免誤傷現存 D1 資料。
@@ -713,8 +736,13 @@ git diff --check
   現有 fixture 的 `createdAt` 序與 `id` 序恰好一致，未真正走到 tie-break 分支。
 - `tests/board-attachments.test.ts`、`board-tombstones.test.ts`、`board-flow-metrics.test.ts`
   三個測試名稱仍寫舊 schema 版號（分別為「版本為 6」「版本為 6」「v7」）而斷言
-  `BOARD_SCHEMA_VERSION` 為 9；`parsePersistedBoard` 也還沒有專屬直打 v2／v3 的版本白名單
-  測試。兩者都是歷次升版遺留的既有缺口，非本次引入，僅記錄以免長期遺忘。
+  `BOARD_SCHEMA_VERSION` 為 9，屬歷次升版遺留的命名債，非本次引入，僅記錄以免長期遺忘。
+  另外補一支 `tests/timeline-model.test.ts` 的 `dayOffset` 三時區測試（`Pacific/Kiritimati`／
+  `Pacific/Niue`／`Asia/Kolkata`，含半小時偏移），涵蓋規格 §6 明列但先前缺漏的一項；
+  `tests/board-tombstones.test.ts` 既有的「v1、v2、v3 資料安全遷移為 v6」測試已用
+  `for (const version of [1, 2, 3])` 直打 `parsePersistedBoard` 並斷言 `error === null`，
+  白名單缺 v2 或 v3 任一項就會轉紅——版本白名單防護本來就存在，先前記錄「v2／v3 缺專屬
+  白名單測試」是誤記，已更正刪除。
 
 ## 行動版發行工作
 
