@@ -389,7 +389,7 @@ export function DetailModal({
                 })
               }
             >
-              <option value="">（直接掛在時間軸上）</option>
+              <option value="">（不設上層任務）</option>
               {parentOptions.map((option) => (
                 <option key={option.cardId} value={option.cardId}>
                   {option.label}

@@ -5,10 +5,12 @@ import {
   COLUMN_TITLE_MAX_LENGTH,
   DONE_COLUMN_ID,
   MAX_BOARD_COLUMNS,
+  MAX_CARD_DEPTH,
   STORAGE_KEY,
   UNASSIGNED_FILTER_VALUE,
   addCard,
   addColumn,
+  cardDepth,
   createDemoBoard,
   deleteCard,
   deleteColumn,
@@ -385,15 +387,23 @@ function BoardSurface({
         ),
     [projectMembers],
   );
-  // 新增模式列出全部卡片；編輯模式用 eligibleParentCards 排除自己、子孫，以及會讓
-  // 子樹超過 MAX_CARD_DEPTH 的候選——UI 只顯示合法選項，不會選到必然被 Worker 400
-  // 擋下的值。標題重複時才附短 id（卡片 id 尾 6 碼，比照 CardItem 既有的短 id 呈現
-  // 慣例），避免選單出現兩個看不出差異的同名選項。
+  // 編輯模式用 eligibleParentCards 排除自己、子孫，以及會讓子樹超過
+  // MAX_CARD_DEPTH 的候選。新增模式沒有現成的 cardId 可以餵給 eligibleParentCards
+  // （它假設 cardId 已存在於 cards，用來算子孫與子樹高度），改成直接排除「本身
+  // 已在深度上限」的候選——新卡必為葉節點（子樹高度恆為 1），選這種卡當父卡會讓
+  // 新卡落在 MAX_CARD_DEPTH + 1 層；儲存時 normalizeCardHierarchy 會把這條連結
+  // 悄悄清掉，使用者的選擇無聲蒸發，且不會有任何錯誤訊息（複審抓到的 Important：
+  // 舊版只在編輯模式做這層過濾，新增模式漏了）。兩種模式篩出的選項都不會踩到這
+  // 個問題。標題重複時才附短 id——與 CardItem 同屬短 id 消歧手法；卡片 id 帶
+  // card- 前綴，故取尾 6 碼（不是 CardItem 對 user UUID 用的頭 8 碼，那個慣例
+  // 用在 card id 上只剩 3 個有效字元），避免選單出現兩個看不出差異的同名選項。
   const parentOptions = useMemo(() => {
     if (!detail) return [];
     const candidateIds = detail.mode === "edit"
       ? eligibleParentCards(board.cards, detail.cardId)
-      : Object.keys(board.cards);
+      : Object.keys(board.cards).filter(
+          (candidateId) => cardDepth(board.cards, candidateId) + 1 <= MAX_CARD_DEPTH,
+        );
     const titleCounts = new Map<string, number>();
     for (const candidateId of candidateIds) {
       const title = board.cards[candidateId].title;
